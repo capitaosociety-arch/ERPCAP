@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a589e" />
+      <stop offset="100%" stop-color="#a4d13a" />
+    </linearGradient>
+  </defs>
+  <!-- Background with Gradient -->
+  <rect width="500" height="500" fill="url(#bg-grad)" />
+  
+  <!-- Outer C with chamfered inner corners exactly mirroring the custom font style -->
+  <path d="M 210 100 
+           L 380 100 
+           L 440 160 
+           L 440 220 
+           L 300 220 
+           L 300 180 
+           L 240 180 
+           L 240 320 
+           L 300 320 
+           L 300 280 
+           L 440 280 
+           L 440 340 
+           L 380 400 
+           L 210 400 
+           L 150 340 
+           L 150 160 
+           Z" 
+        fill="white" />
+</svg>

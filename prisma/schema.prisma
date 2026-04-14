@@ -1,0 +1,264 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String?   @unique
+  phone         String?
+  password      String
+  role          String    @default("WAITER") // ADMIN, MANAGER, CASHIER, WAITER
+  isActive      Boolean   @default(true)
+  
+  permDashboard   Boolean @default(false)
+  permPDV         Boolean @default(true)
+  permComandas    Boolean @default(true)
+  permProducts    Boolean @default(false)
+  permStock       Boolean @default(false)
+  permCustomers   Boolean @default(false)
+  permFinance     Boolean @default(false)
+  permUsers       Boolean @default(false)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  auditLogs     AuditLog[]
+  cashRegisters CashRegister[]
+  orders        Order[]       @relation("CreatedOrders")
+  payments      Payment[]
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String?
+  cpf       String?
+  birthDate DateTime?
+  notes     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders       Order[]
+  services     Service[]      @relation("CustomerServices")
+  subscription Subscription?
+  rentals      Rental[]
+}
+
+model Table {
+  id        String   @id @default(cuid())
+  number    Int      @unique
+  status    String   @default("LIVRE") // LIVRE, OCUPADA, RESERVADA, FECHANDO
+  capacity  Int      @default(4)
+  
+  orders    Order[]
+}
+
+model Order {
+  id          String   @id @default(cuid())
+  tableId     String?
+  customerId  String?
+  userId      String   
+  status      String   @default("OPEN") // OPEN, CLOSED, CANCELED
+  total       Float    @default(0.0)
+  discount    Float    @default(0.0)
+  notes       String?
+  openedAt    DateTime @default(now())
+  closedAt    DateTime?
+
+  table       Table?    @relation(fields: [tableId], references: [id])
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  user        User      @relation("CreatedOrders", fields: [userId], references: [id])
+  
+  items       OrderItem[]
+  payments    Payment[]
+}
+
+model OrderItem {
+  id          String   @id @default(cuid())
+  orderId     String
+  productId   String?
+  serviceId   String?
+  quantity    Int      @default(1)
+  unitPrice   Float
+  subtotal    Float
+  notes       String?
+  status      String   @default("ACTIVE") // ACTIVE, CANCELED
+
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product? @relation(fields: [productId], references: [id])
+  service     Service? @relation(fields: [serviceId], references: [id])
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  code        String?  @unique
+  categoryId  String
+  description String?
+  price       Float
+  cost        Float    @default(0.0)
+  iconUrl     String?
+  unit        String   @default("UN")
+  isActive    Boolean  @default(true)
+  allowAddons Boolean  @default(false)
+  
+  category    ProductCategory @relation(fields: [categoryId], references: [id])
+  
+  orderItems  OrderItem[]
+  stock       Stock?
+  stockMovements StockMovement[]
+  priceHistories PriceHistory[]
+}
+
+model ProductCategory {
+  id          String   @id @default(cuid())
+  name        String
+  products    Product[]
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  name        String
+  category    String
+  description String?
+  price       Float
+  isActive    Boolean  @default(true)
+  durationMin Int?
+  customerId  String?
+
+  customer    Customer? @relation("CustomerServices", fields: [customerId], references: [id])
+  orderItems  OrderItem[]
+}
+
+model Stock {
+  id          String   @id @default(cuid())
+  productId   String   @unique
+  quantity    Float    @default(0)
+  minQuantity Float    @default(5)
+  unit        String   @default("UN")
+  
+  product     Product  @relation(fields: [productId], references: [id])
+}
+
+model StockMovement {
+  id          String   @id @default(cuid())
+  productId   String
+  type        String   // IN, OUT_SALE, OUT_MANUAL, LOSS
+  quantity    Float
+  notes       String?
+  document    String?  // Number of NF or receipt
+  imageUrl    String?  // Link to the uploaded invoice image
+  date        DateTime @default(now())
+
+  product     Product  @relation(fields: [productId], references: [id])
+}
+
+model CashRegister {
+  id          String   @id @default(cuid())
+  userId      String
+  status      String   @default("OPEN") // OPEN, CLOSED
+  openingBal  Float    @default(0.0)
+  closingBal  Float?
+  openedAt    DateTime @default(now())
+  closedAt    DateTime?
+  
+  user        User     @relation(fields: [userId], references: [id])
+  payments    Payment[]
+}
+
+model Payment {
+  id             String   @id @default(cuid())
+  orderId        String
+  cashRegisterId String
+  userId         String
+  method         String   // CASH, PIX, DEBIT, CREDIT
+  amount         Float
+  date           DateTime @default(now())
+
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
+  user           User     @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String
+  action      String
+  details     String?
+  timestamp   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model PriceHistory {
+  id          String   @id @default(cuid())
+  productId   String
+  price       Float    // Preço de venda
+  cost        Float?   // Preço de custo
+  invoice     String?  // Número da NF
+  date        DateTime @default(now())
+
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id          String   @id @default(cuid())
+  customerId  String   @unique
+  planName    String   
+  amount      Float
+  dueDate     Int      // day of month (1-31)
+  nextDueDate DateTime
+  isActive    Boolean  @default(true)
+
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  payments    SubscriptionPayment[]
+}
+
+model SubscriptionPayment {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  amount         Float
+  paymentDate    DateTime     @default(now())
+  referenceMonth DateTime     
+  
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+}
+
+model Rental {
+  id          String   @id @default(cuid())
+  customerId  String
+  resource    String   // Quadra 1, etc
+  startTime   DateTime
+  endTime     DateTime
+  totalAmount Float
+  status      String   @default("PENDING") // PENDING, PAID, CANCELED
+  createdAt   DateTime @default(now())
+
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model FinancialEntry {
+  id               String   @id @default(cuid())
+  description      String
+  type             String   // 'PAYABLE' (Pagar) ou 'RECEIVABLE' (Receber)
+  amount           Float
+  dueDate          DateTime
+  paymentDate      DateTime?
+  status           String   @default("PENDING") // 'PENDING', 'PAID', 'CANCELED'
+  category         String   // Ex: Aluguel, Fornecedor, Salário, Internet, Diversos
+  method           String?  // PIX, CASH, CARD, BOLETO, TRANSFER, etc
+  reference        String?  // Mês/Ano de referência (MM/YYYY)
+  installmentGroup String?  // ID para agrupar parcelas
+  installmentNum   Int?     // Número da parcela (1, 2, 3...)
+  installmentTotal Int?     // Total de parcelas
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
