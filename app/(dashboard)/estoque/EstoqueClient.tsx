@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { PackagePlus, Edit3, X, AlertTriangle, AlertCircle, TrendingDown, TrendingUp, Filter, Camera, UploadCloud, CheckCircle, RefreshCw, ZoomIn, ZoomOut, Maximize, CheckSquare, ArrowRight, Check } from 'lucide-react';
+import { PackagePlus, Edit3, X, AlertTriangle, AlertCircle, TrendingDown, TrendingUp, Filter, Camera, UploadCloud, CheckCircle, RefreshCw, ZoomIn, ZoomOut, Maximize, CheckSquare, ArrowRight, Check, Download } from 'lucide-react';
 import { registerStockMovement, updateMinStock, registerBatchStockMovement } from '../../actions/stock';
 import { parseInvoiceImage } from '../../actions/invoice-ai';
 import { quickCreateProductFromInvoice } from '../../actions/products';
@@ -41,6 +41,32 @@ export default function EstoqueClient({ initialProducts }: any) {
   const [imgPos, setImgPos] = useState({ x: 0, y: 0 });
 
   const [isPending, startTransition] = useTransition();
+
+  const handleDownloadImage = async () => {
+    if (!nfImageUrl) return;
+    try {
+        const response = await fetch(nfImageUrl);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `nota-fiscal-${parsedNfData?.numero_nf || 'doc'}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error("Erro ao baixar imagem:", error);
+        alert("Não foi possível baixar a imagem.");
+    }
+  };
+
+  const updateItemName = (idx: number, newName: string) => {
+    if (!parsedNfData) return;
+    const newProducts = [...parsedNfData.produtos];
+    newProducts[idx].nome = newName;
+    setParsedNfData({ ...parsedNfData, produtos: newProducts });
+  };
 
   const openMovementModal = (product: any) => {
       setSelectedProduct(product);
@@ -528,7 +554,8 @@ export default function EstoqueClient({ initialProducts }: any) {
                                     <button onClick={() => setImgZoom(z => Math.max(0.5, z - 0.25))} className="hover:text-white transition p-0.5"><ZoomOut size={14}/></button>
                                     <span className="min-w-[30px] text-white tabular-nums">{(imgZoom * 100).toFixed(0)}%</span>
                                     <button onClick={() => setImgZoom(z => Math.min(3, z + 0.25))} className="hover:text-white transition p-0.5"><ZoomIn size={14}/></button>
-                                    <button onClick={() => { setImgZoom(1); setImgPos({x:0, y:0}); }} className="hover:text-white border-l border-slate-600 pl-1.5 ml-0.5 transition p-0.5"><Maximize size={12}/></button>
+                                    <button onClick={() => { setImgZoom(1); setImgPos({x:0, y:0}); }} className="hover:text-white border-x border-slate-600 px-1.5 mx-0.5 transition p-0.5" title="Reset Zoom"><Maximize size={12}/></button>
+                                    <button onClick={handleDownloadImage} className="hover:text-emerald-400 transition p-0.5 ml-1" title="Baixar Foto Original"><Download size={14}/></button>
                                 </div>
                             </div>
 
@@ -686,7 +713,13 @@ export default function EstoqueClient({ initialProducts }: any) {
                                                             </td>
                                                             {!parsedNfData.isManual && (
                                                                 <td className="p-4">
-                                                                    <span className="font-bold text-slate-700 block truncate text-xs" title={item.nome}>{item.nome}</span>
+                                                                    <input 
+                                                                        type="text"
+                                                                        value={item.nome || ''}
+                                                                        onChange={(e) => updateItemName(idx, e.target.value)}
+                                                                        className="font-bold text-slate-700 block w-full bg-transparent border-b border-dashed border-gray-300 focus:border-mrts-blue focus:bg-white outline-none text-xs py-1 transition-all"
+                                                                        title="Clique para corrigir o que a IA leu"
+                                                                    />
                                                                     <div className="flex gap-2 mt-1">
                                                                         <span className="text-[10px] bg-slate-100 text-gray-500 px-1.5 py-0.5 rounded font-bold">Q: {item.quantidade}</span>
                                                                         <span className="text-[10px] bg-slate-100 text-gray-500 px-1.5 py-0.5 rounded font-bold">R$ {item.preco_unitario}</span>
