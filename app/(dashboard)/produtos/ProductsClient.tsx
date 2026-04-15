@@ -144,6 +144,7 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
               <tr className="bg-gray-50/80 border-b border-gray-100 text-xs uppercase text-gray-500 tracking-wider">
                 <th className="p-4 font-bold">Produto</th>
                 <th className="p-4 font-bold">Categoria</th>
+                <th className="p-4 font-bold">Custo (Base)</th>
                 <th className="p-4 font-bold">Preço de Venda</th>
                 <th className="p-4 font-bold">Estoque</th>
                 <th className="p-4 font-bold text-right">Ações</th>
@@ -169,6 +170,9 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                   </td>
                   <td className="p-4 text-sm text-gray-500 font-semibold bg-gray-50/10">
                     {product.category?.name || "Sem categoria"}
+                  </td>
+                  <td className="p-4 text-sm font-bold text-gray-400">
+                    <span className="text-[10px] mr-1">R$</span>{(product.cost || 0).toFixed(2).replace('.', ',')}
                   </td>
                   <td className="p-4 text-sm font-black text-slate-800">
                     <span className="text-gray-400 font-medium text-xs mr-1">R$</span>{product.price.toFixed(2).replace('.', ',')}

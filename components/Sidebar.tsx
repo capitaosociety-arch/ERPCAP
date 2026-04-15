@@ -22,9 +22,7 @@ export default function Sidebar({ user }: { user: any }) {
     if (!user) return false;
     // ADMINs always see everything
     if (user.role === 'ADMIN') return true;
-    // MANAGERs see everything except Usuários management
-    if (user.role === 'MANAGER' && item.permKey !== 'permUsers') return true;
-    // Other roles follow granular permission flags set via the Usuários module
+    // All other roles (MANAGER, CASHIER, WAITER) follow granular permission flags
     return user[item.permKey] === true;
   });
 

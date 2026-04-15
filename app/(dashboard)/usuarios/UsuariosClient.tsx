@@ -180,13 +180,16 @@ export default function UsuariosClient({ initialUsers }: { initialUsers: any[] }
                                     
                                     <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-[300px]">
                                         {MENU_TOGGLES.map((t) => {
-                                            const isActive = user[t.key] === true;
+                                            const isAdmin = user.role === 'ADMIN';
+                                            const isActive = isAdmin || user[t.key] === true;
+                                            
                                             return (
                                                 <button 
                                                     key={t.key}
-                                                    onClick={() => handleTogglePerm(user.id, t.key)}
-                                                    title={t.label}
-                                                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all border ${isActive ? 'bg-mrts-blue text-white border-transparent shadow shadow-mrts-blue/30 scale-100' : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400 scale-95 hover:scale-100'}`}
+                                                    onClick={() => !isAdmin && handleTogglePerm(user.id, t.key)}
+                                                    disabled={isAdmin}
+                                                    title={isAdmin ? `${t.label} (Liberado p/ Administrador)` : t.label}
+                                                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all border ${isActive ? 'bg-mrts-blue text-white border-transparent shadow shadow-mrts-blue/30 scale-100' : 'bg-white text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-400 scale-95 hover:scale-100'} ${isAdmin ? 'cursor-default opacity-80' : 'cursor-pointer'}`}
                                                 >
                                                     <t.icon size={16} strokeWidth={isActive ? 2.5 : 2} />
                                                 </button>
