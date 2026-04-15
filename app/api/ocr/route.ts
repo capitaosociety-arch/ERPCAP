@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import fs from "fs";
-import path from "path";
+import { supabaseAdmin } from "@/lib/supabase";
 
 // 5. Variável: Use a variável de ambiente GOOGLE_API_KEY para a autenticação (cai para GEMINI_API_KEY como fallback).
 const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "";
@@ -23,15 +22,25 @@ export async function POST(req: NextRequest) {
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
 
-        // Opcional: Salvar histórico de notas para auditoria, mantendo o fallback que tínhamos
-        const uploadDir = path.join(process.cwd(), "public", "uploads", "nf");
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
+        // Upload para o Supabase Storage (Substitui o FS local para funcionar na Vercel)
+        const fileName = `nf-${Date.now()}-${file.name.replace(/\s/g, '_')}`;
+        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+            .from('nf_uploads')
+            .upload(fileName, buffer, {
+                contentType: file.type,
+                upsert: true
+            });
+
+        if (uploadError) {
+            console.error("Erro no upload Supabase:", uploadError);
+            // Se falhar o upload, continuamos processando a IA, mas sem URL persistente
         }
-        const fileName = `nf-ocr-${Date.now()}-${file.name}`;
-        const filePath = path.join(uploadDir, fileName);
-        fs.writeFileSync(filePath, buffer);
-        const imageUrl = `/uploads/nf/${fileName}`;
+
+        const { data: publicUrlData } = supabaseAdmin.storage
+            .from('nf_uploads')
+            .getPublicUrl(fileName);
+
+        const imageUrl = publicUrlData?.publicUrl || null;
 
         // 2. Rota de API: Setup Gemini 1.5 Flash
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });

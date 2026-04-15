@@ -108,7 +108,8 @@ export default function EstoqueClient({ initialProducts }: any) {
           
           if (res.success && res.data) {
               setParsedNfData(res.data);
-              setNfImageUrl(res.imageUrl || null);
+              // Agora usamos a URL persistente do Supabase Storage retornada pela API
+              setNfImageUrl(res.imageUrl || URL.createObjectURL(file));
               
               const initialMap: Record<number, any> = {};
               res.data.produtos?.forEach((item: any, i: number) => { // User now asked for list of 'produtos'
