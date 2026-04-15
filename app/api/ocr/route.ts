@@ -42,8 +42,8 @@ export async function POST(req: NextRequest) {
 
         const imageUrl = publicUrlData?.publicUrl || null;
 
-        // 2. Rota de API: Setup Gemini 1.5 Flash
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        // 2. Rota de API: Setup Gemini 1.5 Flash (usando o alias 'latest' para garantir a versão estável)
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
         const mimeType = file.type;
         const inlineData = {
             data: buffer.toString("base64"),
