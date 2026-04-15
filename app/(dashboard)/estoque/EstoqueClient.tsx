@@ -150,14 +150,24 @@ export default function EstoqueClient({ initialProducts }: any) {
   const handleBatchSaveNf = () => {
       const movementsToSave: any[] = [];
       
+      // Helper function to handle Brazilian number formats
+      const parseLocalNumber = (val: any) => {
+          if (!val) return 0;
+          let str = String(val);
+          // Remove potential thousand separators (.) and replace comma decimal (,) with point
+          // Example: "1.250,50" -> "1250.50"
+          str = str.replace(/\.(?=\d{3}(,|$))/g, '').replace(',', '.');
+          return parseFloat(str) || 0;
+      };
+
       for (const [idx, mOptions] of Object.entries(mappedItems)) {
           if (!mOptions.productId) {
               return alert(`Associe todos os itens à um produto no sistema para continuar.`);
           }
           movementsToSave.push({
               productId: mOptions.productId,
-              quantity: parseFloat(String(mOptions.quantity).replace(',','.')) || 0,
-              price: parseFloat(String(mOptions.price).replace(',','.')) || 0
+              quantity: parseLocalNumber(mOptions.quantity),
+              price: parseLocalNumber(mOptions.price)
           });
       }
 
@@ -165,19 +175,25 @@ export default function EstoqueClient({ initialProducts }: any) {
 
       startTransition(async () => {
           try {
-              await registerBatchStockMovement(
+              const res = await registerBatchStockMovement(
                   movementsToSave,
                   parsedNfData?.numero_nf || '',
                   nfImageUrl,
                   "Entrada NF-e IA",
                   nfDateStr
               );
-              alert("Estoque atualizado com sucesso via IA!");
-              setNfModalOpen(false);
-              setParsedNfData(null);
-              window.location.reload();
-          } catch(e) {
-              alert("Erro ao salvar itens.");
+
+              if (res.success) {
+                  alert("Estoque atualizado com sucesso via IA!");
+                  setNfModalOpen(false);
+                  setParsedNfData(null);
+                  setNfImageUrl(null);
+                  setVerifiedRows(new Set());
+                  window.location.reload();
+              }
+          } catch(e: any) {
+              console.error("Erro ao registrar NF:", e);
+              alert("Erro ao salvar itens: " + (e.message || "Erro desconhecido"));
           }
       });
   };

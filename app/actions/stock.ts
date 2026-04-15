@@ -77,57 +77,77 @@ export async function registerBatchStockMovement(
         throw new Error("Nenhum item válido para movimentar.");
     }
 
-    const date = dateString ? new Date(dateString) : new Date();
-
-    await prisma.$transaction(async (tx) => {
-        for (const mov of movements) {
-            // Obter ou criar o estoque atual
-            const stock = await tx.stock.upsert({
-                where: { productId: mov.productId },
-                update: {},
-                create: { productId: mov.productId, quantity: 0, minQuantity: 5, unit: "UN" }
-            });
-
-            // Atualizar estoque (sempre IN pois é NF)
-            await tx.stock.update({
-                where: { productId: mov.productId },
-                data: { quantity: stock.quantity + mov.quantity }
-            });
-
-            // Registrar movimentação
-            await tx.stockMovement.create({
-                data: {
-                    productId: mov.productId,
-                    type: "IN",
-                    quantity: mov.quantity,
-                    notes: notes || "Entrada via NF (IA)",
-                    document: document || null,
-                    imageUrl: imageUrl || null,
-                    date
-                }
-            });
-
-            // Opcional: Atualizar preço de custo do produto se vier na nota
-            if (mov.price && mov.price > 0) {
-                 await tx.product.update({
-                      where: { id: mov.productId },
-                      data: { cost: mov.price }
-                 });
-                 
-                 // Obter ou criar historico
-                 await tx.priceHistory.create({
-                      data: {
-                           productId: mov.productId,
-                           price: 0, 
-                           cost: mov.price,
-                           invoice: document || null,
-                           date
-                      }
-                 });
+    try {
+        // Garantir data válida
+        let date = new Date();
+        if (dateString) {
+            const parsedDate = new Date(dateString);
+            if (!isNaN(parsedDate.getTime())) {
+                date = parsedDate;
             }
         }
-    });
 
-    revalidatePath("/estoque");
-    return { success: true };
+        const result = await prisma.$transaction(async (tx) => {
+            for (const mov of movements) {
+                // 1. Garantir que quantidade seja válida
+                const qty = Number(mov.quantity) || 0;
+                const costPrice = Number(mov.price) || 0;
+
+                if (qty <= 0) continue;
+
+                // 2. Upsert do estoque (garante que a linha existe antes de incrementar)
+                await tx.stock.upsert({
+                    where: { productId: mov.productId },
+                    update: {},
+                    create: { productId: mov.productId, quantity: 0, minQuantity: 5, unit: "UN" }
+                });
+
+                // 3. Atualizar estoque usando atomic increment (evita sobrescrever em itens duplicados)
+                await tx.stock.update({
+                    where: { productId: mov.productId },
+                    data: { quantity: { increment: qty } }
+                });
+
+                // 4. Registrar movimentação
+                await tx.stockMovement.create({
+                    data: {
+                        productId: mov.productId,
+                        type: "IN",
+                        quantity: qty,
+                        notes: notes || "Entrada via NF (IA)",
+                        document: document || null,
+                        imageUrl: imageUrl || null,
+                        date
+                    }
+                });
+
+                // 5. Atualizar preço de custo do produto se válido
+                if (costPrice > 0) {
+                    await tx.product.update({
+                        where: { id: mov.productId },
+                        data: { cost: costPrice }
+                    });
+                    
+                    await tx.priceHistory.create({
+                        data: {
+                            productId: mov.productId,
+                            price: 0, 
+                            cost: costPrice,
+                            invoice: document || null,
+                            date
+                        }
+                    });
+                }
+            }
+            return { success: true };
+        }, {
+            timeout: 10000 // Aumentar timeout para transações maiores
+        });
+
+        revalidatePath("/estoque");
+        return result;
+    } catch (error: any) {
+        console.error("ERRO NO REGISTER_BATCH_STOCK_MOVEMENT:", error);
+        throw new Error(error.message || "Erro interno ao processar lote de estoque.");
+    }
 }
