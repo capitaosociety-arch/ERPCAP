@@ -4,11 +4,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import fs from 'fs';
 import path from 'path';
 
-// Configurar o AI
-const apiKey = process.env.GEMINI_API_KEY || "";
-const genAI = new GoogleGenerativeAI(apiKey);
+// Configurar o AI usando a versão estável
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
 
 export async function parseInvoiceImage(formData: FormData) {
+    const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "";
     if (!apiKey) {
         throw new Error("API Key do Gemini não configurada!");
     }

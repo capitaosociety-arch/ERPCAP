@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabaseAdmin } from "@/lib/supabase";
 
-// 5. Variável: Use a variável de ambiente GOOGLE_API_KEY para a autenticação (cai para GEMINI_API_KEY como fallback).
-const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "";
-const genAI = new GoogleGenerativeAI(apiKey);
+// 5. Configuração da IA usando a versão estável
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
 
 export async function POST(req: NextRequest) {
+    const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "";
     if (!apiKey) {
         return NextResponse.json({ success: false, error: "Chave GOOGLE_API_KEY não configurada!" }, { status: 500 });
     }
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
         const imageUrl = publicUrlData?.publicUrl || null;
 
-        // 2. Rota de API: Setup Gemini 1.5 Flash (versão estável)
+        // 2. Rota de API: Setup Gemini 1.5 Flash (versão estável garantida)
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const mimeType = file.type;
         const inlineData = {
