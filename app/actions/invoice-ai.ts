@@ -45,23 +45,24 @@ export async function parseInvoiceImage(formData: FormData) {
             mimeType
         };
 
-        const prompt = `
-Você é um especialista em ler Notas Fiscais (NFe / Cupons). 
-Analise esta imagem da nota fiscal e extraia os itens comprados, a quantidade, o valor unitário e o número da nota.
+        const prompt = `Atua como um contabilista. Analisa esta nota fiscal (DANFE) e extrai os dados num formato JSON: fornecedor, cnpj, data, valor_total e uma lista 'itens' contendo (descricao, quantidade, preco_unitario, ncm).
 
-Retorne APENAS um JSON válido estrito (sem formatações markdown \`\`\`json) neste formato:
+Certifique-se de retornar APENAS um JSON válido estrito (sem formatações markdown \`\`\`json) seguindo exatamente este formato:
 {
-  "documentNumber": "12345", // número do documento ou nota fiscal
-  "items": [
+  "numero_nf": "12345", // deduza o numero da nota se houver
+  "fornecedor": "Nome exato",
+  "cnpj": "00.000.000/0000-00",
+  "data": "2023-10-01",
+  "valor_total": 1500.50,
+  "itens": [
     {
-      "name": "Nome exato do Produto na Nota",
-      "quantity": 10.5,
-      "unitPrice": 12.90
+      "descricao": "Nome do Produto",
+      "quantidade": 10.5,
+      "preco_unitario": 12.90,
+      "ncm": "12345678"
     }
   ]
-}
-Caso algo não possa ser lido, deduza da melhor forma ou gere os dados que conseguir.
-`;
+}`;
 
         const result = await model.generateContent([
             prompt,

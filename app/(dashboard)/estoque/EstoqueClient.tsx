@@ -100,25 +100,30 @@ export default function EstoqueClient({ initialProducts }: any) {
       formData.append('file', file);
       
       try {
-          const res = await parseInvoiceImage(formData);
+          const apiRes = await fetch('/api/ocr', {
+              method: 'POST',
+              body: formData
+          });
+          const res = await apiRes.json();
+          
           if (res.success && res.data) {
               setParsedNfData(res.data);
               setNfImageUrl(res.imageUrl || null);
               
               const initialMap: Record<number, any> = {};
-              res.data.items?.forEach((item: any, i: number) => {
+              res.data.produtos?.forEach((item: any, i: number) => { // User now asked for list of 'produtos'
                   // Tenta auto-mapear buscando se o nome do produto no sistema contem parte do nome da nota ou vice versa
                   let matchedId = '';
-                  if (item.name) {
-                      const lowerItem = String(item.name).toLowerCase();
+                  if (item.nome) { // and keys are nome, quantidade, preco_unitario
+                      const lowerItem = String(item.nome).toLowerCase();
                       const match = products.find((p: any) => p.name.toLowerCase().includes(lowerItem) || lowerItem.includes(p.name.toLowerCase()));
                       if (match) matchedId = match.id;
                   }
 
                   initialMap[i] = {
                       productId: matchedId,
-                      quantity: item.quantity,
-                      price: item.unitPrice
+                      quantity: item.quantidade,
+                      price: item.preco_unitario
                   };
               });
               setMappedItems(initialMap);
@@ -127,7 +132,7 @@ export default function EstoqueClient({ initialProducts }: any) {
               setNfFile(null);
           }
       } catch (err) {
-          alert("Falha de conexão com a IA.");
+          alert("Falha de conexão com a API OCR.");
           setNfFile(null);
       }
       setParsingNf(false);
@@ -153,7 +158,7 @@ export default function EstoqueClient({ initialProducts }: any) {
           try {
               await registerBatchStockMovement(
                   movementsToSave,
-                  parsedNfData?.documentNumber || '',
+                  parsedNfData?.numero_nf || '',
                   nfImageUrl,
                   "Entrada NF-e IA",
                   nfDateStr
@@ -170,18 +175,18 @@ export default function EstoqueClient({ initialProducts }: any) {
 
   const handleManualEntry = () => {
       setParsedNfData({
-          documentNumber: '',
+          numero_nf: '',
           isManual: true,
-          items: []
+          produtos: []
       });
       setMappedItems({});
       setNfImageUrl(null);
   };
 
   const handleAddManualRow = () => {
-      const newItems = [...(parsedNfData.items || []), { name: 'Item Manual', quantity: 1, unitPrice: 0 }];
+      const newItems = [...(parsedNfData.produtos || []), { nome: 'Item Manual', quantidade: 1, preco_unitario: 0 }];
       const newIdx = newItems.length - 1;
-      setParsedNfData({ ...parsedNfData, items: newItems });
+      setParsedNfData({ ...parsedNfData, produtos: newItems });
       setMappedItems({ ...mappedItems, [newIdx]: { productId: '', quantity: 1, price: 0 } });
   };
 
@@ -515,8 +520,8 @@ export default function EstoqueClient({ initialProducts }: any) {
                                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer object-cover z-10"
                                         />
                                         
-                                        <label htmlFor="file-upload" className="bg-slate-900 text-white font-bold py-3.5 px-8 rounded-xl pointer-events-none group-hover:shadow-lg transition mb-4">
-                                            Selecionar Câmera / Arquivo
+                                        <label htmlFor="file-upload" className="bg-slate-900 text-white font-bold py-3.5 px-8 rounded-xl pointer-events-none flex items-center gap-2 group-hover:shadow-lg transition mb-4">
+                                            <span>✨</span> Ler Nota com IA
                                         </label>
 
                                         <button onClick={(e) => { e.stopPropagation(); handleManualEntry(); }} className="relative z-20 bg-white border-2 border-gray-200 text-slate-700 font-bold py-2.5 px-6 rounded-xl hover:border-slate-300 hover:bg-gray-50 transition shadow-sm pointer-events-auto">
@@ -537,13 +542,21 @@ export default function EstoqueClient({ initialProducts }: any) {
                                             <p className="text-xs text-gray-500 font-medium">{parsedNfData.isManual ? 'Selecione os produtos abaixo.' : 'Confira os mapeamentos inteligentes da IA antes do lançamento.'}</p>
                                         </div>
                                     </div>
-                                    <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center w-full lg:w-auto">
+                                    <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center w-full lg:w-auto flex-wrap justify-end">
+                                        {!parsedNfData.isManual && parsedNfData.fornecedor && (
+                                            <div className="text-right flex-1 sm:flex-none">
+                                                <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1 block">Fornecedor / CNPJ</label>
+                                                <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-600 w-full sm:w-48 truncate">
+                                                    {parsedNfData.fornecedor} {parsedNfData.cnpj ? ` - ${parsedNfData.cnpj}` : ''}
+                                                </div>
+                                            </div>
+                                        )}
                                         <div className="text-right">
                                             <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1 block">Nº Nota Fiscal / Documento</label>
                                             <input 
                                                 type="text" 
-                                                value={parsedNfData.documentNumber || ""}
-                                                onChange={e => setParsedNfData({...parsedNfData, documentNumber: e.target.value})}
+                                                value={parsedNfData.numero_nf || ""}
+                                                onChange={e => setParsedNfData({...parsedNfData, numero_nf: e.target.value})}
                                                 className="px-3 py-2 border-2 border-mrts-blue/30 rounded-xl text-lg font-black text-mrts-blue bg-white w-full sm:w-48 focus:ring-2 focus:ring-mrts-blue outline-none text-center"
                                                 placeholder="N/A"
                                             />
@@ -572,11 +585,11 @@ export default function EstoqueClient({ initialProducts }: any) {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
-                                                {parsedNfData.items?.map((item: any, idx: number) => (
+                                                {parsedNfData.produtos?.map((item: any, idx: number) => (
                                                     <tr key={idx} className="hover:bg-slate-50/50">
                                                         {!parsedNfData.isManual && (
                                                             <td className="p-4">
-                                                                <span className="font-bold text-slate-700 block truncate" title={item.name}>{item.name}</span>
+                                                                <span className="font-bold text-slate-700 block truncate" title={item.nome}>{item.nome}</span>
                                                             </td>
                                                         )}
                                                         <td className="p-4">
@@ -585,7 +598,7 @@ export default function EstoqueClient({ initialProducts }: any) {
                                                                 onChange={(e) => {
                                                                     const val = e.target.value;
                                                                     if (val === 'NEW') {
-                                                                        handleQuickCreate(idx, item.name, item.unitPrice || mappedItems[idx]?.price);
+                                                                        handleQuickCreate(idx, item.nome, item.preco_unitario || mappedItems[idx]?.price);
                                                                     } else {
                                                                         const newM = {...mappedItems};
                                                                         newM[idx].productId = val;
@@ -627,7 +640,7 @@ export default function EstoqueClient({ initialProducts }: any) {
                                                         </td>
                                                     </tr>
                                                 ))}
-                                                {(!parsedNfData.items || parsedNfData.items.length === 0) && (
+                                                {(!parsedNfData.produtos || parsedNfData.produtos.length === 0) && (
                                                     <tr>
                                                         <td colSpan={4} className="p-8 text-center text-gray-500 font-medium bg-white">
                                                             {parsedNfData.isManual ? "Tabela vazia. Comece adicionando o primeiro produto logo abaixo." : "A IA não encontrou itens claros. Cancele e tire uma foto mais focada!"}
