@@ -48,10 +48,25 @@ export async function parseInvoiceImage(formData: FormData) {
 
         const responseText = result.response.text();
         
-        // Limpar possíveis blocos markdown do retorno JSON
-        const cleanJsonStr = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+        // Função robusta para extrair apenas o objeto JSON do meio do texto
+        const extractJson = (text: string) => {
+            const start = text.indexOf('{');
+            const end = text.lastIndexOf('}');
+            if (start !== -1 && end !== -1) {
+                return text.substring(start, end + 1);
+            }
+            return text;
+        };
+
+        const cleanJsonStr = extractJson(responseText.replace(/```json/g, "").replace(/```/g, "").trim());
         
-        const resData = JSON.parse(cleanJsonStr);
+        let resData;
+        try {
+            resData = JSON.parse(cleanJsonStr);
+        } catch (parseError) {
+            console.error("Erro ao processar JSON da IA:", responseText);
+            throw new Error("A IA retornou um formato inválido. Tente novamente.");
+        }
 
         // A URL da imagem para o frontend consumir (se for o caso)
         const imageUrl = `/uploads/nf/${Date.now()}_${file.name.replace(/\s/g, '_')}`;

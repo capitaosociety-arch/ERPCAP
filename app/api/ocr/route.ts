@@ -63,9 +63,25 @@ export async function POST(req: NextRequest) {
         const result = await model.generateContent([prompt, { inlineData }]);
         const responseText = result.response.text();
         
-        // Limpar possíveis formatações para forçar JSON puro
-        const cleanJsonStr = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-        const data = JSON.parse(cleanJsonStr);
+        // Função robusta para extrair apenas o objeto JSON do meio do texto
+        const extractJson = (text: string) => {
+            const start = text.indexOf('{');
+            const end = text.lastIndexOf('}');
+            if (start !== -1 && end !== -1) {
+                return text.substring(start, end + 1);
+            }
+            return text;
+        };
+
+        const cleanJsonStr = extractJson(responseText.replace(/```json/g, "").replace(/```/g, "").trim());
+        
+        let data;
+        try {
+            data = JSON.parse(cleanJsonStr);
+        } catch (parseError) {
+            console.error("Erro ao processar JSON da IA:", responseText);
+            throw new Error("A IA retornou um formato inválido. Tente tirar uma foto melhor.");
+        }
 
         return NextResponse.json({
             success: true,

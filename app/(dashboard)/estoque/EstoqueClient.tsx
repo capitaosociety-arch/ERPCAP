@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { PackagePlus, Edit3, X, AlertTriangle, AlertCircle, TrendingDown, TrendingUp, Filter, Camera, UploadCloud, CheckCircle, RefreshCw, ZoomIn, ZoomOut, Maximize, CheckSquare, ArrowRight, Check, Download } from 'lucide-react';
+import { PackagePlus, Edit3, X, AlertTriangle, AlertCircle, TrendingDown, TrendingUp, Filter, Camera, UploadCloud, CheckCircle, RefreshCw, ZoomIn, ZoomOut, Maximize, CheckSquare, ArrowRight, Check, Download, Package } from 'lucide-react';
 import { registerStockMovement, updateMinStock, registerBatchStockMovement } from '../../actions/stock';
 import { parseInvoiceImage } from '../../actions/invoice-ai';
 import { quickCreateProductFromInvoice } from '../../actions/products';
@@ -62,9 +62,10 @@ export default function EstoqueClient({ initialProducts }: any) {
   };
 
   const updateItemName = (idx: number, newName: string) => {
-    if (!parsedNfData) return;
-    const newProducts = [...parsedNfData.produtos];
-    newProducts[idx].nome = newName;
+    if (!parsedNfData || !parsedNfData.produtos) return;
+    const newProducts = parsedNfData.produtos.map((p: any, i: number) => 
+        i === idx ? { ...p, nome: newName } : p
+    );
     setParsedNfData({ ...parsedNfData, produtos: newProducts });
   };
 
