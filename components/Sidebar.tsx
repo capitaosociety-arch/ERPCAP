@@ -16,14 +16,16 @@ const MENU_ITEMS = [
 
 export default function Sidebar({ user }: { user: any }) {
   const pathname = usePathname();
-  
-  // Filter menu based on user Boolean flags or fallback to Admin if session is stale
+
+  // Filter menu based on role + granular permission flags
   const filteredNav = MENU_ITEMS.filter(item => {
     if (!user) return false;
-    if (user[item.permKey] === true) return true;
-    // Fallback if the token is old and doesn't have the perm fields mapped
-    if (user.role === 'ADMIN' && user[item.permKey] === undefined) return true;
-    return false;
+    // ADMINs always see everything
+    if (user.role === 'ADMIN') return true;
+    // MANAGERs see everything except Usuários management
+    if (user.role === 'MANAGER' && item.permKey !== 'permUsers') return true;
+    // Other roles follow granular permission flags set via the Usuários module
+    return user[item.permKey] === true;
   });
 
   return (
@@ -32,7 +34,7 @@ export default function Sidebar({ user }: { user: any }) {
         <img src="/logo.svg" alt="Capitão Society" className="w-10 h-10 rounded-xl shadow-lg border border-slate-700" />
         <h1 className="text-xl font-bold tracking-tight">Capitão Society</h1>
       </div>
-      
+
       <nav className="flex-1 w-full flex flex-col gap-2">
         {filteredNav.map((item) => {
           const isActive = pathname.startsWith(item.href);
@@ -46,7 +48,7 @@ export default function Sidebar({ user }: { user: any }) {
           );
         })}
       </nav>
-      
+
       <div className="mt-auto w-full pt-4 border-t border-slate-700 text-center">
         <p className="text-xs text-slate-500 font-medium">Capitão Society v1.0</p>
       </div>
