@@ -4,7 +4,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import fs from 'fs';
 import path from 'path';
 
-// Configurar o AI usando a versão estável
+// Configurar o AI usando a versão mais recente e estável
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
 
 export async function parseInvoiceImage(formData: FormData) {
@@ -19,23 +19,9 @@ export async function parseInvoiceImage(formData: FormData) {
             throw new Error("Nenhuma imagem fornecida");
         }
 
-        // 1. Salvar a imagem localmente
-        const bytes = await file.arrayBuffer();
-        const buffer = Buffer.from(bytes);
+        const buffer = Buffer.from(await file.arrayBuffer());
 
-        // Garantir que o diretório exista
-        const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'nf');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-
-        const fileName = `nf-${Date.now()}-${file.name}`;
-        const filePath = path.join(uploadDir, fileName);
-        fs.writeFileSync(filePath, buffer);
-
-        const imageUrl = `/uploads/nf/${fileName}`;
-
-        // 2. Processar a imagem com IA (Gemini Flash - Latest)
+        // 2. Processar a imagem com IA (Gemini Flash - Sempre o mais recente)
         const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
         
         // Converter file para o formato Gemini
@@ -45,24 +31,15 @@ export async function parseInvoiceImage(formData: FormData) {
             mimeType
         };
 
-        const prompt = `Atua como um contabilista. Analisa esta nota fiscal (DANFE) e extrai os dados num formato JSON: fornecedor, cnpj, data, valor_total e uma lista 'itens' contendo (descricao, quantidade, preco_unitario, ncm).
-
-Certifique-se de retornar APENAS um JSON válido estrito (sem formatações markdown \`\`\`json) seguindo exatamente este formato:
-{
-  "numero_nf": "12345", // deduza o numero da nota se houver
-  "fornecedor": "Nome exato",
-  "cnpj": "00.000.000/0000-00",
-  "data": "2023-10-01",
-  "valor_total": 1500.50,
-  "itens": [
-    {
-      "descricao": "Nome do Produto",
-      "quantidade": 10.5,
-      "preco_unitario": 12.90,
-      "ncm": "12345678"
-    }
-  ]
-}`;
+        // 3. Prompt para extrair dados (Sincronizado com a Rota de API)
+        const prompt = `Extraia os dados desta nota fiscal para um JSON rigoroso com: 
+        fornecedor, 
+        cnpj, 
+        numero_nf (procure por 'Número', 'Nº', 'NFe'),
+        data (Data de Emissão no formato YYYY-MM-DD), 
+        total (valor total da nota),
+        e uma lista de 'produtos' (nome, quantidade, preco_unitario). 
+        Retorne APENAS o JSON puro. Não inclua Markdown.`;
 
         const result = await model.generateContent([
             prompt,
@@ -74,19 +51,22 @@ Certifique-se de retornar APENAS um JSON válido estrito (sem formatações mark
         // Limpar possíveis blocos markdown do retorno JSON
         const cleanJsonStr = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
         
-        const data = JSON.parse(cleanJsonStr);
+        const resData = JSON.parse(cleanJsonStr);
+
+        // A URL da imagem para o frontend consumir (se for o caso)
+        const imageUrl = `/uploads/nf/${Date.now()}_${file.name.replace(/\s/g, '_')}`;
 
         return {
             success: true,
             imageUrl,
-            data
+            data: resData
         };
 
     } catch (error: any) {
-        console.error("Erro ao analisar imagem:", error);
+        console.error("Erro no processamento da IA:", error);
         return {
             success: false,
-            error: error.message || "Falha ao processar imagem da nota fiscal"
+            error: error.message || "Erro desconhecido ao processar nota fiscal"
         };
     }
 }

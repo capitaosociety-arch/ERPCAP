@@ -113,6 +113,11 @@ export default function EstoqueClient({ initialProducts }: any) {
           
           if (res.success && res.data) {
               setParsedNfData(res.data);
+              
+              // Sincronizar data da nota se extraída pela IA
+              if (res.data.data && /^\d{4}-\d{2}-\d{2}$/.test(res.data.data)) {
+                  setNfDateStr(res.data.data);
+              }
               setVerifiedRows(new Set()); // Reset verification for new NF
               setImgZoom(1); // Reset zoom
               setImgPos({ x: 0, y: 0 });

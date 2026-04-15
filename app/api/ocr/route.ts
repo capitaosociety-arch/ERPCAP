@@ -50,8 +50,15 @@ export async function POST(req: NextRequest) {
             mimeType,
         };
 
-        // Enviar instrução exata: 'Extraia os dados desta nota fiscal para um JSON com: fornecedor, cnpj, data, total e uma lista de produtos (nome, quantidade, preco_unitario). Retorne APENAS o JSON puro'.
-        const prompt = `Extraia os dados desta nota fiscal para um JSON com: fornecedor, cnpj, data, total e uma lista de produtos (nome, quantidade, preco_unitario). Retorne APENAS o JSON puro.`;
+        // Enviar instrução exata para captura de metadados e itens
+        const prompt = `Extraia os dados desta nota fiscal para um JSON rigoroso com: 
+        fornecedor, 
+        cnpj, 
+        numero_nf (procure por 'Número', 'Nº', 'NFe'),
+        data (Data de Emissão no formato YYYY-MM-DD), 
+        total (valor total da nota),
+        e uma lista de 'produtos' (nome, quantidade, preco_unitario). 
+        Retorne APENAS o JSON puro. Não inclua Markdown.`;
 
         const result = await model.generateContent([prompt, { inlineData }]);
         const responseText = result.response.text();
