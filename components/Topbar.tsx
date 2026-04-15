@@ -1,12 +1,20 @@
-'use client';
-import { signOut } from 'next-auth/react';
-import { LogOut, User as UserIcon } from 'lucide-react';
+import { LogOut, User as UserIcon, Menu } from 'lucide-react';
 
-export default function Topbar({ user }: { user: any }) {
+export default function Topbar({ user, onOpenMenu }: { user: any, onOpenMenu?: () => void }) {
   return (
-    <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 shadow-sm z-10 w-full relative shrink-0">
-      <h2 className="text-xl font-bold text-gray-800 md:hidden">Capitão <span className="text-mrts-blue italic">Society</span></h2>
+    <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-4 md:px-6 shadow-sm z-10 w-full relative shrink-0">
+      <div className="flex items-center gap-2">
+        <button 
+          onClick={onOpenMenu}
+          className="p-2 -ml-2 text-gray-500 hover:bg-gray-100 rounded-lg md:hidden"
+          aria-label="Toggle Menu"
+        >
+          <Menu size={24} />
+        </button>
+        <h2 className="text-xl font-bold text-gray-800 md:hidden">Capitão <span className="text-mrts-blue italic">Society</span></h2>
+      </div>
       <div className="hidden md:block"></div>
+
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 text-sm bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
           <UserIcon size={16} className="text-gray-500" />

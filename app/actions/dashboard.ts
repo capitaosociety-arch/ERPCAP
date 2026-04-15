@@ -59,3 +59,32 @@ export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') 
 
   return chartData;
 }
+
+export async function getTopProducts() {
+  const orderItems = await prisma.orderItem.findMany({
+    where: {
+      order: { status: "CLOSED" }
+    },
+    select: {
+      quantity: true,
+      product: {
+        select: { name: true }
+      }
+    }
+  });
+
+  const totals: Record<string, number> = {};
+
+  orderItems.forEach(item => {
+    if (item.product) {
+      totals[item.product.name] = (totals[item.product.name] || 0) + item.quantity;
+    }
+  });
+
+  const topProducts = Object.entries(totals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, value]) => ({ name, value }));
+
+  return topProducts;
+}

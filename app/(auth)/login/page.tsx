@@ -73,6 +73,22 @@ export default function LoginPage() {
             {loading ? 'ACESSANDO...' : 'ENTRAR'}
           </button>
 
+          <div className="flex flex-col sm:flex-row items-center justify-between pt-2 gap-3 w-full">
+            <button
+              type="button"
+              onClick={() => alert('Opção de recuperação de senha por email será implementada em breve!')}
+              className="text-sm font-semibold text-gray-400 hover:text-mrts-blue transition-all"
+            >
+              Recuperar senha por email
+            </button>
+            <button
+              type="button"
+              onClick={() => alert('Opção de solicitação de cadastro será implementada em breve!')}
+              className="text-sm font-semibold text-gray-400 hover:text-mrts-blue transition-all"
+            >
+              Solicitar para criar cadastro
+            </button>
+          </div>
         </form>
       </div>
     </div>
