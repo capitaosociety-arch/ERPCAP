@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react';
-import { Plus, Search, Shield, User as UserIcon, X, Check, Lock, Unlock, Phone, Mail, Edit2, LayoutDashboard, ShoppingCart, Coffee, Box, FileText, Users, DollarSign, Settings } from 'lucide-react';
-import { createUser, toggleUserStatus, updateUserRole, updateUserDetails, toggleUserPermission } from '../../../app/actions/usuarios';
+import { Trash2, Plus, Search, Shield, User as UserIcon, X, Check, Lock, Unlock, Phone, Mail, Edit2, LayoutDashboard, ShoppingCart, Coffee, Box, FileText, Users, DollarSign, Settings } from 'lucide-react';
+import { createUser, toggleUserStatus, updateUserRole, updateUserDetails, toggleUserPermission, deleteUser } from '../../../app/actions/usuarios';
 
 export default function UsuariosClient({ initialUsers }: { initialUsers: any[] }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -51,6 +51,18 @@ export default function UsuariosClient({ initialUsers }: { initialUsers: any[] }
 
     const handleTogglePerm = async (id: string, key: string) => {
         await toggleUserPermission(id, key);
+    };
+
+    const handleDelete = async (id: string, name: string) => {
+        if (confirm(`ATENÇÃO: Deseja realmente EXCLUIR permanentemente a matrícula de ${name}? Esta ação não pode ser desfeita e só funcionará se o usuário não tiver histórico de movimentações no sistema.`)) {
+            setLoading(true);
+            try {
+                await deleteUser(id);
+            } catch (e: any) {
+                alert(e.message);
+            }
+            setLoading(false);
+        }
     };
 
     const handleRoleChange = async (id: string, newRole: string) => {
@@ -184,12 +196,22 @@ export default function UsuariosClient({ initialUsers }: { initialUsers: any[] }
                                 </div>
                             </td>
                             <td className="p-4 text-center">
-                                <button 
-                                    onClick={() => handleToggleStatus(user.id, user.name)}
-                                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${user.isActive ? 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100' : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100'}`}
-                                >
-                                    {user.isActive ? <><Check size={14}/> Acesso Liberado</> : <><X size={14}/> Bloqueado</>}
-                                </button>
+                                <div className="flex items-center justify-center gap-2">
+                                    <button 
+                                        onClick={() => handleToggleStatus(user.id, user.name)}
+                                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${user.isActive ? 'bg-emerald-50 text-emerald-600 border-emerald-100 hover:bg-emerald-100' : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100'}`}
+                                    >
+                                        {user.isActive ? <><Check size={14}/> Acesso Liberado</> : <><X size={14}/> Bloqueado</>}
+                                    </button>
+                                    
+                                    <button 
+                                        onClick={() => handleDelete(user.id, user.name)}
+                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Excluir Matrícula"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     ))}

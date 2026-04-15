@@ -49,7 +49,7 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@mrts.com"
+              placeholder="email"
               className="w-full p-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-mrts-blue focus:border-transparent transition-all"
               required
             />
@@ -73,26 +73,7 @@ export default function LoginPage() {
             {loading ? 'ACESSANDO...' : 'ENTRAR'}
           </button>
 
-          <div className="flex flex-col sm:flex-row items-center justify-between pt-2 gap-3 w-full">
-            <button
-              type="button"
-              onClick={() => alert('Opção de recuperação de senha por email será implementada em breve!')}
-              className="text-sm font-semibold text-gray-400 hover:text-mrts-blue transition-all"
-            >
-              Recuperar senha por email
-            </button>
-            <button
-              type="button"
-              onClick={() => alert('Opção de solicitação de cadastro será implementada em breve!')}
-              className="text-sm font-semibold text-gray-400 hover:text-mrts-blue transition-all"
-            >
-              Solicitar para criar cadastro
-            </button>
-          </div>
         </form>
-        <p className="text-center text-gray-400 text-xs mt-8">
-          Login de demonstração:<br/> Admin (admin@mrts.com)<br/> Caixa (caixa@mrts.com)<br/> Senha: senha123
-        </p>
       </div>
     </div>
   );

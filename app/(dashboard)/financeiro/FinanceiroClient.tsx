@@ -317,64 +317,71 @@ export default function FinanceiroClient({ payload }: any) {
                <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse whitespace-nowrap">
                     <thead>
-                    <tr className="bg-white border-b border-gray-100 text-[10px] uppercase text-gray-400 font-black tracking-wider">
-                        <th className="p-4">Operador</th>
-                        <th className="p-4">Status / Duração</th>
-                        <th className="p-4">Entradas do Turno</th>
-                        <th className="p-4">Conferência (Abertura / Fechamento)</th>
+                    <tr className="bg-white border-b border-gray-100 text-[10px] uppercase text-gray-400 font-black tracking-wider text-center">
+                        <th className="p-4 text-left">Operador / Turno</th>
+                        <th className="p-4">Status</th>
+                        <th className="p-4 text-emerald-600 bg-emerald-50/30">Dinheiro</th>
+                        <th className="p-4 text-blue-600 bg-blue-50/30">PIX</th>
+                        <th className="p-4 text-orange-600 bg-orange-50/30">Débito</th>
+                        <th className="p-4 text-indigo-600 bg-indigo-50/30">Crédito</th>
+                        <th className="p-4 border-l border-gray-100">Fundo Troco</th>
+                        <th className="p-4 border-r border-gray-100">Saldo Final</th>
+                        <th className="p-4">Diferença</th>
                     </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                     {cashRegisters.map((cash: any) => {
                         const shiftEntries = cash.payments?.reduce((acc:number, p:any) => acc + p.amount, 0) || 0;
-                        const durationStr = cash.closedAt 
-                            ? `${Math.round((new Date(cash.closedAt).getTime() - new Date(cash.openedAt).getTime()) / 60000)} min` 
-                            : 'Aberto';
+                        
+                        // Cálculo detalhado por método
+                        const byMethod = (cash.payments || []).reduce((acc: any, p: any) => {
+                            acc[p.method] = (acc[p.method] || 0) + p.amount;
+                            return acc;
+                        }, { CASH: 0, PIX: 0, DEBIT: 0, CREDIT: 0 });
+
+                        const totalExpected = cash.openingBal + (byMethod.CASH || 0) + (byMethod.PIX || 0) + (byMethod.DEBIT || 0) + (byMethod.CREDIT || 0);
+                        const difference = cash.closingBal !== null ? cash.closingBal - totalExpected : 0;
                         
                         return (
-                            <tr key={cash.id} className="hover:bg-blue-50/20 transition">
-                                <td className="p-4">
+                            <tr key={cash.id} className="hover:bg-blue-50/20 transition text-center group">
+                                <td className="p-4 text-left">
                                     <div className="flex items-center gap-2">
-                                        <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 font-bold flex items-center justify-center shrink-0">
+                                        <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center shrink-0 group-hover:bg-mrts-blue group-hover:text-white transition-colors">
                                             {cash.user?.name?.charAt(0) || <Users size={14}/>}
                                         </div>
                                         <div>
                                             <p className="font-bold text-slate-800 text-sm leading-tight">{cash.user?.name}</p>
-                                            <p className="text-[10px] text-gray-400 font-medium">#{cash.id.slice(-8)}</p>
+                                            <p className="text-[10px] text-gray-400 font-medium">Início: {new Date(cash.openedAt).toLocaleDateString('pt-BR')} {new Date(cash.openedAt).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</p>
                                         </div>
                                     </div>
                                 </td>
                                 <td className="p-4">
-                                    <div>
-                                        {cash.status === 'OPEN' ? (
-                                            <span className="inline-flex items-center gap-1.5 text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-black tracking-wide uppercase">
-                                                <Unlock size={10}/> Aberto em {new Date(cash.openedAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-1.5 text-[10px] bg-gray-100 text-gray-600 px-2 py-1 rounded font-bold tracking-wide uppercase">
-                                                <Lock size={10}/> Fechado {new Date(cash.closedAt).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'})}
-                                            </span>
-                                        )}
-                                    </div>
+                                    {cash.status === 'OPEN' ? (
+                                        <span className="inline-flex items-center gap-1.5 text-[9px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg font-black tracking-wide uppercase">
+                                            <Unlock size={10}/> Aberto
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-1.5 text-[9px] bg-gray-100 text-gray-600 px-2 py-1 rounded-lg font-bold tracking-wide uppercase">
+                                            <Lock size={10}/> Fechado
+                                        </span>
+                                    )}
                                 </td>
+                                <td className="p-4 font-bold text-slate-700 text-sm bg-emerald-50/10">R$ {byMethod.CASH.toFixed(2).replace('.',',')}</td>
+                                <td className="p-4 font-bold text-slate-700 text-sm bg-blue-50/10">R$ {byMethod.PIX.toFixed(2).replace('.',',')}</td>
+                                <td className="p-4 font-bold text-slate-700 text-sm bg-orange-50/10">R$ {byMethod.DEBIT.toFixed(2).replace('.',',')}</td>
+                                <td className="p-4 font-bold text-slate-700 text-sm bg-indigo-50/10">R$ {byMethod.CREDIT.toFixed(2).replace('.',',')}</td>
+                                
+                                <td className="p-4 font-medium text-slate-500 text-sm border-l border-gray-100">R$ {cash.openingBal.toFixed(2).replace('.',',')}</td>
+                                <td className="p-4 font-black text-slate-800 text-sm border-r border-gray-100">{cash.closingBal !== null ? `R$ ${cash.closingBal.toFixed(2).replace('.',',')}` : '-'}</td>
+                                
                                 <td className="p-4">
-                                    <p className="text-slate-800 font-bold text-sm">R$ {shiftEntries.toFixed(2).replace('.',',')}</p>
-                                    <p className="text-xs text-gray-400 font-medium">{cash.payments?.length || 0} lançamentos</p>
-                                </td>
-                                <td className="p-4">
-                                    <div className="flex items-center gap-4 text-xs font-bold font-mono">
-                                        <div className="flex flex-col gap-1 items-start">
-                                            <span className="text-gray-400 text-[9px] uppercase tracking-wide">Fundo Troco</span>
-                                            <span className="text-slate-700">R$ {cash.openingBal.toFixed(2).replace('.',',')}</span>
-                                        </div>
-                                        <ArrowRight size={12} className="text-gray-300"/>
-                                        <div className="flex flex-col gap-1 items-start">
-                                            <span className="text-gray-400 text-[9px] uppercase tracking-wide">Fechamento</span>
-                                            <span className={`${cash.closingBal !== null && cash.closingBal >= shiftEntries + cash.openingBal ? 'text-emerald-600' : 'text-red-500'}`}>
-                                                {cash.closingBal !== null ? `R$ ${cash.closingBal.toFixed(2).replace('.',',')}` : '-'}
-                                            </span>
-                                        </div>
-                                    </div>
+                                    {cash.status === 'CLOSED' ? (
+                                        <span className={`text-xs font-black ${difference === 0 ? 'text-gray-400' : difference > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                            {difference > 0 ? '+' : ''}{difference.toFixed(2).replace('.',',')}
+                                        </span>
+                                    ) : (
+                                        <span className="text-gray-300 text-[10px] italic">Em curso</span>
+                                    )}
                                 </td>
                             </tr>
                         )

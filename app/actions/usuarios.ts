@@ -79,3 +79,26 @@ export async function toggleUserStatus(id: string) {
     });
     revalidatePath('/usuarios');
 }
+
+export async function deleteUser(id: string) {
+    const user = await prisma.user.findUnique({ 
+        where: { id },
+        include: {
+            orders: true,
+            cashRegisters: true
+        }
+    });
+
+    if (!user) throw new Error("Usuário não encontrado.");
+
+    // Check if user has related records that would prevent deletion (integrity)
+    if (user.orders.length > 0 || user.cashRegisters.length > 0) {
+        throw new Error("Não é possível excluir este usuário pois ele possui históricos de pedidos ou registros de caixa vinculados. Recomenda-se apenas desativar o acesso.");
+    }
+
+    await prisma.user.delete({
+        where: { id }
+    });
+    
+    revalidatePath('/usuarios');
+}
