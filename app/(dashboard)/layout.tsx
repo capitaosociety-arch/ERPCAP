@@ -1,3 +1,7 @@
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../api/auth/[...nextauth]/route';
+import { redirect } from 'next/navigation';
+import { prisma } from '../../lib/prisma';
 import DashboardContent from '../../components/DashboardContent';
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {

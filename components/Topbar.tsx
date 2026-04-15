@@ -1,3 +1,5 @@
+'use client';
+import { signOut } from 'next-auth/react';
 import { LogOut, User as UserIcon, Menu } from 'lucide-react';
 
 export default function Topbar({ user, onOpenMenu }: { user: any, onOpenMenu?: () => void }) {
