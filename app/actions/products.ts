@@ -99,3 +99,30 @@ export async function toggleProductStatus(productId: string, isActive: boolean) 
     revalidatePath("/pdv");
     return { success: true };
 }
+
+export async function quickCreateProductFromInvoice(name: string, cost: number) {
+    if (!name) throw new Error("Nome é obrigatório");
+
+    let category = await prisma.productCategory.findFirst({ where: { name: 'Geral' } });
+    if (!category) {
+        category = await prisma.productCategory.create({ data: { name: 'Geral' } });
+    }
+
+    const newProduct = await prisma.product.create({
+        data: {
+            name,
+            categoryId: category.id,
+            price: cost * 1.5, // Preço de venda padrão (margem genérica de 50%)
+            cost,
+            iconUrl: '🆕',
+            unit: 'UN',
+            isActive: true
+        }
+    });
+
+    revalidatePath("/estoque");
+    revalidatePath("/produtos");
+    revalidatePath("/pdv");
+
+    return { success: true, product: newProduct };
+}
