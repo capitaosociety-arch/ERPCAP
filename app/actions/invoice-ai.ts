@@ -36,7 +36,7 @@ export async function parseInvoiceImage(formData: FormData) {
         const imageUrl = `/uploads/nf/${fileName}`;
 
         // 2. Processar a imagem com IA
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         
         // Converter file para o formato Gemini
         const mimeType = file.type;

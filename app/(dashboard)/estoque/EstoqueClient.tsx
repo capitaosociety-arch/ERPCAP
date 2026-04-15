@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { PackagePlus, Edit3, X, AlertTriangle, AlertCircle, TrendingDown, TrendingUp, Filter, Camera, UploadCloud, CheckCircle, RefreshCw } from 'lucide-react';
+import { PackagePlus, Edit3, X, AlertTriangle, AlertCircle, TrendingDown, TrendingUp, Filter, Camera, UploadCloud, CheckCircle, RefreshCw, ZoomIn, ZoomOut, Maximize, CheckSquare, ArrowRight, Check } from 'lucide-react';
 import { registerStockMovement, updateMinStock, registerBatchStockMovement } from '../../actions/stock';
 import { parseInvoiceImage } from '../../actions/invoice-ai';
 import { quickCreateProductFromInvoice } from '../../actions/products';
@@ -26,7 +26,7 @@ export default function EstoqueClient({ initialProducts }: any) {
   // Form states - Min Stock
   const [minQty, setMinQty] = useState('');
 
-  // Form states - NF IA
+  // Form states - NF IA  // NFC IA State
   const [isNfModalOpen, setNfModalOpen] = useState(false);
   const [nfFile, setNfFile] = useState<File | null>(null);
   const [isParsingNf, setParsingNf] = useState(false);
@@ -34,6 +34,11 @@ export default function EstoqueClient({ initialProducts }: any) {
   const [nfImageUrl, setNfImageUrl] = useState<string | null>(null);
   const [mappedItems, setMappedItems] = useState<Record<number, any>>({});
   const [nfDateStr, setNfDateStr] = useState(new Date().toISOString().split('T')[0]);
+
+  // NEW: DE-PARA Verification & Zoom State
+  const [verifiedRows, setVerifiedRows] = useState<Set<number>>(new Set());
+  const [imgZoom, setImgZoom] = useState(1);
+  const [imgPos, setImgPos] = useState({ x: 0, y: 0 });
 
   const [isPending, startTransition] = useTransition();
 
@@ -108,6 +113,9 @@ export default function EstoqueClient({ initialProducts }: any) {
           
           if (res.success && res.data) {
               setParsedNfData(res.data);
+              setVerifiedRows(new Set()); // Reset verification for new NF
+              setImgZoom(1); // Reset zoom
+              setImgPos({ x: 0, y: 0 });
               // Agora usamos a URL persistente do Supabase Storage retornada pela API
               setNfImageUrl(res.imageUrl || URL.createObjectURL(file));
               
@@ -180,6 +188,7 @@ export default function EstoqueClient({ initialProducts }: any) {
           isManual: true,
           produtos: []
       });
+      setVerifiedRows(new Set());
       setMappedItems({});
       setNfImageUrl(null);
   };
@@ -212,6 +221,13 @@ export default function EstoqueClient({ initialProducts }: any) {
               alert("Erro ao criar produto.");
           }
       });
+  };
+
+  const toggleVerified = (idx: number) => {
+      const newV = new Set(verifiedRows);
+      if (newV.has(idx)) newV.delete(idx);
+      else newV.add(idx);
+      setVerifiedRows(newV);
   };
 
   const filteredProducts = products.filter((p: any) => {
@@ -484,12 +500,38 @@ export default function EstoqueClient({ initialProducts }: any) {
                 <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
                     {/* ESQUERDA: Visão da Foto da Nota (se existir) */}
                     {nfImageUrl && (
-                        <div className="lg:w-5/12 bg-gray-900 border-r border-gray-200 flex flex-col relative overflow-hidden">
-                            <div className="bg-gray-800 p-2 text-center text-xs text-gray-400 uppercase font-black tracking-widest absolute top-0 w-full z-10 shadow-sm">
-                                Foto da Nota Origem
+                        <div className="lg:w-5/12 bg-slate-900 border-r border-gray-200 flex flex-col relative overflow-hidden group/img">
+                            <div className="bg-gray-800/80 backdrop-blur-md p-2 text-center text-[10px] text-gray-300 uppercase font-black tracking-widest absolute top-0 w-full z-20 shadow-sm flex items-center justify-center gap-4">
+                                <span>Documento Original</span>
+                                <div className="flex items-center gap-1.5 bg-slate-700 rounded-full px-2 py-0.5 border border-slate-600">
+                                    <button onClick={() => setImgZoom(z => Math.max(0.5, z - 0.25))} className="hover:text-white transition p-0.5"><ZoomOut size={14}/></button>
+                                    <span className="min-w-[30px] text-white tabular-nums">{(imgZoom * 100).toFixed(0)}%</span>
+                                    <button onClick={() => setImgZoom(z => Math.min(3, z + 0.25))} className="hover:text-white transition p-0.5"><ZoomIn size={14}/></button>
+                                    <button onClick={() => { setImgZoom(1); setImgPos({x:0, y:0}); }} className="hover:text-white border-l border-slate-600 pl-1.5 ml-0.5 transition p-0.5"><Maximize size={12}/></button>
+                                </div>
                             </div>
-                            <div className="flex-1 overflow-auto p-4 pt-10 flex justify-center custom-scrollbar bg-slate-800 relative group">
-                                <img src={nfImageUrl} alt="Nota Fiscal Analisada" className="object-contain max-w-full h-auto origin-top" />
+
+                            <div 
+                                className="flex-1 overflow-auto cursor-move p-4 pt-10 flex justify-center bg-slate-950 relative overflow-hidden"
+                                onWheel={(e) => {
+                                    if (e.ctrlKey) {
+                                        setImgZoom(z => Math.min(3, Math.max(0.5, z + (e.deltaY < 0 ? 0.1 : -0.1))));
+                                    }
+                                }}
+                            >
+                                <img 
+                                    src={nfImageUrl} 
+                                    alt="Nota Fiscal Analisada" 
+                                    style={{ 
+                                        transform: `scale(${imgZoom}) translate(${imgPos.x}px, ${imgPos.y}px)`,
+                                        transition: 'transform 0.1s ease-out'
+                                    }}
+                                    className="object-contain max-w-full h-auto origin-top shadow-2xl" 
+                                />
+                                
+                                <div className="absolute bottom-4 left-4 bg-black/50 backdrop-blur-md text-[10px] text-white px-3 py-1.5 rounded-full z-20 font-medium">
+                                    Dica: Ctrl + Scroll para Zoom
+                                </div>
                             </div>
                         </div>
                     )}
@@ -574,73 +616,114 @@ export default function EstoqueClient({ initialProducts }: any) {
                                     </div>
                                 </div>
 
+                                <div className="flex flex-wrap items-center justify-between gap-4 bg-white shadow-sm p-4 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/50 to-transparent">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-inner transition-colors ${verifiedRows.size === (parsedNfData.produtos?.length || 0) ? 'bg-emerald-500 text-white' : 'bg-blue-100 text-blue-600'}`}>
+                                            {verifiedRows.size === (parsedNfData.produtos?.length || 0) ? <Check size={20} strokeWidth={3}/> : <RefreshCw size={18} className="animate-spin-slow"/>}
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-slate-800 text-sm">Conferência DE-PARA</h3>
+                                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                                                {verifiedRows.size} de {parsedNfData.produtos?.length || 0} ITENS VALIDADOS
+                                            </p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex gap-2">
+                                        <div className="bg-white border-2 border-slate-200 rounded-xl px-4 py-2 text-center min-w-[100px]">
+                                            <label className="text-[9px] text-gray-400 font-black uppercase block tracking-tighter">Total Extraído</label>
+                                            <span className="text-sm font-black text-slate-700">R$ {parsedNfData.total || parsedNfData.valor_total || '0,00'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div className="bg-white border text-sm border-gray-200 rounded-2xl overflow-hidden shadow-sm">
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-left border-collapse min-w-[600px]">
+                                        <table className="w-full text-left border-collapse min-w-[700px]">
                                             <thead>
-                                                <tr className="bg-slate-50 border-b border-gray-200 text-xs font-bold text-slate-600 uppercase tracking-wide">
-                                                    {!parsedNfData.isManual && <th className="p-4 w-[35%]">Lido da Nota (Original)</th>}
-                                                    <th className={`p-4 ${parsedNfData.isManual ? 'w-[60%]' : 'w-[40%]'}`}>Produto no Sistema</th>
-                                                    <th className="p-4 text-center">Qtd. Ent.</th>
-                                                    <th className="p-4 text-right">R$ Preço Base (Custo Un.)</th>
+                                                <tr className="bg-slate-50 border-b border-gray-200 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                                    <th className="p-4 w-12 text-center">Status</th>
+                                                    {!parsedNfData.isManual && <th className="p-4 w-[30%]">A) Lido na Nota (IA)</th>}
+                                                    <th className="p-4 w-[5%] text-center px-0 opacity-40">DE &rarr; PARA</th>
+                                                    <th className={`p-4 ${parsedNfData.isManual ? 'w-[60%]' : 'w-[45%]'}`}>B) Produto no Sistema</th>
+                                                    <th className="p-4 text-center">Qtd.</th>
+                                                    <th className="p-4 text-right">R$ Un.</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-gray-100">
-                                                {parsedNfData.produtos?.map((item: any, idx: number) => (
-                                                    <tr key={idx} className="hover:bg-slate-50/50">
-                                                        {!parsedNfData.isManual && (
-                                                            <td className="p-4">
-                                                                <span className="font-bold text-slate-700 block truncate" title={item.nome}>{item.nome}</span>
+                                                {parsedNfData.produtos?.map((item: any, idx: number) => {
+                                                    const isVerified = verifiedRows.has(idx);
+                                                    return (
+                                                        <tr key={idx} className={`transition-colors h-20 ${isVerified ? 'bg-emerald-50/30' : 'hover:bg-slate-50/50'}`}>
+                                                            <td className="p-4 text-center">
+                                                                <button 
+                                                                    onClick={() => toggleVerified(idx)}
+                                                                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isVerified ? 'bg-emerald-500 text-white shadow-lg' : 'bg-white border-2 border-slate-200 text-slate-300 hover:border-mrts-blue hover:text-mrts-blue'}`}
+                                                                >
+                                                                    <Check size={20} strokeWidth={3} />
+                                                                </button>
                                                             </td>
-                                                        )}
-                                                        <td className="p-4">
-                                                            <select 
-                                                                value={mappedItems[idx]?.productId === 'NEW' ? 'NEW' : (mappedItems[idx]?.productId || '')} 
-                                                                onChange={(e) => {
-                                                                    const val = e.target.value;
-                                                                    if (val === 'NEW') {
-                                                                        handleQuickCreate(idx, item.nome, item.preco_unitario || mappedItems[idx]?.price);
-                                                                    } else {
+                                                            {!parsedNfData.isManual && (
+                                                                <td className="p-4">
+                                                                    <span className="font-bold text-slate-700 block truncate text-xs" title={item.nome}>{item.nome}</span>
+                                                                    <div className="flex gap-2 mt-1">
+                                                                        <span className="text-[10px] bg-slate-100 text-gray-500 px-1.5 py-0.5 rounded font-bold">Q: {item.quantidade}</span>
+                                                                        <span className="text-[10px] bg-slate-100 text-gray-500 px-1.5 py-0.5 rounded font-bold">R$ {item.preco_unitario}</span>
+                                                                    </div>
+                                                                </td>
+                                                            )}
+                                                            <td className="p-4 text-center px-0 opacity-20">
+                                                                <ArrowRight size={16} />
+                                                            </td>
+                                                            <td className="p-4">
+                                                                <select 
+                                                                    value={mappedItems[idx]?.productId === 'NEW' ? 'NEW' : (mappedItems[idx]?.productId || '')} 
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value;
+                                                                        if (val === 'NEW') {
+                                                                            handleQuickCreate(idx, item.nome, item.preco_unitario || mappedItems[idx]?.price);
+                                                                        } else {
+                                                                            const newM = {...mappedItems};
+                                                                            newM[idx].productId = val;
+                                                                            setMappedItems(newM);
+                                                                        }
+                                                                    }}
+                                                                    className={`w-full max-w-[280px] truncate text-xs px-3 py-2.5 rounded-xl focus:ring-2 focus:ring-mrts-blue outline-none border transition-all ${mappedItems[idx]?.productId && mappedItems[idx]?.productId !== 'NEW' ? 'border-mrts-blue bg-blue-50/50 text-mrts-blue font-bold shadow-sm' : 'border-gray-200 font-bold text-slate-400 hover:border-gray-300 bg-white'}`}
+                                                                >
+                                                                    <option value="" disabled className="text-gray-400">--- Seleção no Sistema ---</option>
+                                                                    <option value="NEW" className="font-bold text-emerald-600 bg-emerald-50">✨ Criar Novo Produto</option>
+                                                                    {products.map((p: any) => (
+                                                                        <option key={p.id} value={p.id}>{p.iconUrl} {p.name}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </td>
+                                                            <td className="p-4">
+                                                                <input 
+                                                                    type="text" 
+                                                                    value={mappedItems[idx]?.quantity || ''}
+                                                                    onChange={(e) => {
                                                                         const newM = {...mappedItems};
-                                                                        newM[idx].productId = val;
+                                                                        newM[idx].quantity = e.target.value;
                                                                         setMappedItems(newM);
-                                                                    }
-                                                                }}
-                                                                className={`w-full max-w-[280px] truncate text-sm px-3 py-2 rounded-xl focus:ring-2 focus:ring-mrts-blue outline-none border transition-colors ${mappedItems[idx]?.productId && mappedItems[idx]?.productId !== 'NEW' ? 'border-mrts-blue bg-blue-50/30 text-mrts-blue font-bold shadow-sm' : 'border-gray-200 font-bold text-slate-400 hover:border-gray-300'}`}
-                                                            >
-                                                                <option value="" disabled className="text-gray-400">--- Mapear com Produto ---</option>
-                                                                <option value="NEW" className="font-bold text-emerald-600 bg-emerald-50">✨ Cadastrar Automaticamente</option>
-                                                                {products.map((p: any) => (
-                                                                    <option key={p.id} value={p.id}>{p.iconUrl} {p.name}</option>
-                                                                ))}
-                                                            </select>
-                                                        </td>
-                                                        <td className="p-4">
-                                                            <input 
-                                                                type="text" 
-                                                                value={mappedItems[idx]?.quantity || ''}
-                                                                onChange={(e) => {
-                                                                    const newM = {...mappedItems};
-                                                                    newM[idx].quantity = e.target.value;
-                                                                    setMappedItems(newM);
-                                                                }}
-                                                                className="w-20 px-2 py-2 border-2 border-slate-200 rounded-xl text-sm font-black text-center mx-auto block focus:border-mrts-blue outline-none"
-                                                            />
-                                                        </td>
-                                                        <td className="p-4 text-right">
-                                                            <input 
-                                                                type="text" 
-                                                                value={mappedItems[idx]?.price || ''}
-                                                                onChange={(e) => {
-                                                                    const newM = {...mappedItems};
-                                                                    newM[idx].price = e.target.value;
-                                                                    setMappedItems(newM);
-                                                                }}
-                                                                className="w-24 px-2 py-2 border-2 border-slate-200 rounded-xl text-sm font-black text-right ml-auto block focus:border-mrts-blue outline-none"
-                                                            />
-                                                        </td>
-                                                    </tr>
-                                                ))}
+                                                                    }}
+                                                                    className="w-16 px-2 py-2 border-2 border-slate-100 rounded-lg text-xs font-black text-center mx-auto block focus:border-mrts-blue outline-none bg-white"
+                                                                />
+                                                            </td>
+                                                            <td className="p-4 text-right">
+                                                                <input 
+                                                                    type="text" 
+                                                                    value={mappedItems[idx]?.price || ''}
+                                                                    onChange={(e) => {
+                                                                        const newM = {...mappedItems};
+                                                                        newM[idx].price = e.target.value;
+                                                                        setMappedItems(newM);
+                                                                    }}
+                                                                    className="w-20 px-2 py-2 border-2 border-slate-100 rounded-lg text-xs font-black text-right ml-auto block focus:border-mrts-blue outline-none bg-white font-mono"
+                                                                />
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
                                                 {(!parsedNfData.produtos || parsedNfData.produtos.length === 0) && (
                                                     <tr>
                                                         <td colSpan={4} className="p-8 text-center text-gray-500 font-medium bg-white">
@@ -663,22 +746,30 @@ export default function EstoqueClient({ initialProducts }: any) {
                 </div>
 
                 {parsedNfData && (
-                    <div className="p-4 sm:p-6 border-t border-gray-100 bg-white shrink-0 sticky bottom-0 sm:rounded-b-3xl mt-auto z-20 flex justify-between items-center shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
+                    <div className="p-4 sm:p-6 border-t border-gray-100 bg-white shrink-0 sticky bottom-0 sm:rounded-b-3xl mt-auto z-20 flex flex-col sm:flex-row justify-between items-center gap-4 shadow-[0_-10px_30px_rgba(0,0,0,0.05)]">
                         <button 
                             type="button" 
                             disabled={isPending}
                             onClick={() => { setParsedNfData(null); setNfImageUrl(null); }}
-                            className="text-sm font-bold text-red-500 bg-red-50 hover:bg-red-100 rounded-xl px-5 py-3 transition"
+                            className="w-full sm:w-auto text-sm font-bold text-red-500 bg-red-50 hover:bg-red-100 rounded-xl px-5 py-3 transition"
                         >
                             Refazer Foto
                         </button>
+                        
+                        {!parsedNfData.isManual && verifiedRows.size < (parsedNfData.produtos?.length || 0) && (
+                            <div className="flex items-center gap-2 text-blue-600 bg-blue-50 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest border border-blue-100 animate-pulse">
+                                <AlertCircle size={14}/>
+                                Verifique todos os itens (Clique no Check) para liberar
+                            </div>
+                        )}
+
                         <button 
-                            disabled={isPending || Object.values(mappedItems).some(m => !m.productId)} 
+                            disabled={isPending || Object.values(mappedItems).some(m => !m.productId) || (!parsedNfData.isManual && verifiedRows.size < (parsedNfData.produtos?.length || 0))} 
                             onClick={handleBatchSaveNf} 
-                            className="bg-emerald-500 text-white font-black text-lg py-3.5 px-8 rounded-xl hover:bg-emerald-600 transition shadow-xl shadow-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transform active:scale-95"
+                            className="w-full sm:w-auto bg-emerald-500 text-white font-black text-lg py-3.5 px-8 rounded-xl hover:bg-emerald-600 transition shadow-xl shadow-emerald-500/30 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed flex items-center justify-center gap-3 transform active:scale-95"
                         >
-                            {isPending ? <RefreshCw size={22} className="animate-spin" /> : <PackagePlus size={22} />}
-                            {isPending ? 'LANÇANDO NO ESTOQUE...' : 'FINALIZAR E LANÇAR'}
+                            {isPending ? <RefreshCw size={22} className="animate-spin" /> : <CheckCircle size={22} strokeWidth={3} />}
+                            {isPending ? 'LANÇANDO NO ESTOQUE...' : 'LANÇAR ENTRADAS'}
                         </button>
                     </div>
                 )}
