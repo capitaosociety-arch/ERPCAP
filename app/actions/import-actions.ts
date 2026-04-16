@@ -11,7 +11,7 @@ export async function processProductsWithAI(rawData: any[]) {
         throw new Error("Nenhum dado encontrado na planilha.");
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     // Preparar dados para a IA (enviar apenas uma amostra significativa para mapeamento ou o lote todo se pequeno)
     const sample = rawData.slice(0, 100); 

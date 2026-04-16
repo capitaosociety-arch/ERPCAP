@@ -127,20 +127,49 @@ export async function quickCreateProductFromInvoice(name: string, cost: number) 
     return { success: true, product: newProduct };
 }
 export async function deleteProduct(productId: string) {
-    if (!productId) throw new Error("ID inválido");
+    if (!productId) return { success: false, error: "ID inválido" };
 
     try {
-        await prisma.product.delete({
-            where: { id: productId }
+        // 1. Verificar se o produto já foi vendido (OrderItem) para manter integridade histórica/financeira
+        const hasSales = await prisma.orderItem.findFirst({
+            where: { productId }
         });
+
+        if (hasSales) {
+            return { 
+                success: false, 
+                error: "Não é possível excluir este produto pois ele já possui histórico de vendas vinculadas. Recomendamos apenas 'Desativar' o produto para que ele não apareça mais no cardápio." 
+            };
+        }
+
+        // 2. Executar deleção em transação para garantir que o estoque e as movimentações sejam limpos
+        await prisma.$transaction(async (tx) => {
+            // Deletar registro de estoque
+            await tx.stock.deleteMany({
+                where: { productId }
+            });
+
+            // Deletar todas as movimentações de estoque (entradas/saídas manuais)
+            await tx.stockMovement.deleteMany({
+                where: { productId }
+            });
+
+            // Deletar o produto (PriceHistory será deletado via cascade definido no schema.prisma)
+            await tx.product.delete({
+                where: { id: productId }
+            });
+        });
+
         revalidatePath("/produtos");
         revalidatePath("/pdv");
+        revalidatePath("/estoque");
+
         return { success: true };
     } catch (error: any) {
-        // Erro P2003 é o código do Prisma para falha de restrição de chave estrangeira
-        if (error.code === 'P2003') {
-            throw new Error("Não é possível excluir este produto pois ele já possui histórico de vendas ou estoque. Tente apenas desativá-lo.");
-        }
-        throw new Error("Erro ao excluir produto: " + (error.message || "Erro desconhecido"));
+        console.error("ERRO_DELETE_PRODUCT:", error);
+        return { 
+            success: false, 
+            error: "Erro técnico ao excluir produto. Tente desativá-lo ou entre em contato com o suporte." 
+        };
     }
 }

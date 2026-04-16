@@ -161,12 +161,12 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
     if (!window.confirm("CUIDADO: Tem certeza que deseja excluir permanentemente este produto? Esta ação não pode ser desfeita.")) return;
 
     startTransition(async () => {
-        try {
-            await deleteProduct(productId);
+        const res = await deleteProduct(productId);
+        if (res.success) {
             setProducts(products.filter((p: any) => p.id !== productId));
             alert("Produto excluído com sucesso.");
-        } catch (error: any) {
-            alert(error.message || "Erro ao excluir produto.");
+        } else {
+            alert(res.error || "Erro ao excluir produto.");
         }
     });
   };

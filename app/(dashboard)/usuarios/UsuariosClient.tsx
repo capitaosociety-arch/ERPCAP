@@ -56,10 +56,9 @@ export default function UsuariosClient({ initialUsers }: { initialUsers: any[] }
     const handleDelete = async (id: string, name: string) => {
         if (confirm(`ATENÇÃO: Deseja realmente EXCLUIR permanentemente a matrícula de ${name}? Esta ação não pode ser desfeita e só funcionará se o usuário não tiver histórico de movimentações no sistema.`)) {
             setLoading(true);
-            try {
-                await deleteUser(id);
-            } catch (e: any) {
-                alert(e.message);
+            const res = await deleteUser(id);
+            if (!res.success) {
+                alert(res.error || "Erro ao excluir usuário.");
             }
             setLoading(false);
         }

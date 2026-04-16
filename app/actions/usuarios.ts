@@ -81,24 +81,33 @@ export async function toggleUserStatus(id: string) {
 }
 
 export async function deleteUser(id: string) {
-    const user = await prisma.user.findUnique({ 
-        where: { id },
-        include: {
-            orders: true,
-            cashRegisters: true
+    try {
+        const user = await prisma.user.findUnique({ 
+            where: { id },
+            include: {
+                orders: true,
+                cashRegisters: true
+            }
+        });
+
+        if (!user) return { success: false, error: "Usuário não encontrado." };
+
+        // Check if user has related records that would prevent deletion (integrity)
+        if (user.orders.length > 0 || user.cashRegisters.length > 0) {
+            return { 
+                success: false, 
+                error: "Não é possível excluir este usuário pois ele possui históricos de pedidos ou registros de caixa vinculados. Recomenda-se apenas desativar o acesso." 
+            };
         }
-    });
 
-    if (!user) throw new Error("Usuário não encontrado.");
-
-    // Check if user has related records that would prevent deletion (integrity)
-    if (user.orders.length > 0 || user.cashRegisters.length > 0) {
-        throw new Error("Não é possível excluir este usuário pois ele possui históricos de pedidos ou registros de caixa vinculados. Recomenda-se apenas desativar o acesso.");
+        await prisma.user.delete({
+            where: { id }
+        });
+        
+        revalidatePath('/usuarios');
+        return { success: true };
+    } catch (error: any) {
+        console.error("ERRO_DELETE_USER:", error);
+        return { success: false, error: "Erro ao excluir usuário: " + (error.message || "Erro desconhecido") };
     }
-
-    await prisma.user.delete({
-        where: { id }
-    });
-    
-    revalidatePath('/usuarios');
 }
