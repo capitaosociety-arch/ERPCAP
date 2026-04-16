@@ -1,10 +1,9 @@
 'use server'
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import fs from 'fs';
-import path from 'path';
+import { supabaseAdmin } from "@/lib/supabase";
 
-// Configurar o AI usando a versão mais recente e estável
+// Configurar o AI usando a versão estável
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
 
 export async function parseInvoiceImage(formData: FormData) {
@@ -21,8 +20,27 @@ export async function parseInvoiceImage(formData: FormData) {
 
         const buffer = Buffer.from(await file.arrayBuffer());
 
-        // 2. Processar a imagem com IA (Gemini Flash - Sempre o mais recente)
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+        // 1. Upload para o Supabase Storage (Bucket notas-fiscais)
+        const fileName = `nf-${Date.now()}-${file.name.replace(/\s/g, '_')}`;
+        const { error: uploadError } = await supabaseAdmin.storage
+            .from('notas-fiscais')
+            .upload(fileName, buffer, {
+                contentType: file.type,
+                upsert: true
+            });
+
+        if (uploadError) {
+            console.error("Erro no upload Supabase (Action):", uploadError);
+        }
+
+        const { data: publicUrlData } = supabaseAdmin.storage
+            .from('notas-fiscais')
+            .getPublicUrl(fileName);
+
+        const imageUrl = publicUrlData?.publicUrl || null;
+
+        // 2. Processar a imagem com IA (Gemini 1.5 Flash - Estável)
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         
         // Converter file para o formato Gemini
         const mimeType = file.type;
@@ -31,7 +49,7 @@ export async function parseInvoiceImage(formData: FormData) {
             mimeType
         };
 
-        // 3. Prompt para extrair dados (Sincronizado com a Rota de API)
+        // 3. Prompt para extrair dados (Sincronizado)
         const prompt = `Extraia os dados desta nota fiscal para um JSON rigoroso com: 
         fornecedor, 
         cnpj, 
@@ -48,7 +66,7 @@ export async function parseInvoiceImage(formData: FormData) {
 
         const responseText = result.response.text();
         
-        // Função robusta para extrair apenas o objeto JSON do meio do texto
+        // Função robusta para extrair apenas o objeto JSON
         const extractJson = (text: string) => {
             const start = text.indexOf('{');
             const end = text.lastIndexOf('}');
@@ -67,9 +85,6 @@ export async function parseInvoiceImage(formData: FormData) {
             console.error("Erro ao processar JSON da IA:", responseText);
             throw new Error("A IA retornou um formato inválido. Tente novamente.");
         }
-
-        // A URL da imagem para o frontend consumir (se for o caso)
-        const imageUrl = `/uploads/nf/${Date.now()}_${file.name.replace(/\s/g, '_')}`;
 
         return {
             success: true,

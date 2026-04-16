@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Plus, Edit3, X, DollarSign, ToggleLeft, ToggleRight, Sheet } from 'lucide-react';
-import { updateProductPrice, upsertProduct, toggleProductStatus } from '../../actions/products';
+import { Plus, Edit3, X, DollarSign, ToggleLeft, ToggleRight, Sheet, Upload, CheckCircle2, RefreshCw, Trash2 } from 'lucide-react';
+import { updateProductPrice, upsertProduct, toggleProductStatus, deleteProduct } from '../../actions/products';
+import { processProductsWithAI, saveBatchProducts } from '../../actions/import-actions';
 import { downloadExcel } from '../../../lib/excel-export';
+import * as XLSX from 'xlsx';
 
 export default function ProductsClient({ initialProducts, categories = [] }: any) {
   const [products, setProducts] = useState(initialProducts);
@@ -17,8 +19,10 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
   const [dateStr, setDateStr] = useState(new Date().toISOString().split('T')[0]);
 
   // Product Form Modal (Create / Edit)
-  const [isFormModalOpen, setFormModalOpen] = useState(false);
-  const [formData, setFormData] = useState<any>({});
+  // Import Modal
+  const [isImportModalOpen, setImportModalOpen] = useState(false);
+  const [importPreview, setImportPreview] = useState<any[]>([]);
+  const [isProcessingAI, setIsProcessingAI] = useState(false);
   
   const [isPending, startTransition] = useTransition();
 
@@ -101,11 +105,67 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
       });
   };
 
+  const handleExcelUpload = async (e: any) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessingAI(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+        try {
+            const bstr = evt.target?.result;
+            const wb = XLSX.read(bstr, { type: 'binary' });
+            const wsname = wb.SheetNames[0];
+            const ws = wb.Sheets[wsname];
+            const data = XLSX.utils.sheet_to_json(ws);
+
+            // Chamar IA para mapear
+            const res = await processProductsWithAI(data);
+            if (res.success) {
+                setImportPreview(res.data);
+                setImportModalOpen(true);
+            }
+        } catch (error) {
+            alert("Erro ao ler planilha ou processar com IA.");
+        } finally {
+            setIsProcessingAI(false);
+        }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const handleConfirmBatchZip = () => {
+    startTransition(async () => {
+        try {
+            await saveBatchProducts(importPreview);
+            alert("Produtos importados com sucesso!");
+            setImportModalOpen(false);
+            window.location.reload();
+        } catch (error) {
+            alert("Erro ao salvar lote de produtos.");
+        }
+    });
+  };
+
   const handleToggleStatus = (prod: any) => {
       startTransition(async () => {
           await toggleProductStatus(prod.id, !prod.isActive);
           setProducts(products.map((p: any) => p.id === prod.id ? { ...p, isActive: !prod.isActive } : p));
       });
+  };
+
+  const handleDeleteProduct = (productId: string) => {
+    if (!window.confirm("CUIDADO: Tem certeza que deseja excluir permanentemente este produto? Esta ação não pode ser desfeita.")) return;
+
+    startTransition(async () => {
+        try {
+            await deleteProduct(productId);
+            setProducts(products.filter((p: any) => p.id !== productId));
+            alert("Produto excluído com sucesso.");
+        } catch (error: any) {
+            alert(error.message || "Erro ao excluir produto.");
+        }
+    });
   };
 
   const handleExportExcel = () => {
@@ -130,6 +190,11 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
           <p className="text-gray-500 text-sm mt-1">Gerencie seu cardápio, estoque e preços.</p>
         </div>
         <div className="flex items-center gap-3">
+          <label className={`cursor-pointer bg-white border border-gray-200 text-slate-600 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm flex items-center gap-2 hover:bg-gray-50 transition-all ${isProcessingAI ? 'opacity-50 pointer-events-none' : ''}`}>
+            {isProcessingAI ? <RefreshCw size={18} className="animate-spin" /> : <Upload size={18} />}
+            {isProcessingAI ? 'Processando...' : 'Importar Planilha (IA)'}
+            <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={handleExcelUpload} />
+          </label>
 
           <button onClick={() => openFormModal()} className="bg-mrts-blue text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-blue-500/20 flex items-center gap-2 hover:bg-mrts-hover hover:-translate-y-0.5 transition-all">
             <Plus size={18} /> Novo Produto
@@ -192,6 +257,9 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                       </button>
                       <button onClick={() => handleToggleStatus(product)} className={`p-2 shadow-sm rounded-lg border transition ${product.isActive ? 'text-orange-500 bg-orange-50 hover:bg-orange-100 border-none' : 'text-gray-400 bg-white border-gray-200 hover:border-orange-300 hover:text-orange-400'}`} title={product.isActive ? 'Desativar Produto' : 'Ativar Produto'}>
                         {product.isActive ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+                      </button>
+                      <button onClick={() => handleDeleteProduct(product.id)} className="p-2 text-red-500 bg-red-50 hover:bg-red-100 border border-transparent shadow-sm rounded-lg transition" title="Excluir Permanentemente">
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </td>
@@ -332,6 +400,63 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
 
                     <button disabled={isPending} onClick={handleSaveProduct} className="w-full mt-4 bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-slate-800 transition shadow-lg disabled:opacity-50">
                         {isPending ? 'Salvando...' : 'Salvar Informações'}
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* IMPORT REVIEW MODAL */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl animate-in zoom-in-95 flex flex-col border border-gray-100 max-h-[90vh]">
+                <div className="flex justify-between items-center p-6 border-b border-gray-100 bg-white z-10 rounded-t-3xl text-slate-800">
+                    <div>
+                        <h2 className="text-xl font-bold flex items-center gap-2">
+                            <CheckCircle2 size={22} className="text-emerald-500" /> Conferir Importação
+                        </h2>
+                        <p className="text-sm text-gray-500 mt-1 font-medium">A IA interpretou os seguintes itens na sua planilha.</p>
+                    </div>
+                    <button onClick={() => setImportModalOpen(false)} className="w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full transition">
+                        <X size={20} className="text-gray-500" />
+                    </button>
+                </div>
+                
+                <div className="p-0 overflow-y-auto flex-1 bg-white flex flex-col">
+                    <table className="w-full text-left border-collapse whitespace-nowrap">
+                        <thead className="sticky top-0 bg-gray-50 z-20">
+                            <tr className="border-b border-gray-100 text-[10px] uppercase text-gray-400 font-bold tracking-widest">
+                                <th className="p-4 bg-gray-50">Produto</th>
+                                <th className="p-4 bg-gray-50">Categoria</th>
+                                <th className="p-4 bg-gray-50">Custo (R$)</th>
+                                <th className="p-4 bg-gray-50">Venda (R$)</th>
+                                <th className="p-4 bg-gray-50">Unid.</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {importPreview.map((item, idx) => (
+                                <tr key={idx} className="hover:bg-slate-50 transition">
+                                    <td className="p-4 text-sm font-bold text-slate-800">{item.name}</td>
+                                    <td className="p-4 text-xs">
+                                        <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded font-medium">{item.categoryName}</span>
+                                    </td>
+                                    <td className="p-4 text-sm text-gray-500 font-medium">R$ {item.cost}</td>
+                                    <td className="p-4 text-sm text-mrts-blue font-black">R$ {item.price}</td>
+                                    <td className="p-4 text-xs font-bold text-gray-400">{item.unit}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="p-6 bg-slate-50 border-t border-gray-100 rounded-b-3xl">
+                    <button 
+                        disabled={isPending} 
+                        onClick={handleConfirmBatchZip} 
+                        className="w-full bg-emerald-500 text-white font-bold py-4 rounded-2xl hover:bg-emerald-600 transition shadow-xl shadow-emerald-500/30 flex items-center justify-center gap-3 disabled:opacity-50"
+                    >
+                        {isPending ? <RefreshCw size={22} className="animate-spin" /> : <CheckCircle2 size={22} />}
+                        {isPending ? 'SALVANDO PRODUTOS...' : 'CONFIRMAR E IMPORTAR TUDO'}
                     </button>
                 </div>
             </div>

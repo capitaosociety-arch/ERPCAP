@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
         // Upload para o Supabase Storage (Substitui o FS local para funcionar na Vercel)
         const fileName = `nf-${Date.now()}-${file.name.replace(/\s/g, '_')}`;
         const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-            .from('nf_uploads')
+            .from('notas-fiscais')
             .upload(fileName, buffer, {
                 contentType: file.type,
                 upsert: true
@@ -37,13 +37,13 @@ export async function POST(req: NextRequest) {
         }
 
         const { data: publicUrlData } = supabaseAdmin.storage
-            .from('nf_uploads')
+            .from('notas-fiscais')
             .getPublicUrl(fileName);
 
         const imageUrl = publicUrlData?.publicUrl || null;
 
-        // 2. Rota de API: Setup Gemini Flash (versão mais recente disponível)
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+        // 2. Rota de API: Setup Gemini Flash (versão estável gemini-1.5-flash)
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const mimeType = file.type;
         const inlineData = {
             data: buffer.toString("base64"),

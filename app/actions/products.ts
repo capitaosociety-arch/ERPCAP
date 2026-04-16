@@ -126,3 +126,21 @@ export async function quickCreateProductFromInvoice(name: string, cost: number) 
 
     return { success: true, product: newProduct };
 }
+export async function deleteProduct(productId: string) {
+    if (!productId) throw new Error("ID inválido");
+
+    try {
+        await prisma.product.delete({
+            where: { id: productId }
+        });
+        revalidatePath("/produtos");
+        revalidatePath("/pdv");
+        return { success: true };
+    } catch (error: any) {
+        // Erro P2003 é o código do Prisma para falha de restrição de chave estrangeira
+        if (error.code === 'P2003') {
+            throw new Error("Não é possível excluir este produto pois ele já possui histórico de vendas ou estoque. Tente apenas desativá-lo.");
+        }
+        throw new Error("Erro ao excluir produto: " + (error.message || "Erro desconhecido"));
+    }
+}

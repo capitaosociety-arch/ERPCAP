@@ -449,8 +449,13 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                       </td>
                       <td className="p-4">
                           {mov.imageUrl ? (
-                              <a href={mov.imageUrl} target="_blank" rel="noreferrer" className="text-mrts-blue hover:underline font-bold text-xs flex items-center gap-1">
-                                  <Camera size={14}/> Ver NF
+                              <a 
+                                href={mov.imageUrl} 
+                                target="_blank" 
+                                rel="noreferrer" 
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg font-bold text-xs hover:bg-blue-100 transition border border-blue-200"
+                              >
+                                  <Camera size={14}/> Ver Nota
                               </a>
                           ) : '-'}
                       </td>
