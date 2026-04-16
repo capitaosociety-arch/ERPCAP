@@ -19,6 +19,10 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
   const [dateStr, setDateStr] = useState(new Date().toISOString().split('T')[0]);
 
   // Product Form Modal (Create / Edit)
+  // Product Form Modal (Create / Edit)
+  const [isFormModalOpen, setFormModalOpen] = useState(false);
+  const [formData, setFormData] = useState<any>({});
+
   // Import Modal
   const [isImportModalOpen, setImportModalOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<any[]>([]);
