@@ -1,4 +1,4 @@
-import { prisma } from "../../../lib/prisma";
+import { prisma } from "@/lib/prisma";
 import EstoqueClient from "./EstoqueClient";
 
 export default async function EstoqueRoute() {
@@ -15,5 +15,5 @@ export default async function EstoqueRoute() {
     where: { isActive: true } // Oculta produtos de menu apagados da contagem padrao
   });
 
-  return <EstoqueClient initialProducts={products} />;
+  return <EstoqueClient initialProducts={products as any} />;
 }

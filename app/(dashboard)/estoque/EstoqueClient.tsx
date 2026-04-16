@@ -1,13 +1,29 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { PackagePlus, Edit3, X, AlertTriangle, AlertCircle, TrendingDown, TrendingUp, Filter, Camera, UploadCloud, CheckCircle, RefreshCw, ZoomIn, ZoomOut, Maximize, CheckSquare, ArrowRight, Check, Download, Package } from 'lucide-react';
+import { useState, useTransition, useMemo } from 'react';
+import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp } from 'lucide-react';
 import { registerStockMovement, updateMinStock, registerBatchStockMovement } from '../../actions/stock';
 import { parseInvoiceImage } from '../../actions/invoice-ai';
 import { quickCreateProductFromInvoice } from '../../actions/products';
 
-export default function EstoqueClient({ initialProducts }: any) {
-  const [products, setProducts] = useState<any[]>(initialProducts || []);
+interface Product {
+  id: string;
+  name: string;
+  unit: string;
+  category?: { name: string };
+  stock?: { quantity: number; minQuantity: number; unit: string };
+  iconUrl?: string;
+  stockMovements?: any[];
+}
+
+interface NfItem {
+  nome: string;
+  quantidade: number;
+  preco_unitario: number;
+}
+
+export default function EstoqueClient({ initialProducts }: { initialProducts: Product[] }) {
+  const [products, setProducts] = useState<Product[]>(initialProducts || []);
   const [filter, setFilter] = useState('ALL'); // ALL, LOW, HISTORY
   
   // Modals
@@ -43,21 +59,20 @@ export default function EstoqueClient({ initialProducts }: any) {
   const [isPending, startTransition] = useTransition();
 
   const handleDownloadImage = async () => {
-    if (!nfImageUrl) return;
+    if (!nfImageUrl || typeof window === 'undefined') return;
     try {
         const response = await fetch(nfImageUrl);
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
+        const link = window.document.createElement('a');
         link.href = url;
         link.download = `nota-fiscal-${parsedNfData?.numero_nf || 'doc'}.jpg`;
-        document.body.appendChild(link);
+        window.document.body.appendChild(link);
         link.click();
-        document.body.removeChild(link);
+        window.document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
     } catch (error) {
         console.error("Erro ao baixar imagem:", error);
-        alert("Não foi possível baixar a imagem.");
     }
   };
 
@@ -149,7 +164,7 @@ export default function EstoqueClient({ initialProducts }: any) {
               setImgZoom(1); // Reset zoom
               setImgPos({ x: 0, y: 0 });
               // Agora usamos a URL persistente do Supabase Storage retornada pela API
-              setNfImageUrl(res.imageUrl || URL.createObjectURL(file));
+              setNfImageUrl(res.imageUrl || (typeof window !== 'undefined' ? window.URL.createObjectURL(file) : null));
               
               const initialMap: Record<number, any> = {};
               res.data.produtos?.forEach((item: any, i: number) => { // User now asked for list of 'produtos'
@@ -242,10 +257,15 @@ export default function EstoqueClient({ initialProducts }: any) {
   };
 
   const handleAddManualRow = () => {
-      const newItems = [...(parsedNfData.produtos || []), { nome: 'Item Manual', quantidade: 1, preco_unitario: 0 }];
+      if (!parsedNfData) {
+          handleManualEntry();
+          return;
+      }
+      const currentProducts = parsedNfData.produtos || [];
+      const newItems = [...currentProducts, { nome: 'Item Manual', quantidade: 1, preco_unitario: 0 }];
       const newIdx = newItems.length - 1;
-      setParsedNfData({ ...parsedNfData, produtos: newItems });
-      setMappedItems({ ...mappedItems, [newIdx]: { productId: '', quantity: 1, price: 0 } });
+      setParsedNfData((prev: any) => ({ ...prev, produtos: newItems }));
+      setMappedItems((prev: any) => ({ ...prev, [newIdx]: { productId: '', quantity: 1, price: 0 } }));
   };
 
   const handleQuickCreate = (idx: number, name: string, cost: number) => {
@@ -288,7 +308,11 @@ export default function EstoqueClient({ initialProducts }: any) {
   });
 
   // Filtra histórico de movimentos
-  const allMovements = products.flatMap((p: any) => p.stockMovements?.map((m:any) => ({...m, product: p})) || []).sort((a:any, b:any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const allMovements = useMemo(() => {
+    return products
+      .flatMap((p: any) => p.stockMovements?.map((m: any) => ({ ...m, product: p })) || [])
+      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [products]);
 
   return (
     <div className="animate-in fade-in duration-500">
@@ -364,7 +388,7 @@ export default function EstoqueClient({ initialProducts }: any) {
                           <td className="p-4 text-right">
                              <button onClick={() => openMinModal(product)} className="text-gray-500 hover:text-mrts-blue transition flex items-center justify-end gap-1.5 ml-auto group">
                                  <span className="text-xs font-bold bg-gray-50 group-hover:bg-blue-50 px-2 py-1 rounded">{min}</span>
-                                 <Edit3 size={14} className="opacity-50 group-hover:opacity-100"/>
+                                 <Edit size={14} className="opacity-50 group-hover:opacity-100"/>
                              </button>
                           </td>
                           <td className="p-4 text-right">
@@ -513,7 +537,7 @@ export default function EstoqueClient({ initialProducts }: any) {
                     </button>
                 </div>
                 <div className="p-6">
-                    <p className="text-sm text-gray-500 mb-4 whitespace-normal">Defina a quantidade mínima aceitável para <b>{selectedProduct.name}</b>. Avisaremos quando baixar disso.</p>
+                    <p className="text-sm text-gray-500 mb-4 whitespace-normal">Defina a quantidade mínima aceitável para <b>{selectedProduct?.name}</b>. Avisaremos quando baixar disso.</p>
                     <input type="number" step="0.01" value={minQty} onChange={e => setMinQty(e.target.value)} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue font-bold text-center text-xl mb-4"/>
                     <button disabled={isPending} onClick={handleSaveMin} className="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl hover:bg-slate-800 transition shadow-md">
                         Salvar Limite
@@ -747,7 +771,7 @@ export default function EstoqueClient({ initialProducts }: any) {
                                                                 >
                                                                     <option value="" disabled className="text-gray-400">--- Seleção no Sistema ---</option>
                                                                     <option value="NEW" className="font-bold text-emerald-600 bg-emerald-50">✨ Criar Novo Produto</option>
-                                                                    {products.map((p: any) => (
+                                                                    {products.map((p) => (
                                                                         <option key={p.id} value={p.id}>{p.iconUrl} {p.name}</option>
                                                                     ))}
                                                                 </select>
@@ -779,10 +803,10 @@ export default function EstoqueClient({ initialProducts }: any) {
                                                         </tr>
                                                     );
                                                 })}
-                                                {(!parsedNfData.produtos || parsedNfData.produtos.length === 0) && (
+                                                {(!parsedNfData?.produtos || parsedNfData.produtos.length === 0) && (
                                                     <tr>
-                                                        <td colSpan={4} className="p-8 text-center text-gray-500 font-medium bg-white">
-                                                            {parsedNfData.isManual ? "Tabela vazia. Comece adicionando o primeiro produto logo abaixo." : "A IA não encontrou itens claros. Cancele e tire uma foto mais focada!"}
+                                                        <td colSpan={6} className="p-8 text-center text-gray-500 font-medium bg-white">
+                                                            {parsedNfData?.isManual ? "Tabela vazia. Comece adicionando o primeiro produto logo abaixo." : "A IA não encontrou itens claros. Cancele e tire uma foto mais focada!"}
                                                         </td>
                                                     </tr>
                                                 )}
