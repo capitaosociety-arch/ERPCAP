@@ -2,11 +2,62 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabaseAdmin } from "@/lib/supabase";
 
-export const maxDuration = 60; // Timeout de 60s para processamento da IA
+export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-// Modelo atualizado para gemini-2.0-flash (gemini-1.5-flash foi descontinuado)
+// Modelos em ordem de preferência (fallback automático)
+const MODELS_FALLBACK = [
+    "gemini-2.0-flash-lite",   // Menor cota de uso, mais disponível
+    "gemini-2.0-flash",        // Principal
+    "gemini-1.5-flash-latest", // Fallback legado
+];
+
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Tenta gerar conteúdo com retry automático e fallback de modelos
+async function generateWithRetry(buffer: Buffer, mimeType: string, prompt: string): Promise<string> {
+    for (let modelIdx = 0; modelIdx < MODELS_FALLBACK.length; modelIdx++) {
+        const modelName = MODELS_FALLBACK[modelIdx];
+        
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                console.log(`Tentando modelo: ${modelName}, tentativa ${attempt}`);
+                const model = genAI.getGenerativeModel({ model: modelName });
+                const inlineData = { data: buffer.toString("base64"), mimeType };
+                const result = await model.generateContent([prompt, { inlineData }]);
+                return result.response.text();
+            } catch (err: any) {
+                const msg = err.message || "";
+                const isRateLimit = msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota') || msg.includes('429');
+                const isNotFound = msg.includes('404') || msg.includes('not found');
+                
+                if (isNotFound) {
+                    // Modelo não existe, tentar o próximo imediatamente
+                    console.warn(`Modelo ${modelName} não encontrado, tentando próximo...`);
+                    break;
+                }
+                
+                if (isRateLimit && attempt < 3) {
+                    // Esperar progressivamente antes de tentar novamente
+                    const waitMs = attempt * 3000; // 3s, 6s
+                    console.warn(`Rate limit no modelo ${modelName}. Aguardando ${waitMs}ms...`);
+                    await sleep(waitMs);
+                    continue;
+                }
+                
+                if (attempt === 3 || !isRateLimit) {
+                    // Se foi o último attempt ou não é rate limit, tentar próximo modelo
+                    console.warn(`Falha no modelo ${modelName}:`, msg);
+                    break;
+                }
+            }
+        }
+    }
+    
+    throw new Error("Todos os modelos de IA falharam. Verifique sua chave de API ou tente novamente em alguns minutos.");
+}
 
 export async function POST(req: NextRequest) {
     const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "";
@@ -23,11 +74,11 @@ export async function POST(req: NextRequest) {
         }
 
         // Verificar tamanho do arquivo (limite de 20MB)
-        const maxSize = 20 * 1024 * 1024; // 20MB
+        const maxSize = 20 * 1024 * 1024;
         if (file.size > maxSize) {
             return NextResponse.json({ 
                 success: false, 
-                error: `Imagem muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Use uma foto com resolução menor ou comprima antes de enviar. Limite: 20MB.` 
+                error: `Imagem muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Use uma foto com resolução menor. Limite: 20MB.` 
             }, { status: 413 });
         }
 
@@ -41,9 +92,9 @@ export async function POST(req: NextRequest) {
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
 
-        // Upload para o Supabase Storage (Substitui o FS local para funcionar na Vercel)
+        // Upload para o Supabase Storage
         const fileName = `nf-${Date.now()}-${file.name.replace(/\s/g, '_')}`;
-        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+        const { error: uploadError } = await supabaseAdmin.storage
             .from('notas-fiscais')
             .upload(fileName, buffer, {
                 contentType: file.type,
@@ -52,7 +103,6 @@ export async function POST(req: NextRequest) {
 
         if (uploadError) {
             console.error("Erro no upload Supabase:", uploadError);
-            // Se falhar o upload, continuamos processando a IA, mas sem URL persistente
         }
 
         const { data: publicUrlData } = supabaseAdmin.storage
@@ -61,15 +111,6 @@ export async function POST(req: NextRequest) {
 
         const imageUrl = publicUrlData?.publicUrl || null;
 
-        // Modelo atualizado: gemini-2.0-flash (suporte a imagens, versão estavel)
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-        const mimeType = file.type;
-        const inlineData = {
-            data: buffer.toString("base64"),
-            mimeType,
-        };
-
-        // Enviar instrução exata para captura de metadados e itens
         const prompt = `Extraia os dados desta nota fiscal para um JSON rigoroso com: 
         fornecedor, 
         cnpj, 
@@ -79,10 +120,9 @@ export async function POST(req: NextRequest) {
         e uma lista de 'produtos' (nome, quantidade, preco_unitario). 
         Retorne APENAS o JSON puro. Não inclua Markdown.`;
 
-        const result = await model.generateContent([prompt, { inlineData }]);
-        const responseText = result.response.text();
+        // Chamar IA com retry automático e fallback de modelos
+        const responseText = await generateWithRetry(buffer, file.type, prompt);
         
-        // Função robusta para extrair apenas o objeto JSON do meio do texto
         const extractJson = (text: string) => {
             const start = text.indexOf('{');
             const end = text.lastIndexOf('}');
@@ -99,33 +139,14 @@ export async function POST(req: NextRequest) {
             data = JSON.parse(cleanJsonStr);
         } catch (parseError) {
             console.error("Erro ao processar JSON da IA:", responseText);
-            throw new Error("A IA retornou um formato inválido. Tente tirar uma foto melhor.");
+            throw new Error("A IA retornou um formato inválido. Tente tirar uma foto mais nítida.");
         }
 
-        return NextResponse.json({
-            success: true,
-            imageUrl,
-            data
-        });
+        return NextResponse.json({ success: true, imageUrl, data });
 
     } catch (error: any) {
         const msg = error.message || "Falha ao processar a imagem";
         console.error("Erro na API OCR:", msg);
-        
-        // Traduzir erros comuns da API do Gemini
-        if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
-            return NextResponse.json({ success: false, error: "Limite da API atingido. Tente novamente em instantes." }, { status: 429 });
-        }
-        if (msg.includes('INVALID_ARGUMENT') || msg.includes('inlineData')) {
-            return NextResponse.json({ success: false, error: "Imagem inválida ou corrompida. Tente novamente com outra foto." }, { status: 400 });
-        }
-        if (msg.includes('SAFETY')) {
-            return NextResponse.json({ success: false, error: "A imagem foi bloqueada por filtro de segurança. Tente com outra foto." }, { status: 400 });
-        }
-
-        return NextResponse.json({
-            success: false,
-            error: msg
-        }, { status: 500 });
+        return NextResponse.json({ success: false, error: msg }, { status: 500 });
     }
 }
