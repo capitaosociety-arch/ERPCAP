@@ -5,11 +5,11 @@ import { supabaseAdmin } from "@/lib/supabase";
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-// Modelos em ordem de preferência (fallback automático)
+// Modelos Gemini 2.5 ativos (2.0 foi descontinuado em março/2026)
 const MODELS_FALLBACK = [
-    "gemini-2.0-flash-lite",   // Menor cota de uso, mais disponível
-    "gemini-2.0-flash",        // Principal
-    "gemini-1.5-flash-latest", // Fallback legado
+    "gemini-2.5-flash-preview-04-17", // Mais recente com suporte a imagens
+    "gemini-2.5-flash",               // Estável série 2.5
+    "gemini-2.5-flash-lite-preview-06-17", // Mais leve, maior cota
 ];
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
