@@ -172,16 +172,20 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
   };
 
   const handleExportExcel = () => {
-    const exportData = products.map((p: any) => ({
-      "ID": p.id,
-      "Produto": p.name,
-      "Categoria": p.category?.name || "Sem categoria",
-      "Preço Custo (R$)": p.cost || 0,
-      "Preço Venda (R$)": p.price || 0,
-      "Estoque Atual": p.stock?.quantity || 0,
-      "Unidade": p.unit || "UN",
-      "Status": p.isActive ? "Ativo" : "Inativo"
-    }));
+    const exportData = products.map((p: any) => {
+      const profitPercent = p.cost > 0 ? ((p.price - p.cost) / p.cost) * 100 : 0;
+      return {
+        "ID": p.id,
+        "Produto": p.name,
+        "Categoria": p.category?.name || "Sem categoria",
+        "Preço Custo (R$)": p.cost || 0,
+        "Preço Venda (R$)": p.price || 0,
+        "Lucro (%)": profitPercent.toFixed(2) + "%",
+        "Estoque Atual": p.stock?.quantity || 0,
+        "Unidade": p.unit || "UN",
+        "Status": p.isActive ? "Ativo" : "Inativo"
+      };
+    });
     downloadExcel(exportData, "Relatorio_Produtos");
   };
 
@@ -214,6 +218,7 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                 <th className="p-4 font-bold">Categoria</th>
                 <th className="p-4 font-bold">Custo (Base)</th>
                 <th className="p-4 font-bold">Preço de Venda</th>
+                <th className="p-4 font-bold">Lucro (%)</th>
                 <th className="p-4 font-bold">Estoque</th>
                 <th className="p-4 font-bold text-right">Ações</th>
               </tr>
@@ -244,6 +249,15 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                   </td>
                   <td className="p-4 text-sm font-black text-slate-800">
                     <span className="text-gray-400 font-medium text-xs mr-1">R$</span>{product.price.toFixed(2).replace('.', ',')}
+                  </td>
+                  <td className="p-4">
+                    {product.cost > 0 ? (
+                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${((product.price - product.cost) / product.cost) * 100 > 50 ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-100 text-gray-600'}`}>
+                            {(((product.price - product.cost) / product.cost) * 100).toFixed(0)}%
+                        </span>
+                    ) : (
+                        <span className="text-xs text-gray-300 font-medium">---</span>
+                    )}
                   </td>
                   <td className="p-4">
                     <span className={`text-xs font-bold px-3 py-1.5 rounded-lg ${product.stock && product.stock.quantity > product.stock.minQuantity ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
@@ -308,6 +322,16 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Preço Venda (R$)</label>
                                 <input type="number" step="0.01" value={price} onChange={e => setPrice(e.target.value)} className="w-full bg-blue-50 border border-mrts-blue/30 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue focus:ring-1 focus:ring-mrts-blue font-black text-mrts-blue"/>
                             </div>
+                            
+                            {parseFloat(cost) > 0 && (
+                                <div className="col-span-2 bg-slate-50 border border-dashed border-gray-200 p-3 rounded-xl flex justify-between items-center">
+                                    <span className="text-xs font-bold text-gray-500 uppercase">Lucro Projetado (Markup):</span>
+                                    <span className={`text-sm font-black ${((parseFloat(price) - parseFloat(cost))/parseFloat(cost)*100) > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                        {(((parseFloat(price) - parseFloat(cost))/parseFloat(cost))*100).toFixed(2)}%
+                                    </span>
+                                </div>
+                            )}
+
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Nota Fiscal <span className="text-[10px] text-gray-400 normal-case font-normal">(Opcional)</span></label>
                                 <input type="text" placeholder="Ex: NF-e 1234..." value={invoice} onChange={e => setInvoice(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue focus:ring-1 focus:ring-mrts-blue font-medium text-slate-700"/>
@@ -399,6 +423,15 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                             <label className="block text-sm font-bold text-slate-700 mb-2">Preço Venda Final (R$)</label>
                             <input type="number" step="0.01" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full bg-white border border-mrts-blue/30 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue focus:ring-1 focus:ring-mrts-blue font-bold text-mrts-blue"/>
                         </div>
+
+                        {parseFloat(formData.cost) > 0 && (
+                            <div className="col-span-2 bg-blue-50/50 border border-dashed border-mrts-blue/20 p-3 rounded-xl flex justify-between items-center">
+                                <span className="text-xs font-bold text-slate-500 uppercase">Lucro Esperado:</span>
+                                <span className={`text-sm font-black ${((parseFloat(formData.price) - parseFloat(formData.cost))/parseFloat(formData.cost)*100) > 0 ? 'text-mrts-blue' : 'text-red-500'}`}>
+                                    {(((parseFloat(formData.price) - parseFloat(formData.cost))/parseFloat(formData.cost))*100).toFixed(2)}%
+                                </span>
+                            </div>
+                        )}
                     </div>
 
                     <button disabled={isPending} onClick={handleSaveProduct} className="w-full mt-4 bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-slate-800 transition shadow-lg disabled:opacity-50">

@@ -2,6 +2,7 @@
 
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
+import { createAuditLog } from "./audit";
 
 export async function upsertCustomer(data: {
     id?: string;
@@ -98,4 +99,41 @@ export async function createRental(customerId: string, resource: string, date: s
 
     revalidatePath("/clientes");
     return { success: true };
+}
+
+export async function deleteCustomer(id: string) {
+    if (!id) return { success: false, error: "ID inválido." };
+
+    try {
+        const customer = await prisma.customer.findUnique({
+            where: { id },
+            include: {
+                orders: true,
+                services: true
+            }
+        });
+
+        if (!customer) return { success: false, error: "Cliente não encontrado." };
+
+        // Integridade: Não excluir se houver pedidos ou serviços
+        if (customer.orders.length > 0 || customer.services.length > 0) {
+            return {
+                success: false,
+                error: "Não é possível excluir este cliente pois ele possui histórico de pedidos ou serviços vinculados. Recomendamos apenas desativar o registro para manter a integridade financeira."
+            };
+        }
+
+        await prisma.customer.delete({
+            where: { id }
+        });
+
+        // Registrar Log de Auditoria
+        await createAuditLog("Exclusão de Cliente", `O cliente ${customer.name} foi removido permanentemente.`);
+
+        revalidatePath("/clientes");
+        return { success: true };
+    } catch (error: any) {
+        console.error("ERRO_DELETE_CUSTOMER:", error);
+        return { success: false, error: "Erro ao excluir cliente: " + (error.message || "Erro desconhecido") };
+    }
 }

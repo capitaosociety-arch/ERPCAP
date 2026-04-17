@@ -2,6 +2,7 @@
 
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
+import { createAuditLog } from "./audit";
 
 export async function updateProductPrice(
     productId: string,
@@ -68,6 +69,7 @@ export async function upsertProduct(data: {
                 unit: data.unit
             }
         });
+        await createAuditLog("Edição de Produto", `Editou informações do produto ${data.name}.`);
     } else {
         await prisma.product.create({
             data: {
@@ -80,6 +82,7 @@ export async function upsertProduct(data: {
                 isActive: true
             }
         });
+        await createAuditLog("Novo Produto", `Criou o produto ${data.name} com preço R$ ${data.price}.`);
     }
 
     revalidatePath("/produtos");
@@ -159,6 +162,9 @@ export async function deleteProduct(productId: string) {
                 where: { id: productId }
             });
         });
+
+        // Registrar Log de Auditoria
+        await createAuditLog("Exclusão de Produto", `O produto ID ${productId} foi excluído permanentemente.`);
 
         revalidatePath("/produtos");
         revalidatePath("/pdv");

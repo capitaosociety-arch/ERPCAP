@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Plus, Edit3, X, User as UserIcon, Calendar, CheckCircle, AlertTriangle, Clock, CreditCard } from 'lucide-react';
-import { upsertCustomer, paySubscription, createRental } from '../../actions/customers';
+import { Plus, Edit3, X, User as UserIcon, Calendar, CheckCircle, AlertTriangle, Clock, CreditCard, Trash2 } from 'lucide-react';
+import { upsertCustomer, paySubscription, createRental, deleteCustomer } from '../../actions/customers';
 
 export default function ClientesClient({ initialCustomers }: any) {
   const [customers, setCustomers] = useState(initialCustomers);
@@ -92,6 +92,22 @@ export default function ClientesClient({ initialCustomers }: any) {
           await createRental(selectedCustomer.id, rentalResource, rentalDate, rentalStart, rentalEnd, parseFloat(rentalAmount.toString().replace(',','.')));
           alert("Agendamento criado!");
           window.location.reload();
+      });
+  };
+
+  const handleDeleteCustomer = () => {
+      if (!selectedCustomer) return;
+      if (!confirm("CUIDADO: Tem certeza que deseja excluir permanentemente este cliente? Esta ação não pode ser desfeita e removerá também assinaturas e agendamentos vinculados.")) return;
+
+      startTransition(async () => {
+          const res = await deleteCustomer(selectedCustomer.id);
+          if (res.success) {
+              alert("Cliente excluído com sucesso.");
+              setCustomerModalOpen(false);
+              window.location.reload();
+          } else {
+              alert(res.error || "Erro ao excluir cliente.");
+          }
       });
   };
 
@@ -241,6 +257,12 @@ export default function ClientesClient({ initialCustomers }: any) {
                             <button disabled={isPending} onClick={handleSaveCustomer} className="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl hover:bg-slate-800 transition shadow-md mt-2 disabled:opacity-50">
                                 {isPending ? 'Salvando...' : 'Salvar Ficha'}
                             </button>
+
+                            {selectedCustomer && (
+                                <button disabled={isPending} onClick={handleDeleteCustomer} className="w-full bg-red-50 text-red-600 border border-red-100 font-bold py-2.5 rounded-xl hover:bg-red-100 transition mt-1 disabled:opacity-50 flex items-center justify-center gap-2">
+                                    <Trash2 size={16} /> Excluir Cliente
+                                </button>
+                            )}
                         </div>
                         
                         {/* SUBSCRIPTION PAYMENTS SECTION */}

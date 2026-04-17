@@ -1,8 +1,12 @@
 'use client';
+import { useState } from 'react';
 import { signOut } from 'next-auth/react';
-import { LogOut, User as UserIcon, Menu } from 'lucide-react';
+import { LogOut, User as UserIcon, Menu, History } from 'lucide-react';
+import AuditLogModal from './AuditLogModal';
 
 export default function Topbar({ user, onOpenMenu }: { user: any, onOpenMenu?: () => void }) {
+  const [isAuditModalOpen, setAuditModalOpen] = useState(false);
+
   return (
     <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-4 md:px-6 shadow-sm z-10 w-full relative shrink-0">
       <div className="flex items-center gap-2">
@@ -18,6 +22,15 @@ export default function Topbar({ user, onOpenMenu }: { user: any, onOpenMenu?: (
       <div className="hidden md:block"></div>
 
       <div className="flex items-center gap-4">
+        <button 
+          onClick={() => setAuditModalOpen(true)}
+          className="flex items-center gap-2 text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 px-3 py-1.5 rounded-lg transition border border-slate-100"
+          title="Histórico de Operações"
+        >
+          <History size={16} />
+          <span className="text-sm font-bold hidden lg:inline">Histórico</span>
+        </button>
+
         <div className="flex items-center gap-2 text-sm bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
           <UserIcon size={16} className="text-gray-500" />
           <span className="font-semibold text-gray-700 hidden sm:inline">{user.name}</span>
@@ -30,6 +43,8 @@ export default function Topbar({ user, onOpenMenu }: { user: any, onOpenMenu?: (
           <LogOut size={16} />
           <span className="text-sm font-bold hidden sm:inline">Sair</span>
         </button>
+
+        <AuditLogModal isOpen={isAuditModalOpen} onClose={() => setAuditModalOpen(false)} />
       </div>
     </header>
   );

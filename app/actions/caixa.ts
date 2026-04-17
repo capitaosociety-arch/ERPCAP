@@ -4,6 +4,7 @@ import { prisma } from '../../lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../api/auth/[...nextauth]/route';
 import { revalidatePath } from 'next/cache';
+import { createAuditLog } from './audit';
 
 export async function openGlobalCashRegister(openingBal: number) {
     const session = await getServerSession(authOptions) as any;
@@ -20,6 +21,9 @@ export async function openGlobalCashRegister(openingBal: number) {
             openingBal
         }
     });
+
+    await createAuditLog("Abertura de Caixa", `Abriu o caixa do dia com saldo inicial de R$ ${openingBal}.`);
+
     revalidatePath('/financeiro');
     revalidatePath('/pdv');
     revalidatePath('/dashboard');
@@ -52,6 +56,9 @@ export async function closeGlobalCashRegister(registerId: string, closingBal: nu
             closedAt: new Date()
         }
     });
+
+    await createAuditLog("Fechamento de Caixa", `Fechou o caixa id [${registerId.slice(-6)}] com saldo final de R$ ${closingBal}.`);
+
     revalidatePath('/financeiro');
     revalidatePath('/pdv');
     revalidatePath('/dashboard');

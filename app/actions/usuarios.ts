@@ -3,6 +3,7 @@
 import { prisma } from '../../lib/prisma';
 import bcrypt from 'bcryptjs';
 import { revalidatePath } from 'next/cache';
+import { createAuditLog } from './audit';
 
 export async function getUsers() {
     return await prisma.user.findMany({
@@ -32,6 +33,8 @@ export async function createUser(data: any) {
             isActive: true
         }
     });
+
+    await createAuditLog("Matrícula de Usuário", `Cadastrou o usuário ${data.name} (${data.role}).`);
 
     revalidatePath('/usuarios');
 }
@@ -66,6 +69,9 @@ export async function toggleUserPermission(id: string, field: string) {
         where: { id },
         data: { [field]: !user[field] }
     });
+
+    await createAuditLog("Alteração de Permissão", `Alterou a permissão [${field}] do usuário ${user.name}.`);
+
     revalidatePath('/usuarios');
 }
 
@@ -77,6 +83,9 @@ export async function toggleUserStatus(id: string) {
         where: { id },
         data: { isActive: !user.isActive }
     });
+
+    await createAuditLog("Status de Acesso", `Alterou status de acesso de ${user.name} para ${!user.isActive ? 'ATIVO' : 'BLOQUEADO'}.`);
+
     revalidatePath('/usuarios');
 }
 

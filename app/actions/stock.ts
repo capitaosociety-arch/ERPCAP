@@ -2,6 +2,7 @@
 
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
+import { createAuditLog } from "./audit";
 
 export async function updateMinStock(productId: string, minQuantity: number) {
     if (!productId || minQuantity < 0) {
@@ -49,20 +50,23 @@ export async function registerStockMovement(
             data: { quantity: newQuantity }
         });
 
-        // Registrar o log
-        await tx.stockMovement.create({
-            data: {
-                productId,
-                type,
-                quantity,
-                notes: notes || null,
-                document: document || null,
-                date
-            }
+            // Registrar o log
+            await tx.stockMovement.create({
+                data: {
+                    productId,
+                    type,
+                    quantity,
+                    notes: notes || null,
+                    document: document || null,
+                    date
+                }
+            });
         });
-    });
 
-    revalidatePath("/estoque");
+        // Registrar Log de Auditoria
+        await createAuditLog("Movimentação de Estoque", `${type === 'IN' ? 'Entrada' : 'Saída'} manual de ${quantity} unidades.`);
+
+        revalidatePath("/estoque");
     return { success: true };
 }
 
@@ -143,6 +147,9 @@ export async function registerBatchStockMovement(
         }, {
             timeout: 10000 // Aumentar timeout para transações maiores
         });
+
+        // Registrar Log de Auditoria
+        await createAuditLog("Importação NF-e", `Importação de estoque via nota fiscal (${document}).`);
 
         revalidatePath("/estoque");
         return result;
