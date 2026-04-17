@@ -2,16 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabaseAdmin } from "@/lib/supabase";
 
-// Aumentar o limite de payload da API para aceitar fotos de celular (até 20MB)
-export const config = {
-    api: {
-        bodyParser: false,
-    },
-};
+export const maxDuration = 60; // Timeout de 60s para processamento da IA
+export const dynamic = 'force-dynamic';
 
-export const maxDuration = 60; // Timeout de 60s para o processamento da IA
-
-// Configuração da IA usando a versão estável
+// Modelo atualizado para gemini-2.0-flash (gemini-1.5-flash foi descontinuado)
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
 
 export async function POST(req: NextRequest) {
@@ -67,8 +61,8 @@ export async function POST(req: NextRequest) {
 
         const imageUrl = publicUrlData?.publicUrl || null;
 
-        // 2. Rota de API: Setup Gemini Flash (versão estável gemini-1.5-flash)
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        // Modelo atualizado: gemini-2.0-flash (suporte a imagens, versão estavel)
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         const mimeType = file.type;
         const inlineData = {
             data: buffer.toString("base64"),
