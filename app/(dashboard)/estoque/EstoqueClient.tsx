@@ -55,6 +55,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
   const [verifiedRows, setVerifiedRows] = useState<Set<number>>(new Set());
   const [imgZoom, setImgZoom] = useState(1);
   const [imgPos, setImgPos] = useState({ x: 0, y: 0 });
+  const [mobileTab, setMobileTab] = useState<'data' | 'photo'>('data'); // Mobile: aba ativa
 
   const [isPending, startTransition] = useTransition();
 
@@ -163,6 +164,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
               setVerifiedRows(new Set()); // Reset verification for new NF
               setImgZoom(1); // Reset zoom
               setImgPos({ x: 0, y: 0 });
+              setMobileTab('data'); // No mobile, começa na aba de dados
               // Agora usamos a URL persistente do Supabase Storage retornada pela API
               setNfImageUrl(res.imageUrl || (typeof window !== 'undefined' ? window.URL.createObjectURL(file) : null));
               
@@ -557,28 +559,49 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
       {isNfModalOpen && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex flex-col items-center justify-start sm:justify-center p-0 sm:p-4 overflow-hidden">
             <div className="bg-white/95 backdrop-blur-3xl sm:rounded-3xl w-full max-w-6xl shadow-2xl animate-in fade-in slide-in-from-bottom-4 flex flex-col border border-gray-100 h-[100dvh] sm:h-[90dvh] relative">
-                <div className="flex justify-between items-center p-6 border-b border-gray-100 text-slate-800 shrink-0 bg-white z-20 sm:rounded-t-3xl shadow-sm">
+                {/* HEADER */}
+                <div className="flex justify-between items-center px-4 py-3 sm:p-6 border-b border-gray-100 text-slate-800 shrink-0 bg-white z-20 sm:rounded-t-3xl shadow-sm">
                     <div>
-                        <h2 className="text-xl font-bold flex items-center gap-2">
-                            <Camera size={22} className="text-mrts-blue" />
+                        <h2 className="text-base sm:text-xl font-bold flex items-center gap-2">
+                            <Camera size={20} className="text-mrts-blue" />
                             Entrada Inteligente
                         </h2>
-                        <p className="text-xs text-gray-500 mt-1">A IA colete dados como Nº NF, Qtd., Preço e Produto.</p>
+                        <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 hidden sm:block">A IA coleta dados como Nº NF, Qtd., Preço e Produto.</p>
                     </div>
                     
+                    {/* ABAS MOBILE - só aparecem quando há foto e dados */}
+                    {nfImageUrl && parsedNfData && (
+                        <div className="flex sm:hidden bg-gray-100 rounded-full p-1 gap-1">
+                            <button
+                                onClick={() => setMobileTab('data')}
+                                className={`px-3 py-1.5 rounded-full text-xs font-bold transition ${mobileTab === 'data' ? 'bg-white text-slate-800 shadow-sm' : 'text-gray-500'}`}
+                            >
+                                📋 Dados
+                            </button>
+                            <button
+                                onClick={() => setMobileTab('photo')}
+                                className={`px-3 py-1.5 rounded-full text-xs font-bold transition ${mobileTab === 'photo' ? 'bg-white text-slate-800 shadow-sm' : 'text-gray-500'}`}
+                            >
+                                📷 Foto
+                            </button>
+                        </div>
+                    )}
+
                     <button onClick={() => {
                         setNfModalOpen(false);
                         setParsedNfData(null);
                         setNfImageUrl(null);
-                    }} className="w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full transition shrink-0">
-                        <X size={20} className="text-gray-500" />
+                    }} className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full transition shrink-0">
+                        <X size={18} className="text-gray-500" />
                     </button>
                 </div>
 
                 <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-                    {/* ESQUERDA: Visão da Foto da Nota (se existir) */}
+                    {/* PAINEL FOTO: Visível no desktop sempre, no mobile apenas na aba 'photo' */}
                     {nfImageUrl && (
-                        <div className="lg:w-5/12 bg-slate-900 border-r border-gray-200 flex flex-col relative overflow-hidden group/img">
+                        <div className={`lg:w-5/12 bg-slate-900 border-r border-gray-200 flex flex-col relative overflow-hidden group/img ${
+                            mobileTab === 'data' ? 'hidden lg:flex' : 'flex'
+                        }`}>
                             <div className="bg-gray-800/80 backdrop-blur-md p-2 text-center text-[10px] text-gray-300 uppercase font-black tracking-widest absolute top-0 w-full z-20 shadow-sm flex items-center justify-center gap-4">
                                 <span>Documento Original</span>
                                 <div className="flex items-center gap-1.5 bg-slate-700 rounded-full px-2 py-0.5 border border-slate-600">
@@ -615,8 +638,10 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                         </div>
                     )}
 
-                    {/* DIREITA: Tabela de Dados e Acertos */}
-                    <div className="flex-1 overflow-y-auto p-6 bg-slate-50 relative custom-scrollbar">
+                    {/* PAINEL DADOS: Visível no desktop sempre, no mobile apenas na aba 'data' */}
+                    <div className={`flex-1 overflow-y-auto p-3 sm:p-6 bg-slate-50 relative custom-scrollbar ${
+                        nfImageUrl && mobileTab === 'photo' ? 'hidden lg:block' : 'block'
+                    }`}>
                         {!parsedNfData ? (
                             <div className="h-full min-h-[400px] flex flex-col items-center justify-center bg-white border-2 border-dashed border-gray-200 rounded-3xl relative p-8 text-center transition hover:border-mrts-blue group shadow-sm">
                                 {isParsingNf ? (
