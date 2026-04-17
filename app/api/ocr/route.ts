@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabaseAdmin } from "@/lib/supabase";
 
-// 5. Configuração da IA usando a versão estável
+// Aumentar o limite de payload da API para aceitar fotos de celular (até 20MB)
+export const config = {
+    api: {
+        bodyParser: false,
+    },
+};
+
+export const maxDuration = 60; // Timeout de 60s para o processamento da IA
+
+// Configuração da IA usando a versão estável
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
 
 export async function POST(req: NextRequest) {
@@ -16,7 +25,23 @@ export async function POST(req: NextRequest) {
         const file = formData.get("file") as File;
         
         if (!file) {
-            return NextResponse.json({ success: false, error: "Nenhuma imagem fornecida" }, { status: 400 });
+            return NextResponse.json({ success: false, error: "Nenhuma imagem fornecida." }, { status: 400 });
+        }
+
+        // Verificar tamanho do arquivo (limite de 20MB)
+        const maxSize = 20 * 1024 * 1024; // 20MB
+        if (file.size > maxSize) {
+            return NextResponse.json({ 
+                success: false, 
+                error: `Imagem muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Use uma foto com resolução menor ou comprima antes de enviar. Limite: 20MB.` 
+            }, { status: 413 });
+        }
+
+        if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+            return NextResponse.json({ 
+                success: false, 
+                error: "Formato inválido. Envie uma imagem (JPG, PNG, WEBP) ou PDF." 
+            }, { status: 400 });
         }
 
         const bytes = await file.arrayBuffer();
@@ -90,10 +115,23 @@ export async function POST(req: NextRequest) {
         });
 
     } catch (error: any) {
-        console.error("Erro na API OCR:", error);
+        const msg = error.message || "Falha ao processar a imagem";
+        console.error("Erro na API OCR:", msg);
+        
+        // Traduzir erros comuns da API do Gemini
+        if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota')) {
+            return NextResponse.json({ success: false, error: "Limite da API atingido. Tente novamente em instantes." }, { status: 429 });
+        }
+        if (msg.includes('INVALID_ARGUMENT') || msg.includes('inlineData')) {
+            return NextResponse.json({ success: false, error: "Imagem inválida ou corrompida. Tente novamente com outra foto." }, { status: 400 });
+        }
+        if (msg.includes('SAFETY')) {
+            return NextResponse.json({ success: false, error: "A imagem foi bloqueada por filtro de segurança. Tente com outra foto." }, { status: 400 });
+        }
+
         return NextResponse.json({
             success: false,
-            error: error.message || "Falha ao processar a imagem OCR"
+            error: msg
         }, { status: 500 });
     }
 }

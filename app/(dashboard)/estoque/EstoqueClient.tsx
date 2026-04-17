@@ -187,8 +187,9 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
               alert("Erro na IA: " + (res.error || "Tente novamente."));
               setNfFile(null);
           }
-      } catch (err) {
-          alert("Falha de conexão com a API OCR.");
+      } catch (err: any) {
+          const errMsg = err?.message || "Falha de conexão com a API de leitura de notas.";
+          alert("Erro ao processar a imagem: " + errMsg);
           setNfFile(null);
       }
       setParsingNf(false);
