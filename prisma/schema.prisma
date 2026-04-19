@@ -287,6 +287,7 @@ model DepotMovement {
   quantity    Float
   notes       String?
   document    String?  // Number of NF ou Recibo
+  imageUrl    String?  // Link para imagem da nota
   date        DateTime @default(now())
 
   product     Product  @relation(fields: [productId], references: [id])

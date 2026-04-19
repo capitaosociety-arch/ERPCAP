@@ -265,3 +265,109 @@ export async function directTransfer(productId: string, quantity: number, notes?
     revalidatePath('/deposito');
     revalidatePath('/estoque');
 }
+
+// 9. ATUALIZAR ESTOQUE MÍNIMO DO DEPÓSITO
+export async function updateDepotMinStock(productId: string, minQuantity: number) {
+    const session = await verifyAuth();
+    if (session.role !== 'ADMIN' && session.role !== 'MANAGER') throw new Error("Acesso negado");
+
+    await prisma.depotStock.upsert({
+        where: { productId },
+        update: { minQuantity },
+        create: { productId, minQuantity, quantity: 0, unit: "UN" }
+    });
+
+    revalidatePath('/deposito');
+    return { success: true };
+}
+
+// 10. MOVIMENTAÇÃO EM LOTE NO DEPÓSITO (OCR / NF)
+export async function registerBatchDepotStockMovement(
+    movements: { productId: string, quantity: number, price?: number }[],
+    document: string,
+    imageUrl: string | null,
+    notes: string,
+    dateString: string
+) {
+    const session = await verifyAuth();
+    if (session.role !== 'ADMIN' && session.role !== 'MANAGER') throw new Error("Acesso negado");
+
+    if (!movements || movements.length === 0) {
+        throw new Error("Nenhum item válido para movimentar.");
+    }
+
+    try {
+        let date = new Date();
+        if (dateString) {
+            const parsedDate = new Date(dateString);
+            if (!isNaN(parsedDate.getTime())) {
+                date = parsedDate;
+            }
+        }
+
+        const result = await prisma.$transaction(async (tx) => {
+            for (const mov of movements) {
+                const qty = Number(mov.quantity) || 0;
+                const costPrice = Number(mov.price) || 0;
+
+                if (qty <= 0) continue;
+
+                // 1. Upsert do estoque do depósito
+                await tx.depotStock.upsert({
+                    where: { productId: mov.productId },
+                    update: {},
+                    create: { productId: mov.productId, quantity: 0, minQuantity: 5, unit: "UN" }
+                });
+
+                // 2. Atualizar estoque depósito (incremento)
+                await tx.depotStock.update({
+                    where: { productId: mov.productId },
+                    data: { quantity: { increment: qty } }
+                });
+
+                // 3. Registrar movimentação no depósito
+                await tx.depotMovement.create({
+                    data: {
+                        productId: mov.productId,
+                        type: "IN",
+                        quantity: qty,
+                        notes: notes || "Entrada via NF (IA) no Depósito",
+                        document: document || null,
+                        imageUrl: imageUrl || null,
+                        date
+                    }
+                });
+
+                // 4. Atualizar preço de custo do produto se válido
+                if (costPrice > 0) {
+                    await tx.product.update({
+                        where: { id: mov.productId },
+                        data: { cost: costPrice }
+                    });
+                    
+                    await tx.priceHistory.create({
+                        data: {
+                            productId: mov.productId,
+                            price: 0, 
+                            cost: costPrice,
+                            invoice: document || null,
+                            date
+                        }
+                    });
+                }
+            }
+            return { success: true };
+        }, {
+            timeout: 10000 
+        });
+
+        await createAuditLog("Importação NF Matriz", `Importação de depósito via nota fiscal (${document}).`);
+
+        revalidatePath("/deposito");
+        return result;
+    } catch (error: any) {
+        console.error("ERRO NO REGISTER_BATCH_DEPOTSTOCK_MOVEMENT:", error);
+        throw new Error(error.message || "Erro interno ao processar lote no depósito.");
+    }
+}
+
