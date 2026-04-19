@@ -1,4 +1,4 @@
-﻿'use server'
+'use server'
 
 import { getServerSession } from "next-auth";
 import { authOptions } from "../api/auth/[...nextauth]/route";
@@ -71,4 +71,53 @@ export async function getOrderWithPayments(orderId: string) {
         include: { payments: { orderBy: { date: 'desc' }} }
     });
 }
+
+export async function cancelOrderAction(orderId: string) {
+  const session = await getServerSession(authOptions) as any;
+  if (!session) throw new Error("Unauthorized");
+
+  await prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      include: { items: true }
+    });
+
+    if (!order) throw new Error("Pedido não encontrado");
+    if (order.status !== "OPEN") throw new Error("Apenas pedidos abertos podem ser cancelados");
+
+    // Estorna Estoque
+    for (const item of order.items) {
+      if (item.productId) {
+        const stock = await tx.stock.findUnique({ where: { productId: item.productId } });
+        if (stock) {
+          await tx.stock.update({
+            where: { id: stock.id },
+            data: { quantity: { increment: item.quantity } }
+          });
+
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: 'IN', // Devolução
+              quantity: item.quantity,
+              notes: `Estorno: Venda PDV Cancelada (Cod ${order.id})`
+            }
+          });
+        }
+      }
+    }
+
+    // Marca como cancelado (Podemos também deletar para não lixar o banco, mas CANCELED é melhor para auditoria)
+    await tx.order.update({
+      where: { id: orderId },
+      data: { status: "CANCELED", notes: (order.notes || "") + " [CANCELADO]" }
+    });
+  });
+
+  revalidatePath('/dashboard');
+  revalidatePath('/mesas');
+  revalidatePath('/estoque');
+  return { success: true };
+}
+
 

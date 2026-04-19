@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { processCheckoutAction, getOrderWithPayments } from '../../actions/checkout';
+import { processCheckoutAction, getOrderWithPayments, cancelOrderAction } from '../../actions/checkout';
 import { processPayment, addItemToOrder } from '../../actions/comandas';
 import { openGlobalCashRegister, closeGlobalCashRegister, getRegisterSummary } from '../../actions/caixa';
 import { Check, Search, X, Receipt, QrCode, CreditCard, Banknote, ShoppingCart, Plus, ShoppingBag, Lock, Unlock } from 'lucide-react';
@@ -102,6 +102,22 @@ export default function PDVClient({ products, services = [], categories, user, o
            const balance = updatedOrder.total - updatedOrder.discount - totalPaid;
            setPaymentAmount(Math.max(0, balance).toFixed(2));
        }
+  };
+
+  const handleCancelPaymentOperation = async () => {
+      if (!paymentOrder) return;
+      if (!window.confirm("Deseja cancelar esta operação? Os itens serão devolvidos ao estoque e a venda de balcão será encerrada.")) return;
+      
+      setPayLoading(true);
+      try {
+          await cancelOrderAction(paymentOrder.id);
+          setIsPaymentModalOpen(false);
+          setPaymentOrder(null);
+          // Opcional: recarregar ou avisar
+      } catch (e: any) {
+          alert("Erro ao cancelar: " + e.message);
+      }
+      setPayLoading(false);
   };
 
   // Botao Magico para retocar pedido caso esqueceram algo
@@ -389,7 +405,7 @@ export default function PDVClient({ products, services = [], categories, user, o
                         </h2>
                         <p className="text-sm text-gray-500 font-medium mt-1">Lançado via Balcão / Operador: {user?.name}</p>
                     </div>
-                    <button onClick={() => setIsPaymentModalOpen(false)} className="w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-500 rounded-full transition" title="Fechar Janela (Deixar pendente)">
+                    <button onClick={handleCancelPaymentOperation} className="w-10 h-10 flex items-center justify-center bg-red-50 hover:bg-red-100 text-red-500 rounded-full transition" title="Cancelar Venda e Estornar Estoque">
                         <X size={20} />
                     </button>
                 </div>
@@ -458,8 +474,8 @@ export default function PDVClient({ products, services = [], categories, user, o
                         <button disabled={payLoading} onClick={() => setIsProductModalOpen(true)} className="flex-[1.5] font-bold text-mrts-blue bg-blue-50 border border-blue-100 hover:bg-blue-100 py-4 rounded-xl transition flex justify-center items-center gap-2 shadow-sm text-sm">
                            <Plus size={18} strokeWidth={3} /> ADD ITEM
                         </button>
-                        <button disabled={payLoading} onClick={() => { setIsPaymentModalOpen(false); alert("Você deixou a venda Pendente (em aberto). Ficará visível na listagem Cód. Avulso."); }} className="flex-1 font-bold text-gray-500 hover:text-gray-700 hover:bg-gray-100 py-4 border-2 border-gray-200 rounded-xl transition text-sm">
-                            Em Haver
+                        <button disabled={payLoading} onClick={handleCancelPaymentOperation} className="flex-1 font-bold text-red-500 hover:text-white hover:bg-red-500 py-4 border-2 border-red-200 rounded-xl transition text-sm">
+                            Cancelar Venda
                         </button>
                     </div>
                     <button disabled={payLoading} onClick={handleConfirmPayment} className="w-full sm:flex-[2.5] bg-green-500 text-white font-black py-4 rounded-xl hover:bg-green-600 shadow-xl shadow-green-500/30 transition flex items-center justify-center gap-2">
