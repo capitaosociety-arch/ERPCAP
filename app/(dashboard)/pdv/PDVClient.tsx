@@ -389,6 +389,9 @@ export default function PDVClient({ products, services = [], categories, user, o
                         </h2>
                         <p className="text-sm text-gray-500 font-medium mt-1">Lançado via Balcão / Operador: {user?.name}</p>
                     </div>
+                    <button onClick={() => setIsPaymentModalOpen(false)} className="w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-500 rounded-full transition" title="Fechar Janela (Deixar pendente)">
+                        <X size={20} />
+                    </button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 mb-6">

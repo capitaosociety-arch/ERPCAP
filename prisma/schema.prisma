@@ -24,6 +24,7 @@ model User {
   permCustomers   Boolean @default(false)
   permFinance     Boolean @default(false)
   permUsers       Boolean @default(false)
+  permDepot       Boolean @default(false)
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -115,6 +116,8 @@ model Product {
   stock       Stock?
   stockMovements StockMovement[]
   priceHistories PriceHistory[]
+  depotStock       DepotStock?
+  depotMovements   DepotMovement[]
 }
 
 model ProductCategory {
@@ -262,4 +265,26 @@ model FinancialEntry {
   notes            String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+model DepotStock {
+  id          String   @id @default(cuid())
+  productId   String   @unique
+  quantity    Float    @default(0)
+  minQuantity Float    @default(5)
+  unit        String   @default("UN")
+  
+  product     Product  @relation(fields: [productId], references: [id])
+}
+
+model DepotMovement {
+  id          String   @id @default(cuid())
+  productId   String
+  type        String   // IN, OUT_TRANSFER, LOSS, ADJUSTMENT
+  quantity    Float
+  notes       String?
+  document    String?  // Number of NF ou Recibo
+  date        DateTime @default(now())
+
+  product     Product  @relation(fields: [productId], references: [id])
 }

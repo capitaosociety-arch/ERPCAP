@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { createAuditLog } from './audit';
 
 export async function openGlobalCashRegister(openingBal: number) {
-    const session = await getServerSession(authOptions) as any;
+    const session = await getServerSession(authOptions) as { user?: { name?: string | null, email?: string | null, image?: string | null, id?: string } } | null;
     const userId = session?.user?.id || (await prisma.user.findFirst())?.id;
     if (!userId) throw new Error('Unauthorized');
 
@@ -30,7 +30,7 @@ export async function openGlobalCashRegister(openingBal: number) {
 }
 
 export async function closeGlobalCashRegister(registerId: string, closingBal: number, notes?: string) {
-    const session = await getServerSession(authOptions) as any;
+    const session = await getServerSession(authOptions) as { user?: { name?: string | null, email?: string | null, image?: string | null, id?: string } } | null;
     const userId = session?.user?.id || (await prisma.user.findFirst())?.id;
     if (!userId) throw new Error('Unauthorized');
 
@@ -96,7 +96,7 @@ export async function closeGlobalCashRegister(registerId: string, closingBal: nu
 }
 
 export async function getRegisterSummary(registerId: string) {
-    const session = await getServerSession(authOptions) as any;
+    const session = await getServerSession(authOptions);
     if (!session) throw new Error('Unauthorized');
 
     const registerToClose = await prisma.cashRegister.findUnique({
@@ -115,16 +115,16 @@ export async function getRegisterSummary(registerId: string) {
         _sum: { amount: true }
     });
 
-    const expectedCashInDrawer = registerToClose.openingBal + (payments.find((p: any) => p.method === 'CASH')?._sum?.amount || 0);
+    const expectedCashInDrawer = registerToClose.openingBal + (payments.find(p => p.method === 'CASH')?._sum?.amount || 0);
 
-    const methodsMap: any = {
+    const methodsMap: Record<string, string> = {
         'CASH': 'Dinheiro',
         'PIX': 'PIX',
         'CREDIT': 'Cartão de Crédito',
         'DEBIT': 'Cartão de Débito'
     };
 
-    const formattedPayments = payments.map((p: any) => ({
+    const formattedPayments = payments.map(p => ({
         methodName: methodsMap[p.method] || p.method,
         amount: p._sum.amount || 0
     }));
@@ -147,7 +147,7 @@ export async function getRegisterSummary(registerId: string) {
 
     const productSummary: Record<string, { name: string, quantity: number, total: number }> = {};
     
-    orderItems.forEach((item: any) => {
+    orderItems.forEach(item => {
         const key = item.productId ? `p_${item.productId}` : (item.serviceId ? `s_${item.serviceId}` : item.id);
         const name = item.product?.name || item.service?.name || 'Item Avulso/Desconhecido';
         
@@ -158,8 +158,8 @@ export async function getRegisterSummary(registerId: string) {
         productSummary[key].total += item.subtotal;
     });
 
-    const productsSold = Object.values(productSummary).sort((a: any, b: any) => b.quantity - a.quantity);
-    const sumAllPayments = formattedPayments.reduce((acc: number, p: any) => acc + p.amount, 0);
+    const productsSold = Object.values(productSummary).sort((a, b) => b.quantity - a.quantity);
+    const sumAllPayments = formattedPayments.reduce((acc: number, p) => acc + p.amount, 0);
 
     return {
         openOrdersCount,
