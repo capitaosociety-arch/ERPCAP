@@ -7,10 +7,11 @@ import {
 } from 'recharts';
 import { 
     DollarSign, Wallet, Activity, Database, Users, Lock, Unlock, ArrowRight, Sheet, 
-    Plus, Calendar, CheckCircle, XCircle, Trash2, Filter, AlertCircle, TrendingUp, TrendingDown 
+    Plus, Calendar, CheckCircle, XCircle, Trash2, Filter, AlertCircle, TrendingUp, TrendingDown, Eye, CreditCard, Banknote, ShoppingBag 
 } from 'lucide-react';
 import { downloadExcel } from '../../../lib/excel-export';
 import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry } from '../../actions/financeiro';
+import { getRegisterSummary } from '../../actions/caixa';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#0ea5e9'];
 
@@ -37,6 +38,10 @@ export default function FinanceiroClient({ payload }: any) {
     reference: `${new Date().getMonth() + 1}/${new Date().getFullYear()}`,
     installments: 1
   });
+
+  const [selectedCashRegister, setSelectedCashRegister] = useState<any>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
   const todayVal = dailyChart[dailyChart.length - 1]?.valor || 0;
   
@@ -94,6 +99,21 @@ export default function FinanceiroClient({ payload }: any) {
       startTransition(async () => {
           await deleteFinancialEntry(id);
       });
+  };
+
+  const handleViewDetails = async (cash: any) => {
+      setLoadingDetails(true);
+      setIsDetailsModalOpen(true);
+      try {
+          const summary = await getRegisterSummary(cash.id);
+          setSelectedCashRegister(summary);
+      } catch (e) {
+          console.error(e);
+          alert('Erro ao carregar os detalhes do caixa');
+          setIsDetailsModalOpen(false);
+      } finally {
+          setLoadingDetails(false);
+      }
   };
 
   const filteredEntries = financialEntries.filter((e: any) => {
@@ -327,6 +347,7 @@ export default function FinanceiroClient({ payload }: any) {
                         <th className="p-4 border-l border-gray-100">Fundo Troco</th>
                         <th className="p-4 border-r border-gray-100">Saldo Final</th>
                         <th className="p-4">Diferença</th>
+                        <th className="p-4 text-center">Ações</th>
                     </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
@@ -382,6 +403,11 @@ export default function FinanceiroClient({ payload }: any) {
                                     ) : (
                                         <span className="text-gray-300 text-[10px] italic">Em curso</span>
                                     )}
+                                </td>
+                                <td className="p-4 text-center">
+                                    <button onClick={() => handleViewDetails(cash)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-lg transition" title="Ver Detalhes do Turno">
+                                        <Eye size={16}/>
+                                    </button>
                                 </td>
                             </tr>
                         )
@@ -550,6 +576,81 @@ export default function FinanceiroClient({ payload }: any) {
                         </button>
                     </div>
                   </form>
+              </div>
+          </div>
+      )}
+
+      {/* MODAL DETALHES DA SESSÃO DO CAIXA */}
+      {isDetailsModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl animate-in zoom-in flex flex-col overflow-hidden border border-gray-100 max-h-[90vh]">
+                  <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-slate-900 text-white">
+                      <h2 className="text-xl font-black flex items-center gap-2">
+                          <Wallet size={22} className="text-mrts-blue" /> Auditoria Detalhada de Sessão (Caixa)
+                      </h2>
+                      <button onClick={() => { setIsDetailsModalOpen(false); setSelectedCashRegister(null); }} className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full transition">
+                          <XCircle size={20} />
+                      </button>
+                  </div>
+                  
+                  <div className="p-6 flex-1 overflow-y-auto bg-slate-50">
+                      {loadingDetails ? (
+                        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+                           <div className="w-10 h-10 border-4 border-gray-200 border-t-mrts-blue rounded-full animate-spin mb-4"></div>
+                           <p className="font-bold">Buscando espelho completo de vendas...</p>
+                        </div>
+                      ) : selectedCashRegister ? (
+                        <div className="space-y-6">
+                            <div className="bg-white border text-center border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 w-full h-1 bg-gradient-to-r from-blue-500 to-green-500 left-0"></div>
+                                <h3 className="text-lg font-bold text-slate-800 mb-1">Apuração Bruta de Receitas Deste Turno</h3>
+                                <p className="text-4xl font-black text-slate-900">R$ {selectedCashRegister.sumAllPayments.toFixed(2).replace('.', ',')}</p>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* Tabela Resumo Pagamentos */}
+                                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+                                    <h4 className="text-sm uppercase tracking-wider font-bold text-gray-500 mb-6 flex items-center gap-2"><CreditCard size={18}/> Dinheiro, Cartões e Transações</h4>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center py-2 border-b border-dashed border-gray-200">
+                                           <span className="font-bold text-slate-700">Fundo de Troco Operacional (Entrada)</span>
+                                           <span className="font-black text-gray-500">R$ {selectedCashRegister.openingBal.toFixed(2).replace('.', ',')}</span>
+                                        </div>
+                                        {selectedCashRegister.payments.map((p: any, i: number) => (
+                                            <div key={i} className="flex justify-between items-center py-2 border-b border-dashed border-gray-200">
+                                                <span className="font-bold text-slate-700">{p.methodName}</span>
+                                                <span className="font-black text-green-600">+ R$ {p.amount.toFixed(2).replace('.', ',')}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="mt-8 bg-slate-900 text-white rounded-xl p-5 border border-slate-700 shadow-inner ring-4 ring-slate-900/5">
+                                        <p className="text-[11px] font-bold text-green-400 mb-1 uppercase tracking-wider">Dinheiro Em Gaveta Declarado</p>
+                                        <p className="text-3xl font-black flex items-center gap-2"><Banknote size={28}/> R$ {selectedCashRegister.expectedCashInDrawer.toFixed(2).replace('.', ',')}</p>
+                                    </div>
+                                </div>
+
+                                {/* Tabela Resumo Produtos */}
+                                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col">
+                                    <h4 className="text-sm uppercase tracking-wider font-bold text-gray-500 mb-6 flex items-center gap-2"><ShoppingBag size={18}/> Inventário Liquidado na Sessão</h4>
+                                    <div className="overflow-y-auto flex-1 pr-2 space-y-2 relative h-64 hide-scrollbar">
+                                        {selectedCashRegister.productsSold.length === 0 && <p className="text-sm text-gray-400 italic text-center py-10 font-bold">Nenhum espelho de estoque consumido.</p>}
+                                        {selectedCashRegister.productsSold.map((prod: any, i: number) => (
+                                            <div key={i} className="flex justify-between items-center bg-slate-50/80 p-3 rounded-xl border border-gray-100 hover:border-mrts-blue transition">
+                                                <div className="flex-1 min-w-0 pr-3">
+                                                    <p className="font-bold text-slate-800 text-sm truncate">{prod.name}</p>
+                                                    <p className="text-[11px] uppercase tracking-wide text-mrts-blue font-black mt-0.5">{prod.quantity} volumes líquidos</p>
+                                                </div>
+                                                <div className="text-right shrink-0">
+                                                    <p className="font-black text-slate-900 text-sm">R$ {prod.total.toFixed(2).replace('.', ',')}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                      ) : null}
+                  </div>
               </div>
           </div>
       )}

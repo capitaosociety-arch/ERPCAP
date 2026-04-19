@@ -166,6 +166,7 @@ model CashRegister {
   status      String   @default("OPEN") // OPEN, CLOSED
   openingBal  Float    @default(0.0)
   closingBal  Float?
+  notes       String?
   openedAt    DateTime @default(now())
   closedAt    DateTime?
   
