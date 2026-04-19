@@ -7,19 +7,20 @@ import { revalidatePath } from 'next/cache';
 import { createAuditLog } from './audit';
 
 async function verifyAuth(requiredPerm: string = 'permDepot') {
-    const session = await getServerSession(authOptions) as { user?: { id?: string } } | null;
-    if (!session || !session.user || !session.user.id) throw new Error('Unauthorized');
+    const session = await getServerSession(authOptions);
+    if (!session || !session.user || !(session.user as any).id) throw new Error('Unauthorized');
 
-    const dbUser = await prisma.user.findUnique({ where: { id: session.user.id } });
+    const userId = (session.user as any).id;
+    const dbUser = await prisma.user.findUnique({ where: { id: userId } });
     if (!dbUser) throw new Error('User not found');
     
-    // Fix for the Type Error in build: safety casting to unknown then to the record
     if (dbUser.role !== 'ADMIN') {
-        const dbPerms = dbUser as unknown as Record<string, boolean>;
+        const dbPerms = dbUser as any;
         if (!dbPerms[requiredPerm]) throw new Error('Access denied');
     }
     return dbUser;
 }
+
 
 // 1. Listar todo o inventário (visão geral do Depósito)
 export async function getDepotInventory() {
@@ -268,8 +269,9 @@ export async function directTransfer(productId: string, quantity: number, notes?
 
 // 9. ATUALIZAR ESTOQUE MÍNIMO DO DEPÓSITO
 export async function updateDepotMinStock(productId: string, minQuantity: number) {
-    const session = await verifyAuth();
-    if (session.role !== 'ADMIN' && session.role !== 'MANAGER') throw new Error("Acesso negado");
+    const user = await verifyAuth();
+    if (user.role !== 'ADMIN' && user.role !== 'MANAGER') throw new Error("Acesso negado");
+
 
     await prisma.depotStock.upsert({
         where: { productId },
@@ -289,8 +291,9 @@ export async function registerBatchDepotStockMovement(
     notes: string,
     dateString: string
 ) {
-    const session = await verifyAuth();
-    if (session.role !== 'ADMIN' && session.role !== 'MANAGER') throw new Error("Acesso negado");
+    const user = await verifyAuth();
+    if (user.role !== 'ADMIN' && user.role !== 'MANAGER') throw new Error("Acesso negado");
+
 
     if (!movements || movements.length === 0) {
         throw new Error("Nenhum item válido para movimentar.");

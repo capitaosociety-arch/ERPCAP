@@ -7,9 +7,10 @@ import { revalidatePath } from 'next/cache';
 import { createAuditLog } from './audit';
 
 export async function openGlobalCashRegister(openingBal: number) {
-    const session = await getServerSession(authOptions) as { user?: { name?: string | null, email?: string | null, image?: string | null, id?: string } } | null;
-    const userId = session?.user?.id || (await prisma.user.findFirst())?.id;
+    const session = await getServerSession(authOptions);
+    const userId = (session?.user as any)?.id || (await prisma.user.findFirst())?.id;
     if (!userId) throw new Error('Unauthorized');
+
 
     const openRegister = await prisma.cashRegister.findFirst({ where: { status: 'OPEN' }, include: { user: true } });
     if (openRegister) throw new Error(`Já existe um caixa aberto no sistema por ${openRegister.user.name}. Feche-o e faça a conferência antes de abrir um novo para os próximos dias.`);
@@ -30,9 +31,10 @@ export async function openGlobalCashRegister(openingBal: number) {
 }
 
 export async function closeGlobalCashRegister(registerId: string, closingBal: number, notes?: string) {
-    const session = await getServerSession(authOptions) as { user?: { name?: string | null, email?: string | null, image?: string | null, id?: string } } | null;
-    const userId = session?.user?.id || (await prisma.user.findFirst())?.id;
+    const session = await getServerSession(authOptions);
+    const userId = (session?.user as any)?.id || (await prisma.user.findFirst())?.id;
     if (!userId) throw new Error('Unauthorized');
+
 
     const registerToClose = await prisma.cashRegister.findUnique({
         where: { id: registerId },
