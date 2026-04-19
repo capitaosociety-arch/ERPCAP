@@ -5,8 +5,8 @@ import { prisma } from '../../../lib/prisma';
 import DepotClient from './DepotClient';
 
 export default async function DepotPage() {
-    const session = await getServerSession(authOptions) as any;
-    if (!session) redirect('/login');
+    const session = await getServerSession(authOptions) as { user?: { id?: string } } | null;
+    if (!session || !session.user || !session.user.id) redirect('/login');
 
     const dbUser = await prisma.user.findUnique({
         where: { id: session.user.id }
@@ -16,6 +16,7 @@ export default async function DepotPage() {
         redirect('/dashboard');
     }
 
+    // Carregar Inventário
     const inventory = await prisma.product.findMany({
         where: { isActive: true },
         include: {
@@ -26,5 +27,19 @@ export default async function DepotPage() {
         orderBy: { name: 'asc' }
     });
 
-    return <DepotClient initialInventory={inventory} />;
+    // Carregar Solicitações (Pendentes primeiro)
+    const requests = await prisma.transferRequest.findMany({
+        include: {
+            product: true,
+            user: true,
+            authorizedBy: true
+        },
+        orderBy: { createdAt: 'desc' }
+    });
+
+    return <DepotClient 
+        initialInventory={inventory} 
+        initialRequests={requests} 
+        userRole={dbUser.role} 
+    />;
 }

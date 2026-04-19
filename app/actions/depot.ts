@@ -12,8 +12,11 @@ async function verifyAuth(requiredPerm: string = 'permDepot') {
 
     const dbUser = await prisma.user.findUnique({ where: { id: session.user.id } });
     if (!dbUser) throw new Error('User not found');
-    if (dbUser.role !== 'ADMIN' && !(dbUser as Record<string, boolean>)[requiredPerm]) {
-        throw new Error('Access denied');
+    
+    // Fix for the Type Error in build: safety casting to unknown then to the record
+    if (dbUser.role !== 'ADMIN') {
+        const dbPerms = dbUser as unknown as Record<string, boolean>;
+        if (!dbPerms[requiredPerm]) throw new Error('Access denied');
     }
     return dbUser;
 }
@@ -26,7 +29,8 @@ export async function getDepotInventory() {
         where: { isActive: true },
         include: {
             depotStock: true,
-            category: true
+            category: true,
+            stock: true
         },
         orderBy: { name: 'asc' }
     });
@@ -63,58 +67,139 @@ export async function addDepotStock(productId: string, quantity: number, documen
     revalidatePath('/deposito');
 }
 
-// 3. TRANSFERÊNCIA: Depot -> Estoque de Vendas
-export async function transferToFrontStock(productId: string, quantity: number, notes?: string) {
-    if (quantity <= 0) throw new Error('A quantidade transferida deve ser maior que zero.');
+// 3. SOLICITAR TRANSFERÊNCIA: Depot -> Estoque de Vendas
+export async function requestTransfer(productId: string, quantity: number, notes?: string) {
+    if (quantity <= 0) throw new Error('A quantidade deve ser maior que zero.');
+    const user = await verifyAuth();
+
+    // Validar se tem saldo no depósito antes de sequer solicitar (opcional mas recomendado)
+    const depot = await prisma.depotStock.findUnique({ where: { productId } });
+    if (!depot || depot.quantity < quantity) {
+        throw new Error(`Saldo insuficiente no depósito para solicitar transferência. Disponível: ${depot?.quantity || 0}`);
+    }
+
+    await prisma.transferRequest.create({
+        data: {
+            productId,
+            quantity,
+            userId: user.id,
+            notes: notes || 'Solicitação de abastecimento de balcão',
+            status: 'PENDING'
+        }
+    });
+
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    await createAuditLog("Solicitação de Transferência", `Solicitou a transferência de ${quantity} unidades de ${product?.name} para o estoque de vendas.`);
+
+    revalidatePath('/deposito');
+}
+
+// 4. LISTAR SOLICITAÇÕES
+export async function getTransferRequests() {
     await verifyAuth();
+    return await prisma.transferRequest.findMany({
+        include: {
+            product: true,
+            user: true,
+            authorizedBy: true
+        },
+        orderBy: { createdAt: 'desc' }
+    });
+}
+
+// 5. AUTORIZAR TRANSFERÊNCIA (Execução da movimentação física)
+export async function authorizeTransfer(requestId: string) {
+    const user = await verifyAuth(); // Garante que tem permDepot
+    
+    // Apenas Gerentes ou Admins podem autorizar (ou conforme regra de negócio)
+    if (user.role !== 'ADMIN' && user.role !== 'MANAGER') {
+        throw new Error('Apenas administradores ou gerentes podem autorizar transferências de estoque.');
+    }
 
     await prisma.$transaction(async (tx) => {
-        const depot = await tx.depotStock.findUnique({ where: { productId } });
-        if (!depot || depot.quantity < quantity) {
-            throw new Error(`Saldo insuficiente no depósito! Tentativa: ${quantity}, Disponível: ${depot?.quantity || 0}`);
+        const request = await tx.transferRequest.findUnique({
+            where: { id: requestId },
+            include: { product: true }
+        });
+
+        if (!request || request.status !== 'PENDING') {
+            throw new Error('Solicitação não encontrada ou já processada.');
         }
 
-        const product = await tx.product.findUnique({ where: { id: productId } });
+        const depot = await tx.depotStock.findUnique({ where: { productId: request.productId } });
+        if (!depot || depot.quantity < request.quantity) {
+            throw new Error(`Saldo insuficiente no depósito! Tentativa: ${request.quantity}, Disponível: ${depot?.quantity || 0}`);
+        }
 
-        // 3.1) Deduzir do Depósito
+        // A) Deduzir do Depósito
         await tx.depotStock.update({
-            where: { productId },
-            data: { quantity: { decrement: quantity } }
+            where: { productId: request.productId },
+            data: { quantity: { decrement: request.quantity } }
         });
         
         await tx.depotMovement.create({
             data: {
-                productId,
+                productId: request.productId,
                 type: 'OUT_TRANSFER',
-                quantity: quantity,
-                notes: notes || 'Transferência unilateral para Prateleiras/Pdv'
+                quantity: request.quantity,
+                notes: `Transferência Autorizada por ${user.name} [Ref: ${request.id.slice(-4)}]`
             }
         });
 
-        // 3.2) Abastecer Estoque "Frente de Loja"
+        // B) Abastecer Estoque "Frente de Loja"
         await tx.stock.upsert({
-            where: { productId },
-            update: { quantity: { increment: quantity } },
-            create: { productId, quantity }
+            where: { productId: request.productId },
+            update: { quantity: { increment: request.quantity } },
+            create: { productId: request.productId, quantity: request.quantity }
         });
 
         await tx.stockMovement.create({
             data: {
-                productId,
-                type: 'IN', // Transferência
-                quantity: quantity,
-                notes: (notes ? notes : `MERCADORIA TRANSFERIDA DO DEPÓSITO`)
+                productId: request.productId,
+                type: 'IN',
+                quantity: request.quantity,
+                notes: `RECEBIMENTO VIA DEPÓSITO (Autorizado por ${user.name})`
             }
         });
 
-        await createAuditLog("Transferência de Estoque", `Enviou ${quantity} unidades de ${product?.name} do Depósito central para o Balcão/Vendas (Estoque de Retirada).`);
+        // C) Atualizar Status da Solicitação
+        await tx.transferRequest.update({
+            where: { id: requestId },
+            data: {
+                status: 'APPROVED',
+                authorizedById: user.id,
+                updatedAt: new Date()
+            }
+        });
+
+        await createAuditLog("Transferência Autorizada", `Autorizou e executou a transferência de ${request.quantity} unidades de ${request.product.name} do Depósito para o Balcão.`);
     });
 
     revalidatePath('/deposito');
     revalidatePath('/estoque');
-    revalidatePath('/pdv');
 }
 
+// 6. REJEITAR SOLICITAÇÃO
+export async function rejectTransfer(requestId: string, reason?: string) {
+    const user = await verifyAuth();
+    if (user.role !== 'ADMIN' && user.role !== 'MANAGER') {
+        throw new Error('Sem permissão para rejeitar solicitações.');
+    }
+
+    await prisma.transferRequest.update({
+        where: { id: requestId },
+        data: {
+            status: 'REJECTED',
+            authorizedById: user.id,
+            notes: reason ? `REJEITADO: ${reason}` : 'Rejeitado pelo supervisor',
+            updatedAt: new Date()
+        }
+    });
+
+    revalidatePath('/deposito');
+}
+
+// 7. REGISTRAR QUEBRA/PERDA NO DEPÓSITO
 export async function adjustDepotStockLoss(productId: string, quantityLost: number, notes?: string) {
     if (quantityLost <= 0) throw new Error('A quantidade deve ser maior que zero.');
     await verifyAuth();
@@ -144,4 +229,39 @@ export async function adjustDepotStockLoss(productId: string, quantityLost: numb
     });
     
     revalidatePath('/deposito');
+}
+
+// 8. TRANSFERÊNCIA DIRETA (Apenas para ADMINS)
+export async function directTransfer(productId: string, quantity: number, notes?: string) {
+    const user = await verifyAuth();
+    if (user.role !== 'ADMIN') throw new Error('Apenas administradores podem realizar transferência direta sem autorização prévia.');
+
+    await prisma.$transaction(async (tx) => {
+        const depot = await tx.depotStock.findUnique({ where: { productId } });
+        if (!depot || depot.quantity < quantity) {
+            throw new Error(`Saldo insuficiente no depósito!`);
+        }
+
+        await tx.depotStock.update({
+            where: { productId },
+            data: { quantity: { decrement: quantity } }
+        });
+
+        await tx.stock.upsert({
+            where: { productId },
+            update: { quantity: { increment: quantity } },
+            create: { productId, quantity }
+        });
+
+        await tx.depotMovement.create({
+            data: { productId, type: 'OUT_TRANSFER', quantity, notes: notes || 'Transferência Direta (Admin)' }
+        });
+
+        await tx.stockMovement.create({
+            data: { productId, type: 'IN', quantity, notes: 'Transferência Direta vinda do Depósito' }
+        });
+    });
+
+    revalidatePath('/deposito');
+    revalidatePath('/estoque');
 }

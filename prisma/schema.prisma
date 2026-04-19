@@ -33,6 +33,8 @@ model User {
   cashRegisters CashRegister[]
   orders        Order[]       @relation("CreatedOrders")
   payments      Payment[]
+  requestedTransfers  TransferRequest[] @relation("RequestedTransfers")
+  authorizedTransfers TransferRequest[] @relation("AuthorizedTransfers")
 }
 
 model Customer {
@@ -118,6 +120,7 @@ model Product {
   priceHistories PriceHistory[]
   depotStock       DepotStock?
   depotMovements   DepotMovement[]
+  transferRequests TransferRequest[]
 }
 
 model ProductCategory {
@@ -287,4 +290,20 @@ model DepotMovement {
   date        DateTime @default(now())
 
   product     Product  @relation(fields: [productId], references: [id])
+}
+
+model TransferRequest {
+  id              String   @id @default(cuid())
+  productId       String
+  quantity        Float
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  userId          String   // Solicitante
+  authorizedById  String?  // Autorizador
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  product         Product  @relation(fields: [productId], references: [id])
+  user            User     @relation("RequestedTransfers", fields: [userId], references: [id])
+  authorizedBy    User?    @relation("AuthorizedTransfers", fields: [authorizedById], references: [id])
 }
