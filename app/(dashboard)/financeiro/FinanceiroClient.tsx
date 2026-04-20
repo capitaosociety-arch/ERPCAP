@@ -360,7 +360,7 @@ export default function FinanceiroClient({ payload }: any) {
                             return acc;
                         }, { CASH: 0, PIX: 0, DEBIT: 0, CREDIT: 0 });
 
-                        const totalExpected = cash.openingBal + (byMethod.CASH || 0) + (byMethod.PIX || 0) + (byMethod.DEBIT || 0) + (byMethod.CREDIT || 0);
+                        const totalExpected = cash.openingBal + (byMethod.CASH || 0);
                         const difference = cash.closingBal !== null ? cash.closingBal - totalExpected : 0;
                         
                         return (
