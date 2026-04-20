@@ -442,9 +442,19 @@ export default function FinanceiroClient({ payload }: any) {
                                 </td>
                                 <td className="p-4">
                                     {cash.status === 'CLOSED' ? (
-                                        <span className={`text-[10px] px-2 py-0.5 rounded font-black border ${Math.abs(auditFisico) < 0.01 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-orange-50 text-orange-600 border-orange-100'}`}>
-                                            {Math.abs(auditFisico) < 0.01 ? 'CONFERIDO' : `R$ ${auditFisico.toFixed(2)}`}
-                                        </span>
+                                        Math.abs(auditFisico) < 0.01 ? (
+                                            <span className="text-[10px] px-2 py-0.5 rounded font-black border bg-emerald-50 text-emerald-600 border-emerald-100">
+                                                CONFERIDO
+                                            </span>
+                                        ) : auditFisico < 0 ? (
+                                            <span className="text-[10px] px-2 py-0.5 rounded font-black border bg-red-50 text-red-600 border-red-100">
+                                                R$ {auditFisico.toFixed(2).replace('.',',')} (FALTA)
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] px-2 py-0.5 rounded font-black border bg-blue-50 text-blue-600 border-blue-100">
+                                                + R$ {auditFisico.toFixed(2).replace('.',',')} (SOBRA)
+                                            </span>
+                                        )
                                     ) : (
                                         <span className="text-gray-300 text-[10px] italic">-</span>
                                     )}
