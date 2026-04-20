@@ -55,9 +55,11 @@ export async function closeGlobalCashRegister(registerId: string, closingBal: nu
         where: { status: 'OPEN' }
     });
 
+    /* 
     if (openOrdersCount > 0) {
         throw new Error(`AÇÃO BLOQUEADA: Existem ${openOrdersCount} comanda(s) ou venda(s) em aberto no sistema! Conclua os pagamentos pendentes ou cancele as vendas travadas antes de iniciar o fechamento do caixa.`);
     }
+    */
 
     // 2) Validar Diferença da Gaveta Físicamente informada
     const cashPayments = await prisma.payment.aggregate({
@@ -71,13 +73,9 @@ export async function closeGlobalCashRegister(registerId: string, closingBal: nu
     const expectedCashInDrawer = registerToClose.openingBal + (cashPayments._sum.amount || 0);
     const diff = closingBal - expectedCashInDrawer;
 
-    // Se a diferença for além de meros centavos/flutuação decimal...
+    // Apenas registrar a diferença, sem bloquear o fechamento (conforme solicitado pelo usuário)
     if (Math.abs(diff) > 0.01) {
-        if (diff < 0) {
-            throw new Error(`DIFERENÇA DE CAIXA DETECTADA! O valor inserido está incorreto. Está FALTANDO R$ ${Math.abs(diff).toFixed(2).replace('.', ',')} na gaveta. Contabilize novamente! O valor esperado de sangria é exato e não pode haver divergência.`);
-        } else {
-            throw new Error(`DIFERENÇA DE CAIXA DETECTADA! O valor inserido é superior. Está SOBRANDO R$ ${Math.abs(diff).toFixed(2).replace('.', ',')} na gaveta. Contabilize novamente! O valor provado em troco ou pagamentos em dinheiro deve bater exato.`);
-        }
+        // Log ou auditoria interna pode ser feita aqui, mas sem lançar erro.
     }
 
     await prisma.cashRegister.update({

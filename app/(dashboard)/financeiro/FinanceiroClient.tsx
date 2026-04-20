@@ -744,7 +744,7 @@ export default function FinanceiroClient({ payload }: any) {
                                         {selectedCashRegister.ordersWithDiscount.map((ord: any) => (
                                             <div key={ord.id} className="bg-white border border-red-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition">
                                                 <div className="flex justify-between items-start mb-3">
-                                                    <p className="font-bold text-slate-800 text-sm truncate pr-2">{ord.notes || 'Venda sem nome'}</p>
+                                                    <p className="font-bold text-slate-800 text-sm truncate pr-2">Comanda: {ord.notes || 'Sem identificação'}</p>
                                                     <span className="bg-red-50 text-red-600 text-[10px] px-2 py-1 rounded font-black uppercase shrink-0">- R$ {ord.discount.toFixed(2)}</span>
                                                 </div>
                                                 <div className="flex flex-wrap gap-1 mb-2">
