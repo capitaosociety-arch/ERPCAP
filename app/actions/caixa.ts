@@ -214,3 +214,43 @@ export async function getRegisterSummary(registerId: string) {
         }))
     };
 }
+
+export async function deleteCashSessionAction(sessionId: string) {
+    const session = await getServerSession(authOptions) as any;
+    if (!session || session.user.role !== 'ADMIN') {
+        throw new Error("Acesso negado. Apenas administradores podem excluir sessões de caixa.");
+    }
+
+    await prisma.$transaction(async (tx) => {
+        // 1. Identificar pagamentos e ordens desta sessão
+        const payments = await tx.payment.findMany({
+            where: { cashRegisterId: sessionId },
+            select: { id: true, orderId: true }
+        });
+
+        const orderIds = Array.from(new Set(payments.map(p => p.orderId)));
+
+        // 2. Deletar pagamentos da sessão
+        await tx.payment.deleteMany({
+            where: { cashRegisterId: sessionId }
+        });
+
+        // 3. Deletar ordens vinculadas (Lógica agressiva para limpeza de testes)
+        // Isso removerá todos os pedidos que foram liquidados neste caixa.
+        if (orderIds.length > 0) {
+            await tx.order.deleteMany({
+                where: { id: { in: orderIds } }
+            });
+        }
+
+        // 4. Deletar a sessão de caixa
+        await tx.cashRegister.delete({
+            where: { id: sessionId }
+        });
+        
+        await createAuditLog(`Exclusão de Sessão de Caixa ID: ${sessionId}`, `Toda a sessão e ordens liquidadas foram removidas.`);
+    });
+
+    revalidatePath("/financeiro");
+    revalidatePath("/dashboard");
+}

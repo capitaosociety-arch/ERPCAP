@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { downloadExcel } from '../../../lib/excel-export';
 import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry } from '../../actions/financeiro';
-import { getRegisterSummary } from '../../actions/caixa';
+import { getRegisterSummary, deleteCashSessionAction } from '../../actions/caixa';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#0ea5e9'];
 
@@ -98,6 +98,17 @@ export default function FinanceiroClient({ payload }: any) {
       if (!confirm('Tem certeza que deseja excluir este lançamento?')) return;
       startTransition(async () => {
           await deleteFinancialEntry(id);
+      });
+  };
+
+  const handleDeleteSession = async (id: string) => {
+      if (!confirm("ATENÇÃO: Deseja realmente EXCLUIR esta sessão de caixa e TODO o seu histórico de vendas e pagamentos? Esta ação removerá os dados de auditoria permanentemente e é recomendada apenas para limpar testes.")) return;
+      startTransition(async () => {
+          try {
+              await deleteCashSessionAction(id);
+          } catch (e: any) {
+              alert(e.message);
+          }
       });
   };
 
@@ -405,9 +416,18 @@ export default function FinanceiroClient({ payload }: any) {
                                     )}
                                 </td>
                                 <td className="p-4 text-center">
-                                    <button onClick={() => handleViewDetails(cash)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-lg transition" title="Ver Detalhes do Turno">
-                                        <Eye size={16}/>
-                                    </button>
+                                    <div className="flex justify-center gap-2">
+                                        <button onClick={() => handleViewDetails(cash)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-lg transition" title="Ver Detalhes do Turno">
+                                            <Eye size={16}/>
+                                        </button>
+                                        <button 
+                                            onClick={() => handleDeleteSession(cash.id)} 
+                                            className="bg-red-50 hover:bg-red-500 text-red-500 hover:text-white p-2 rounded-lg transition" 
+                                            title="Excluir Histórico de Sessão (Admin Only)"
+                                        >
+                                            <Trash2 size={16}/>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         )
