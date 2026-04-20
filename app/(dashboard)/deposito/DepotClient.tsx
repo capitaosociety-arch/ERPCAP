@@ -8,13 +8,16 @@ import { quickCreateProductFromInvoice } from '../../actions/products';
 export default function DepotClient({ 
     initialInventory, 
     initialRequests, 
+    initialMovements = [],
     userRole 
 }: { 
     initialInventory: any[], 
     initialRequests: any[], 
+    initialMovements: any[],
     userRole: string 
 }) {
     const [activeTab, setActiveTab] = useState<'inventory' | 'requests'>('inventory');
+    const [filter, setFilter] = useState<'ALL' | 'LOW' | 'HISTORY'>('ALL');
     const [search, setSearch] = useState("");
     const [isPending, startTransition] = useTransition();
 
@@ -46,13 +49,26 @@ export default function DepotClient({
     const isManager = userRole === 'MANAGER';
     const canAuthorize = isAdmin || isManager;
 
-    const filtered = initialInventory.filter(p => 
-        p.name.toLowerCase().includes(search.toLowerCase()) || 
-        (p.code && p.code.toLowerCase().includes(search.toLowerCase()))
-    );
+    const filtered = initialInventory.filter(p => {
+        const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
+                           (p.code && p.code.toLowerCase().includes(search.toLowerCase()));
+        
+        if (filter === 'LOW') {
+            const depotQty = p.depotStock?.quantity || 0;
+            const minQty = p.depotStock?.minQuantity || 5;
+            return matchSearch && depotQty <= minQty;
+        }
+        
+        return matchSearch;
+    });
 
     const pendingRequests = initialRequests.filter(r => r.status === 'PENDING');
     const processedRequests = initialRequests.filter(r => r.status !== 'PENDING');
+    
+    const allMovements = initialMovements.filter(m => 
+        m.product?.name.toLowerCase().includes(search.toLowerCase()) ||
+        (m.document && m.document.toLowerCase().includes(search.toLowerCase()))
+    );
 
     // Handlers
     const openAddModal = (p: any) => { setSelectedProduct(p); setActionQty(''); setActionNotes(''); setIsAddModalOpen(true); }
@@ -208,7 +224,7 @@ export default function DepotClient({
                     <button onClick={() => setNfModalOpen(true)} className="px-4 py-2 rounded-xl text-sm font-bold bg-mrts-blue text-white shadow-lg transition flex items-center gap-2 hover:bg-blue-600 transform hover:-translate-y-0.5">
                         <Camera size={18}/> Ler Nota por Foto
                     </button>
-                    <button onClick={() => setActiveTab('inventory')} className={`px-4 py-2 rounded-xl text-sm font-bold transition ${activeTab === 'inventory' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-100'}`}>
+                    <button onClick={() => { setActiveTab('inventory'); setFilter('ALL'); }} className={`px-4 py-2 rounded-xl text-sm font-bold transition ${activeTab === 'inventory' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-100'}`}>
                         Inventário
                     </button>
                     <button onClick={() => setActiveTab('requests')} className={`px-4 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 ${activeTab === 'requests' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-100'}`}>
@@ -219,87 +235,156 @@ export default function DepotClient({
 
             {activeTab === 'inventory' && (
                 <>
-                    <div className="mb-4 relative w-full md:w-72">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                        <input type="text" placeholder="Buscar produto..." value={search} onChange={e => setSearch(e.target.value)} className="bg-white border-2 border-gray-100 pl-10 pr-4 py-2 rounded-xl text-sm outline-none w-full font-medium focus:border-mrts-blue"/>
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                        <div className="relative w-full md:w-72">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                            <input type="text" placeholder="Buscar produto ou NF..." value={search} onChange={e => setSearch(e.target.value)} className="bg-white border-2 border-gray-100 pl-10 pr-4 py-2 rounded-xl text-sm outline-none w-full font-medium focus:border-mrts-blue"/>
+                        </div>
+
+                        <div className="flex bg-white rounded-xl shadow-sm border border-gray-100 p-1">
+                            <button onClick={() => setFilter('ALL')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${filter === 'ALL' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                                <Box size={16}/> Produtos
+                            </button>
+                            <button onClick={() => setFilter('LOW')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${filter === 'LOW' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                                <AlertCircle size={16}/> Baixo
+                            </button>
+                            <button onClick={() => setFilter('HISTORY')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${filter === 'HISTORY' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                                <RefreshCw size={16}/> Lançamentos (NF)
+                            </button>
+                        </div>
                     </div>
 
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse whitespace-nowrap">
-                                <thead>
-                                    <tr className="bg-slate-50 border-b border-gray-100 text-xs uppercase text-slate-500 font-bold tracking-wider">
-                                        <th className="p-4">Produto</th>
-                                        <th className="p-4 text-center">Status Matriz</th>
-                                        <th className="p-4 text-right">Mínimo Matriz</th>
-                                        <th className="p-4 text-right">Volume Matriz</th>
-                                        <th className="p-4 text-center">Ação</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-50 text-sm font-medium">
-                                    {filtered.map(product => {
-                                        const depotQty = product.depotStock?.quantity || 0;
-                                        const minQty = product.depotStock?.minQuantity || 5;
-                                        const isLow = depotQty <= minQty;
-                                        const isCritical = depotQty <= 0;
-                                        
-                                        return (
-                                            <tr key={product.id} className="hover:bg-slate-50/50 transition">
+                        {filter !== 'HISTORY' ? (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse whitespace-nowrap">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-gray-100 text-xs uppercase text-slate-500 font-bold tracking-wider">
+                                            <th className="p-4">Produto</th>
+                                            <th className="p-4 text-center">Status Matriz</th>
+                                            <th className="p-4 text-right">Mínimo Matriz</th>
+                                            <th className="p-4 text-right">Volume Matriz</th>
+                                            <th className="p-4 text-center">Ação</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-50 text-sm font-medium">
+                                        {filtered.map(product => {
+                                            const depotQty = product.depotStock?.quantity || 0;
+                                            const minQty = product.depotStock?.minQuantity || 5;
+                                            const isLow = depotQty <= minQty;
+                                            const isCritical = depotQty <= 0;
+                                            
+                                            return (
+                                                <tr key={product.id} className="hover:bg-slate-50/50 transition">
+                                                    <td className="p-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
+                                                                {product.iconUrl ? <img src={product.iconUrl} className="w-6 h-6" /> : <Box size={20} className="text-slate-300"/>}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-bold text-slate-800">{product.name}</p>
+                                                                <p className="text-[10px] text-gray-400 uppercase">{product.category.name}</p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-4 text-center">
+                                                        {isCritical ? (
+                                                            <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-black uppercase">Esgotado</span>
+                                                        ) : isLow ? (
+                                                            <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-black uppercase">Crítico</span>
+                                                        ) : (
+                                                            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-black uppercase">OK</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-4 text-right">
+                                                        <button onClick={() => openMinModal(product)} className="text-slate-400 hover:text-mrts-blue transition flex items-center justify-end gap-1.5 ml-auto group">
+                                                            <span className="text-xs font-bold bg-slate-50 px-2 py-0.5 rounded border border-transparent group-hover:border-mrts-blue transition">{minQty}</span>
+                                                            <Edit size={14}/>
+                                                        </button>
+                                                    </td>
+                                                    <td className="p-4 text-right">
+                                                        <span className={`text-lg font-black transition-colors ${isCritical ? 'text-red-500' : isLow ? 'text-amber-500' : 'text-slate-800'}`}>
+                                                            {depotQty.toFixed(2).replace(/\.00$/, '')} <span className="text-xs font-medium opacity-60">{product.unit}</span>
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <div className="flex justify-center gap-2">
+                                                            <button onClick={() => openAddModal(product)} className="bg-white border border-slate-200 text-slate-600 p-2 rounded-lg hover:border-mrts-blue hover:text-mrts-blue transition" title="Entrada Manual">
+                                                                <PackagePlus size={16} />
+                                                            </button>
+                                                            {isAdmin && (
+                                                                <button onClick={() => openDirectModal(product)} disabled={isCritical} className="bg-emerald-50 text-emerald-600 p-2 rounded-lg hover:bg-emerald-500 hover:text-white transition disabled:opacity-20" title="Transferência Direta">
+                                                                    <Check size={16} />
+                                                                </button>
+                                                            )}
+                                                            <button onClick={() => openRequestModal(product)} disabled={isCritical} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-black transition ${!isCritical ? 'bg-indigo-600 text-white shadow-md hover:bg-indigo-700' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}>
+                                                                <ArrowRightLeft size={14} /> Enviar
+                                                            </button>
+                                                            <button onClick={() => openLossModal(product)} disabled={isCritical} className="p-2 text-slate-300 hover:text-red-500 transition disabled:opacity-20" title="Informar Perda">
+                                                                <AlertTriangle size={16} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                        {filtered.length === 0 && (
+                                            <tr><td colSpan={5} className="p-10 text-center text-slate-400 font-bold">Nenhum produto localizado.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse whitespace-nowrap">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-gray-100 text-xs uppercase text-slate-500 font-bold tracking-wider">
+                                            <th className="p-4">Data</th>
+                                            <th className="p-4">Produto</th>
+                                            <th className="p-4">Tipo</th>
+                                            <th className="p-4 text-center">Documento / NF</th>
+                                            <th className="p-4 text-right">Qtd</th>
+                                            <th className="p-4">Anexo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-50 text-sm font-medium">
+                                        {allMovements.map((mov: any) => (
+                                            <tr key={mov.id} className="hover:bg-slate-50 transition">
+                                                <td className="p-4 text-xs text-slate-400">{new Date(mov.date).toLocaleDateString('pt-BR')}</td>
+                                                <td className="p-4 font-bold text-slate-800">{mov.product?.name}</td>
                                                 <td className="p-4">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
-                                                            {product.iconUrl ? <img src={product.iconUrl} className="w-6 h-6" /> : <Box size={20} className="text-slate-300"/>}
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-bold text-slate-800">{product.name}</p>
-                                                            <p className="text-[10px] text-gray-400 uppercase">{product.category.name}</p>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="p-4 text-center">
-                                                    {isCritical ? (
-                                                        <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded font-black uppercase">Esgotado</span>
-                                                    ) : isLow ? (
-                                                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-black uppercase">Crítico</span>
+                                                    {mov.type === 'IN' ? (
+                                                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-black uppercase">Entrada</span>
+                                                    ) : mov.type === 'OUT_TRANSFER' ? (
+                                                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-black uppercase">Transferência</span>
                                                     ) : (
-                                                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-black uppercase">OK</span>
+                                                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-black uppercase">Ajuste/Perda</span>
                                                     )}
                                                 </td>
-                                                <td className="p-4 text-right">
-                                                    <button onClick={() => openMinModal(product)} className="text-slate-400 hover:text-mrts-blue transition flex items-center justify-end gap-1.5 ml-auto group">
-                                                        <span className="text-xs font-bold bg-slate-50 px-2 py-0.5 rounded border border-transparent group-hover:border-mrts-blue transition">{minQty}</span>
-                                                        <Edit size={14}/>
-                                                    </button>
+                                                <td className="p-4 text-center">
+                                                    <span className="text-xs font-medium text-slate-500">{mov.document || '-'}</span>
                                                 </td>
-                                                <td className="p-4 text-right">
-                                                    <span className={`text-lg font-black transition-colors ${isCritical ? 'text-red-500' : isLow ? 'text-amber-500' : 'text-slate-800'}`}>
-                                                        {depotQty.toFixed(2).replace(/\.00$/, '')} <span className="text-xs font-medium opacity-60">{product.unit}</span>
+                                                <td className="p-4 text-right text-base font-black">
+                                                    <span className={mov.type === 'IN' ? 'text-emerald-500' : 'text-amber-500'}>
+                                                        {mov.type === 'IN' ? '+' : '-'}{mov.quantity}
                                                     </span>
                                                 </td>
                                                 <td className="p-4">
-                                                    <div className="flex justify-center gap-2">
-                                                        <button onClick={() => openAddModal(product)} className="bg-white border border-slate-200 text-slate-600 p-2 rounded-lg hover:border-mrts-blue hover:text-mrts-blue transition" title="Entrada Manual">
-                                                            <PackagePlus size={16} />
-                                                        </button>
-                                                        {isAdmin && (
-                                                            <button onClick={() => openDirectModal(product)} disabled={isCritical} className="bg-emerald-50 text-emerald-600 p-2 rounded-lg hover:bg-emerald-500 hover:text-white transition disabled:opacity-20" title="Transferência Direta">
-                                                                <Check size={16} />
-                                                            </button>
-                                                        )}
-                                                        <button onClick={() => openRequestModal(product)} disabled={isCritical} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-black transition ${!isCritical ? 'bg-indigo-600 text-white shadow-md hover:bg-indigo-700' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}`}>
-                                                            <ArrowRightLeft size={14} /> Enviar
-                                                        </button>
-                                                        <button onClick={() => openLossModal(product)} disabled={isCritical} className="p-2 text-slate-300 hover:text-red-500 transition disabled:opacity-20" title="Informar Perda">
-                                                            <AlertTriangle size={16} />
-                                                        </button>
-                                                    </div>
+                                                    {mov.imageUrl ? (
+                                                        <a href={mov.imageUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-600 rounded-lg font-bold text-xs hover:bg-blue-100 transition border border-blue-100">
+                                                            <Camera size={14}/> Ver NF
+                                                        </a>
+                                                    ) : '-'}
                                                 </td>
                                             </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
+                                        ))}
+                                        {allMovements.length === 0 && (
+                                            <tr><td colSpan={6} className="p-10 text-center text-slate-400 font-bold">Nenhum lançamento no histórico.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </div>
                 </>
             )}
@@ -467,8 +552,91 @@ export default function DepotClient({
                 </div>
             )}
 
-            {/* Outros Modais Manuais (Add, Request, Loss, Direct) - Já implementados e mantidos conforme lógica anterior */}
-            {/* ... mantendo modais implementados na rodada anterior para brevidade ... */}
+            {/* MODAIS DE MOVIMENTAÇÃO MANUAL */}
+            {isAddModalOpen && selectedProduct && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                        <div className="flex items-center justify-between mb-4 pb-4 border-b">
+                            <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800"><PackagePlus className="text-emerald-500"/> Entrada Matriz</h2>
+                            <button onClick={() => setIsAddModalOpen(false)} className="bg-slate-100 text-slate-500 w-8 h-8 rounded-full flex items-center justify-center"><X size={16}/></button>
+                        </div>
+                        <div className="mb-4 bg-slate-50 p-3 rounded-xl">
+                            <p className="text-[10px] text-gray-400 font-bold uppercase">Produto</p>
+                            <p className="font-bold text-slate-800">{selectedProduct.name}</p>
+                        </div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Quantidade ({selectedProduct.unit})</label>
+                        <input type="number" step="0.01" value={actionQty} onChange={e => setActionQty(e.target.value)} className="w-full bg-white border-2 border-slate-100 rounded-xl py-3 px-4 text-xl font-black text-slate-800 focus:border-mrts-blue outline-none transition"/>
+                        
+                        <label className="block text-sm font-bold text-slate-700 mt-4 mb-2">Observações</label>
+                        <textarea value={actionNotes} onChange={e => setActionNotes(e.target.value)} className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-4 text-sm font-medium text-slate-800 focus:border-mrts-blue outline-none transition h-20 resize-none" placeholder="Ex: Carga extra..."></textarea>
+                        
+                        <button disabled={isPending} onClick={handleAddSubmit} className="w-full mt-6 bg-emerald-500 text-white font-black py-4 rounded-xl hover:bg-emerald-600 transition shadow-lg disabled:opacity-50">Efetivar Entrada</button>
+                    </div>
+                </div>
+            )}
+
+            {isDirectModalOpen && selectedProduct && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                        <div className="flex items-center justify-between mb-4 pb-4 border-b">
+                            <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800"><Check size={22} className="text-emerald-500"/> Transferência Direta</h2>
+                            <button onClick={() => setIsDirectModalOpen(false)} className="bg-slate-100 text-slate-500 w-8 h-8 rounded-full flex items-center justify-center"><X size={16}/></button>
+                        </div>
+                        <p className="text-xs text-slate-500 mb-4">Esta ação remove da Matriz e envia direto para o Balcão, sem necessidade de aceite.</p>
+                        <div className="mb-4 bg-slate-50 p-3 rounded-xl">
+                            <p className="text-[10px] text-gray-400 font-bold uppercase">Produto</p>
+                            <p className="font-bold text-slate-800">{selectedProduct.name}</p>
+                            <p className="text-[10px] text-mrts-blue font-bold">Disponível Matriz: {selectedProduct.depotStock?.quantity} {selectedProduct.unit}</p>
+                        </div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Quantidade a Transferir</label>
+                        <input type="number" step="0.01" value={actionQty} onChange={e => setActionQty(e.target.value)} className="w-full bg-white border-2 border-slate-100 rounded-xl py-3 px-4 text-xl font-black text-slate-800 focus:border-mrts-blue outline-none transition"/>
+                        
+                        <button disabled={isPending} onClick={handleDirectSubmit} className="w-full mt-6 bg-slate-900 text-white font-black py-4 rounded-xl hover:bg-slate-800 transition shadow-lg disabled:opacity-50">Transferir Agora</button>
+                    </div>
+                </div>
+            )}
+
+            {isRequestModalOpen && selectedProduct && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                        <div className="flex items-center justify-between mb-4 pb-4 border-b">
+                            <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800"><ArrowRightLeft size={22} className="text-indigo-500"/> Solicitar Envio</h2>
+                            <button onClick={() => setIsRequestModalOpen(false)} className="bg-slate-100 text-slate-500 w-8 h-8 rounded-full flex items-center justify-center"><X size={16}/></button>
+                        </div>
+                        <p className="text-xs text-slate-500 mb-4">Solicite o envio de produtos do depósito para o balcão. Requer autorização do gestor.</p>
+                        <div className="mb-4 bg-slate-50 p-3 rounded-xl">
+                            <p className="text-[10px] text-gray-400 font-bold uppercase">Produto</p>
+                            <p className="font-bold text-slate-800">{selectedProduct.name}</p>
+                        </div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Quantidade Desejada</label>
+                        <input type="number" step="0.01" value={actionQty} onChange={e => setActionQty(e.target.value)} className="w-full bg-white border-2 border-slate-100 rounded-xl py-3 px-4 text-xl font-black text-slate-800 focus:border-mrts-blue outline-none transition"/>
+                        
+                        <button disabled={isPending} onClick={handleRequestSubmit} className="w-full mt-6 bg-indigo-600 text-white font-black py-4 rounded-xl hover:bg-indigo-700 transition shadow-lg disabled:opacity-50">Enviar Solicitação</button>
+                    </div>
+                </div>
+            )}
+
+            {isLossModalOpen && selectedProduct && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                        <div className="flex items-center justify-between mb-4 pb-4 border-b">
+                            <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800"><AlertTriangle size={22} className="text-amber-500"/> Baixa por Perda</h2>
+                            <button onClick={() => setIsLossModalOpen(false)} className="bg-slate-100 text-slate-500 w-8 h-8 rounded-full flex items-center justify-center"><X size={16}/></button>
+                        </div>
+                        <div className="mb-4 bg-amber-50 p-3 rounded-xl border border-amber-100">
+                            <p className="text-[10px] text-amber-700 font-bold uppercase">Produto com Avaria</p>
+                            <p className="font-bold text-amber-900">{selectedProduct.name}</p>
+                        </div>
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Quantidade Perdida</label>
+                        <input type="number" step="0.01" value={actionQty} onChange={e => setActionQty(e.target.value)} className="w-full bg-white border-2 border-slate-100 rounded-xl py-3 px-4 text-xl font-black text-slate-800 focus:border-amber-500 outline-none transition"/>
+                        
+                        <label className="block text-sm font-bold text-slate-700 mt-4 mb-2">Motivo da Perda</label>
+                        <textarea value={actionNotes} onChange={e => setActionNotes(e.target.value)} className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-4 text-sm font-medium text-slate-800 focus:border-amber-500 outline-none transition h-20 resize-none" placeholder="Ex: Quebra, Validade..."></textarea>
+
+                        <button disabled={isPending} onClick={handleLossSubmit} className="w-full mt-6 bg-amber-500 text-white font-black py-4 rounded-xl hover:bg-amber-600 transition shadow-lg disabled:opacity-50">Registrar Perda</button>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react';
-import { Plus, Search, Coffee, X, ShoppingBag, Eye, Banknote, QrCode, CreditCard, Receipt } from 'lucide-react';
-import { createComanda, closeComanda, addItemToOrder, processPayment } from '../../actions/comandas';
+import { Plus, Search, Coffee, X, ShoppingBag, Eye, Banknote, QrCode, CreditCard, Receipt, Trash2 } from 'lucide-react';
+import { createComanda, closeComanda, addItemToOrder, processPayment, removeItemFromOrder, deleteComandaAction } from '../../actions/comandas';
 
 export default function ComandaBoard({ openOrders, products, openRegister }: { openOrders: any[], products: any[], openRegister?: any }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -13,6 +13,7 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState<any>(null);
     const [addingItemId, setAddingItemId] = useState<string | null>(null);
+    const [productSearch, setProductSearch] = useState("");
 
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [viewOrder, setViewOrder] = useState<any>(null);
@@ -77,8 +78,34 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
         setIsPaymentModalOpen(false);
     };
 
+    const handleRemoveItem = async (itemId: string) => {
+        if (!confirm("Deseja realmente remover este item da comanda? Isso retornará o produto ao estoque.")) return;
+        setLoading(true);
+        try {
+            await removeItemFromOrder(itemId);
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteComanda = async (orderId: string) => {
+        if (!confirm("ATENÇÃO: Deseja realmente CANCELAR toda esta comanda? Todos os itens lançados voltarão ao estoque e pagamentos parciais serão removidos. Esta ação não pode ser desfeita.")) return;
+        setLoading(true);
+        try {
+            await deleteComandaAction(orderId);
+            setIsViewModalOpen(false);
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const filtered = openOrders.filter(o => (o.notes || "").toLowerCase().includes(search.toLowerCase()));
     const availableProducts = products.filter(p => p.stock && p.stock.quantity > 0);
+    const filteredModalProducts = availableProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()));
     const activeViewOrder = viewOrder ? openOrders.find(o => o.id === viewOrder.id) : null;
     const activePaymentOrder = paymentOrder ? openOrders.find(o => o.id === paymentOrder.id) : null; // Se ele ainda estiver em aberto, se fechou sumiu
 
@@ -195,12 +222,22 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
                             ) : (
                                 <div className="flex flex-col gap-3">
                                     {activeViewOrder.items?.map((item: any, idx: number) => (
-                                        <div key={item.id || idx} className="bg-white p-4 rounded-2xl border border-gray-200 flex items-center justify-between shadow-sm">
-                                            <div>
+                                        <div key={item.id || idx} className="bg-white p-4 rounded-2xl border border-gray-200 flex items-center justify-between shadow-sm group">
+                                            <div className="flex-1">
                                                 <p className="font-bold text-slate-800">{item.product?.name || "Produto Genérico"}</p>
                                                 <p className="text-xs text-slate-400 mt-0.5">{item.quantity}x de R$ {item.unitPrice.toFixed(2).replace('.', ',')}</p>
                                             </div>
-                                            <p className="font-bold text-slate-800">R$ {item.subtotal.toFixed(2).replace('.', ',')}</p>
+                                            <div className="flex items-center gap-4">
+                                                <p className="font-bold text-slate-800">R$ {item.subtotal.toFixed(2).replace('.', ',')}</p>
+                                                <button 
+                                                    disabled={loading}
+                                                    onClick={() => handleRemoveItem(item.id)}
+                                                    className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                                    title="Remover Item"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -226,16 +263,17 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
                                  <span className="text-slate-500 font-bold text-sm">Total da Mesa:</span>
                                  <span className="text-3xl font-black text-mrts-blue">R$ {(activeViewOrder.total - activeViewOrder.discount).toFixed(2).replace('.', ',')}</span>
                              </div>
-                             {activeViewOrder.total > 0 && (
-                             <div className="flex gap-3">
-                                 <button onClick={() => { setIsViewModalOpen(false); handleAddProductClick({stopPropagation:()=>{} }, activeViewOrder); }} className="flex-[0.8] bg-gray-100 text-slate-700 font-bold py-3.5 rounded-xl hover:bg-gray-200 flex justify-center items-center gap-2">
-                                    <Plus size={18}/> Novo Item
+                             <div className="flex flex-wrap gap-3">
+                                 <button onClick={() => { setIsViewModalOpen(false); handleAddProductClick({stopPropagation:()=>{} }, activeViewOrder); }} className="flex-1 bg-gray-100 text-slate-700 font-bold py-3.5 rounded-xl hover:bg-gray-200 flex justify-center items-center gap-2">
+                                    <Plus size={18}/> Item
                                  </button>
-                                 <button onClick={() => handleGoToPayment(activeViewOrder)} className="flex-[1.5] bg-slate-900 text-white font-bold py-3.5 rounded-xl hover:bg-slate-800 transition">
+                                 <button onClick={() => handleDeleteComanda(activeViewOrder.id)} className="flex-1 border-2 border-red-100 text-red-500 font-bold py-3.5 rounded-xl hover:bg-red-50 transition flex justify-center items-center gap-2">
+                                    <Trash2 size={18}/> Excluir
+                                 </button>
+                                 <button onClick={() => handleGoToPayment(activeViewOrder)} className="flex-[2] bg-slate-900 text-white font-black py-3.5 rounded-xl hover:bg-slate-800 transition">
                                     Pagar e Fechar
                                 </button>
                              </div>
-                             )}
                         </div>
                     </div>
                 </div>
@@ -247,17 +285,31 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
                     <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl animate-in zoom-in-95 flex flex-col max-h-[85vh] overflow-hidden">
                         <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-white z-10 shadow-sm relative">
                             <h2 className="text-xl font-bold flex items-center gap-2"><ShoppingBag size={22} className="text-mrts-blue" /> Lançar Produto</h2>
-                            <button onClick={() => { setIsProductModalOpen(false); setIsViewModalOpen(true); setViewOrder(selectedOrder); }} className="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-full">
+                            <button onClick={() => { setIsProductModalOpen(false); setIsViewModalOpen(true); setViewOrder(selectedOrder); setProductSearch(""); }} className="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-full">
                                 <X size={20} className="text-gray-500" />
                             </button>
                         </div>
+
+                        <div className="px-5 py-3 border-b border-gray-50 bg-white">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                <input 
+                                    autoFocus
+                                    type="text" 
+                                    placeholder="Pesquisar produto..." 
+                                    value={productSearch}
+                                    onChange={(e) => setProductSearch(e.target.value)}
+                                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl py-2.5 pl-10 pr-4 focus:border-mrts-blue focus:bg-white outline-none transition font-medium text-sm"
+                                />
+                            </div>
+                        </div>
                         
                         <div className="p-4 overflow-y-auto flex-1 bg-slate-50/50">
-                            {availableProducts.length === 0 ? (
-                                <div className="text-center py-10 font-medium">Sem estoque disponível.</div>
+                            {filteredModalProducts.length === 0 ? (
+                                <div className="text-center py-10 font-medium text-gray-400">Nenhum produto encontrado.</div>
                             ) : (
                                 <div className="flex flex-col gap-3">
-                                    {availableProducts.map(prod => (
+                                    {filteredModalProducts.map(prod => (
                                         <div key={prod.id} className="bg-white p-4 rounded-2xl border flex items-center justify-between hover:border-mrts-blue">
                                             <div className="flex gap-4 items-center">
                                                 <ShoppingBag className="text-gray-400" />

@@ -33,6 +33,7 @@ export default function PDVClient({ products, services = [], categories, user, o
   // UI State - Lançamento Posterior Avulso (Forgot Item)
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [addingItemId, setAddingItemId] = useState<string | null>(null);
+  const [itemSearch, setItemSearch] = useState('');
 
   const virtualCategories = [...categories, { id: 'SERVICES', name: 'Serviços' }];
   const allItems = [
@@ -46,6 +47,12 @@ export default function PDVClient({ products, services = [], categories, user, o
     const matchCat = activeCat ? p.categoryId === activeCat : true;
     if (p.isService) return matchSearch && matchCat;
     return matchSearch && matchCat && !!p.stock && p.stock.quantity > 0;
+  });
+
+  const filteredCorrectionProducts = allItems.filter((p: any) => {
+    const matchSearch = p.name.toLowerCase().includes(itemSearch.toLowerCase());
+    if (p.isService) return matchSearch; // Serviços sempre aparecem se bater a busca
+    return matchSearch && !!p.stock && p.stock.quantity > 0;
   });
 
   const addItem = (product: any) => {
@@ -338,17 +345,31 @@ export default function PDVClient({ products, services = [], categories, user, o
                           </h2>
                           <p className="text-sm text-gray-500 mt-1 font-medium">Bipar item esquecido no balcão</p>
                       </div>
-                      <button onClick={() => { setIsProductModalOpen(false); }} className="w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full transition">
+                      <button onClick={() => { setIsProductModalOpen(false); setItemSearch(''); }} className="w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full transition">
                           <X size={20} className="text-gray-500" />
                       </button>
                   </div>
+
+                  <div className="px-5 py-3 border-b border-gray-50">
+                      <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                          <input 
+                              autoFocus
+                              type="text" 
+                              placeholder="Pesquisar produto ou serviço..." 
+                              value={itemSearch}
+                              onChange={(e) => setItemSearch(e.target.value)}
+                              className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl py-2.5 pl-10 pr-4 focus:border-mrts-blue focus:bg-white outline-none transition font-medium text-sm"
+                          />
+                      </div>
+                  </div>
                   
                   <div className="p-4 overflow-y-auto flex-1 bg-slate-50/50">
-                      {filteredProducts.length === 0 ? (
-                          <div className="text-center py-10 font-medium text-gray-400">Nenhum produto cadastrado com estoque em abundância.</div>
+                      {filteredCorrectionProducts.length === 0 ? (
+                          <div className="text-center py-10 font-medium text-gray-400">Nenhum produto localizado para sua busca.</div>
                       ) : (
                           <div className="flex flex-col gap-3">
-                              {filteredProducts.map((prod: any) => (
+                              {filteredCorrectionProducts.map((prod: any) => (
                                   <div key={prod.id} className="bg-white p-4 rounded-2xl border border-gray-200 flex items-center justify-between shadow-sm hover:border-mrts-blue transition">
                                       <div className="flex items-center gap-4">
                                           <div className="w-12 h-12 bg-gray-50 text-gray-400 rounded-xl flex items-center justify-center">
@@ -382,7 +403,7 @@ export default function PDVClient({ products, services = [], categories, user, o
                   </div>
                   
                   <div className="p-5 border-t border-gray-100 bg-white">
-                       <button onClick={() => setIsProductModalOpen(false)} className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-slate-800 shadow-md transition text-sm">
+                       <button onClick={() => { setIsProductModalOpen(false); setItemSearch(''); }} className="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-slate-800 shadow-md transition text-sm">
                           Voltar para Janela de Pagamento
                       </button>
                   </div>

@@ -607,6 +607,15 @@ export default function FinanceiroClient({ payload }: any) {
                                 <p className="text-4xl font-black text-slate-900">R$ {selectedCashRegister.sumAllPayments.toFixed(2).replace('.', ',')}</p>
                             </div>
 
+                            {selectedCashRegister.closingNotes && (
+                                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 shadow-sm">
+                                    <h4 className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                        <AlertCircle size={14}/> Observações de Fechamento
+                                    </h4>
+                                    <p className="text-sm font-medium text-amber-900 italic">"{selectedCashRegister.closingNotes}"</p>
+                                </div>
+                            )}
+
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                 {/* Tabela Resumo Pagamentos */}
                                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
@@ -627,6 +636,14 @@ export default function FinanceiroClient({ payload }: any) {
                                         <p className="text-[11px] font-bold text-green-400 mb-1 uppercase tracking-wider">Dinheiro Em Gaveta Declarado</p>
                                         <p className="text-3xl font-black flex items-center gap-2"><Banknote size={28}/> R$ {selectedCashRegister.expectedCashInDrawer.toFixed(2).replace('.', ',')}</p>
                                     </div>
+                                    {selectedCashRegister.totalSessionDiscounts > 0 && (
+                                        <div className="mt-4 bg-red-50 text-red-600 rounded-xl p-4 border border-red-100">
+                                            <p className="text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-2">
+                                                <TrendingDown size={14}/> Total de Descontos Concedidos
+                                            </p>
+                                            <p className="text-xl font-black">R$ {selectedCashRegister.totalSessionDiscounts.toFixed(2).replace('.', ',')}</p>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Tabela Resumo Produtos */}
@@ -637,8 +654,13 @@ export default function FinanceiroClient({ payload }: any) {
                                         {selectedCashRegister.productsSold.map((prod: any, i: number) => (
                                             <div key={i} className="flex justify-between items-center bg-slate-50/80 p-3 rounded-xl border border-gray-100 hover:border-mrts-blue transition">
                                                 <div className="flex-1 min-w-0 pr-3">
-                                                    <p className="font-bold text-slate-800 text-sm truncate">{prod.name}</p>
-                                                    <p className="text-[11px] uppercase tracking-wide text-mrts-blue font-black mt-0.5">{prod.quantity} volumes líquidos</p>
+                                                    <div className="flex items-center gap-2 mb-0.5">
+                                                        <p className="font-bold text-slate-800 text-sm truncate">{prod.name}</p>
+                                                        {prod.hasDiscount && (
+                                                            <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-black uppercase tracking-tighter">Desconto</span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-[11px] uppercase tracking-wide text-mrts-blue font-black">{prod.quantity} volumes líquidos</p>
                                                 </div>
                                                 <div className="text-right shrink-0">
                                                     <p className="font-black text-slate-900 text-sm">R$ {prod.total.toFixed(2).replace('.', ',')}</p>

@@ -138,4 +138,101 @@ export async function processPayment(orderId: string, amount: number, method: st
     revalidatePath("/mesas");
     revalidatePath("/dashboard");
 }
+export async function removeItemFromOrder(orderItemId: string) {
+    await prisma.$transaction(async (tx) => {
+        const item = await tx.orderItem.findUnique({
+            where: { id: orderItemId },
+            include: { order: true }
+        });
 
+        if (!item) throw new Error("Item não encontrado");
+        if (item.order.status !== "OPEN") throw new Error("Apenas itens de comandas em aberto podem ser removidos");
+
+        // 1. Estorna estoque se for produto
+        if (item.productId) {
+            const stock = await tx.stock.findUnique({ where: { productId: item.productId } });
+            if (stock) {
+                await tx.stock.update({
+                    where: { id: stock.id },
+                    data: { quantity: { increment: item.quantity } }
+                });
+
+                await tx.stockMovement.create({
+                    data: {
+                        productId: item.productId,
+                        type: "IN",
+                        quantity: item.quantity,
+                        notes: `Estorno: Item removido da comanda (Cod ${item.orderId})`
+                    }
+                });
+            }
+        }
+
+        // 2. Atualiza o total da ordem
+        await tx.order.update({
+            where: { id: item.orderId },
+            data: { total: { decrement: item.subtotal } }
+        });
+
+        // 3. Deleta o item
+        await tx.orderItem.delete({
+            where: { id: orderItemId }
+        });
+    });
+
+    revalidatePath("/mesas");
+    revalidatePath("/dashboard");
+}
+
+export async function deleteComandaAction(orderId: string) {
+    const session = await getServerSession(authOptions) as any;
+    if (!session) throw new Error("Unauthorized");
+
+    await prisma.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({
+            where: { id: orderId },
+            include: { items: true, payments: true }
+        });
+
+        if (!order) throw new Error("Comanda não encontrada");
+        if (order.status !== "OPEN") throw new Error("Apenas comandas abertas podem ser canceladas");
+
+        // 1. Estorna estoque de todos os itens
+        for (const item of order.items) {
+            if (item.productId) {
+                const stock = await tx.stock.findUnique({ where: { productId: item.productId } });
+                if (stock) {
+                    await tx.stock.update({
+                        where: { id: stock.id },
+                        data: { quantity: { increment: item.quantity } }
+                    });
+
+                    await tx.stockMovement.create({
+                        data: {
+                            productId: item.productId,
+                            type: "IN",
+                            quantity: item.quantity,
+                            notes: `Estorno: Comanda Inteira Cancelada (Cod ${orderId})`
+                        }
+                    });
+                }
+            }
+        }
+
+        // 2. Remove pagamentos vinculados (se houver parciais) para não sujar o caixa
+        if (order.payments.length > 0) {
+            await tx.payment.deleteMany({
+                where: { orderId: orderId }
+            });
+        }
+
+        // 3. Marca como cancelado
+        await tx.order.update({
+            where: { id: orderId },
+            data: { status: "CANCELED", notes: (order.notes || "") + " [CANCELADO]" }
+        });
+    });
+
+    revalidatePath("/mesas");
+    revalidatePath("/dashboard");
+}

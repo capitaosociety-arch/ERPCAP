@@ -143,25 +143,49 @@ export async function getRegisterSummary(registerId: string) {
         },
         include: {
             product: true,
-            service: true
+            service: true,
+            order: {
+                select: {
+                    id: true,
+                    discount: true,
+                    notes: true
+                }
+            }
         }
     });
 
-    const productSummary: Record<string, { name: string, quantity: number, total: number }> = {};
+    const productSummary: Record<string, { name: string, quantity: number, total: number, hasDiscount: boolean, totalDiscount: number }> = {};
     
     orderItems.forEach(item => {
         const key = item.productId ? `p_${item.productId}` : (item.serviceId ? `s_${item.serviceId}` : item.id);
         const name = item.product?.name || item.service?.name || 'Item Avulso/Desconhecido';
         
         if (!productSummary[key]) {
-            productSummary[key] = { name, quantity: 0, total: 0 };
+            productSummary[key] = { name, quantity: 0, total: 0, hasDiscount: false, totalDiscount: 0 };
         }
         productSummary[key].quantity += item.quantity;
         productSummary[key].total += item.subtotal;
+        
+        if (item.order.discount > 0) {
+            productSummary[key].hasDiscount = true;
+            // Nota: O desconto é no nível da ordem, então somamos aqui apenas para indicar que houve desconto relevante
+            productSummary[key].totalDiscount += item.order.discount; 
+        }
     });
 
     const productsSold = Object.values(productSummary).sort((a, b) => b.quantity - a.quantity);
     const sumAllPayments = formattedPayments.reduce((acc: number, p) => acc + p.amount, 0);
+    const totalDiscounts = orderItems.reduce((acc, item) => {
+        // Para não duplicar o desconto da ordem se ela tiver múltiplos itens, vamos agrupar por ordem
+        return acc;
+    }, 0);
+
+    // Cálculo correto de descontos totais da sessão
+    const uniqueOrders = Array.from(new Set(orderItems.map(i => i.order.id)));
+    const totalSessionDiscounts = await prisma.order.aggregate({
+        where: { id: { in: uniqueOrders } },
+        _sum: { discount: true }
+    });
 
     return {
         openOrdersCount,
@@ -169,6 +193,8 @@ export async function getRegisterSummary(registerId: string) {
         expectedCashInDrawer,
         sumAllPayments,
         payments: formattedPayments,
-        productsSold
+        productsSold,
+        closingNotes: registerToClose.notes,
+        totalSessionDiscounts: totalSessionDiscounts._sum.discount || 0
     };
 }
