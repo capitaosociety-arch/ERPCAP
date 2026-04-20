@@ -180,11 +180,20 @@ export async function getRegisterSummary(registerId: string) {
         return acc;
     }, 0);
 
-    // Cálculo correto de descontos totais da sessão
+    // Cálculo correto de descontos totais da sessão e detalhamento das vendas
     const uniqueOrders = Array.from(new Set(orderItems.map(i => i.order.id)));
     const totalSessionDiscounts = await prisma.order.aggregate({
         where: { id: { in: uniqueOrders } },
         _sum: { discount: true }
+    });
+
+    const discountedOrders = await prisma.order.findMany({
+        where: { id: { in: uniqueOrders }, discount: { gt: 0 } },
+        include: {
+            items: {
+                include: { product: true, service: true }
+            }
+        }
     });
 
     return {
@@ -195,6 +204,13 @@ export async function getRegisterSummary(registerId: string) {
         payments: formattedPayments,
         productsSold,
         closingNotes: registerToClose.notes,
-        totalSessionDiscounts: totalSessionDiscounts._sum.discount || 0
+        totalSessionDiscounts: totalSessionDiscounts._sum.discount || 0,
+        ordersWithDiscount: discountedOrders.map(o => ({
+            id: o.id,
+            notes: o.notes,
+            totalBruto: o.total,
+            discount: o.discount,
+            items: o.items.map(i => i.product?.name || i.service?.name || 'Item')
+        }))
     };
 }

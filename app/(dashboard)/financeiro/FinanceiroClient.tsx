@@ -670,6 +670,30 @@ export default function FinanceiroClient({ payload }: any) {
                                     </div>
                                 </div>
                             </div>
+
+                            {selectedCashRegister.ordersWithDiscount && selectedCashRegister.ordersWithDiscount.length > 0 && (
+                                <div className="mt-8 border-t border-gray-100 pt-8">
+                                    <h4 className="text-sm uppercase tracking-wider font-bold text-gray-500 mb-6 flex items-center gap-2">
+                                        <TrendingDown size={18} className="text-red-500"/> Detalhamento de Vendas com Desconto
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {selectedCashRegister.ordersWithDiscount.map((ord: any) => (
+                                            <div key={ord.id} className="bg-white border border-red-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition">
+                                                <div className="flex justify-between items-start mb-3">
+                                                    <p className="font-bold text-slate-800 text-sm truncate pr-2">{ord.notes || 'Venda sem nome'}</p>
+                                                    <span className="bg-red-50 text-red-600 text-[10px] px-2 py-1 rounded font-black uppercase shrink-0">- R$ {ord.discount.toFixed(2)}</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-1 mb-2">
+                                                    {ord.items.map((it: string, idx: number) => (
+                                                        <span key={idx} className="text-[9px] bg-slate-50 text-slate-500 px-1.5 py-0.5 rounded border border-gray-100">{it}</span>
+                                                    ))}
+                                                </div>
+                                                <p className="text-[10px] text-gray-400 font-medium">Total Bruto Sem Desconto: R$ {ord.totalBruto.toFixed(2)}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                       ) : null}
                   </div>
