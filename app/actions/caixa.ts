@@ -196,11 +196,14 @@ export async function getRegisterSummary(registerId: string) {
         }
     });
 
+    const totalGrossSold = orderItems.reduce((acc, item) => acc + item.subtotal, 0);
+
     return {
         openOrdersCount,
         openingBal: registerToClose.openingBal,
         expectedCashInDrawer,
         sumAllPayments,
+        totalGrossSold,
         payments: formattedPayments,
         productsSold,
         closingNotes: registerToClose.notes,

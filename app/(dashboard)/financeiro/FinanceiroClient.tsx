@@ -357,22 +357,44 @@ export default function FinanceiroClient({ payload }: any) {
                         <th className="p-4 text-indigo-600 bg-indigo-50/30">Crédito</th>
                         <th className="p-4 border-l border-gray-100">Fundo Troco</th>
                         <th className="p-4 border-r border-gray-100">Saldo Final</th>
-                        <th className="p-4">Diferença</th>
+                        <th className="p-4 bg-red-50/20">Audit. Vendas</th>
+                        <th className="p-4 bg-emerald-50/20">Audit. Física</th>
                         <th className="p-4 text-center">Ações</th>
                     </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
                     {cashRegisters.map((cash: any) => {
-                        const shiftEntries = cash.payments?.reduce((acc:number, p:any) => acc + p.amount, 0) || 0;
-                        
-                        // Cálculo detalhado por método
+                        // Cálculo detalhado por método para auditoria física
                         const byMethod = (cash.payments || []).reduce((acc: any, p: any) => {
                             acc[p.method] = (acc[p.method] || 0) + p.amount;
                             return acc;
                         }, { CASH: 0, PIX: 0, DEBIT: 0, CREDIT: 0 });
 
-                        const totalExpected = cash.openingBal + (byMethod.CASH || 0);
-                        const difference = cash.closingBal !== null ? cash.closingBal - totalExpected : 0;
+                        // --- AUDITORIA DE VENDAS (Audit 1) ---
+                        // Somatório ÚNICO de itens e descontos das ordens liquidadas nesta sessão
+                        const uniqueOrdersMap = new Map();
+                        (cash.payments || []).forEach((p: any) => {
+                            if (p.order && !uniqueOrdersMap.has(p.order.id)) {
+                                uniqueOrdersMap.set(p.order.id, p.order);
+                            }
+                        });
+                        const uniqueOrders = Array.from(uniqueOrdersMap.values());
+                        
+                        const totalGrossSold = uniqueOrders.reduce((acc, order) => {
+                            const itemsSum = order.items?.reduce((sum: number, it: any) => sum + it.subtotal, 0) || 0;
+                            return acc + itemsSum;
+                        }, 0);
+                        const totalDiscounts = uniqueOrders.reduce((acc, order) => acc + (order.discount || 0), 0);
+                        const totalPaymentsReceived = (cash.payments || []).reduce((acc: number, p: any) => acc + p.amount, 0);
+
+                        // Diferença de Vendas: (O que deveria ter pago) - (O que foi pago)
+                        // Deve ser zero se tudo que foi vendido foi pago (considerando descontos)
+                        const auditVendas = (totalGrossSold - totalDiscounts) - totalPaymentsReceived;
+
+                        // --- AUDITORIA FÍSICA (Audit 2) ---
+                        // Diferença de Gaveta: (Declarado) - (Esperado em espécie)
+                        const expectedCash = cash.openingBal + (byMethod.CASH || 0);
+                        const auditFisico = cash.closingBal !== null ? cash.closingBal - expectedCash : 0;
                         
                         return (
                             <tr key={cash.id} className="hover:bg-blue-50/20 transition text-center group">
@@ -408,11 +430,23 @@ export default function FinanceiroClient({ payload }: any) {
                                 
                                 <td className="p-4">
                                     {cash.status === 'CLOSED' ? (
-                                        <span className={`text-xs font-black ${difference === 0 ? 'text-gray-400' : difference > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                                            {difference > 0 ? '+' : ''}{difference.toFixed(2).replace('.',',')}
+                                        <span 
+                                            className={`text-[10px] px-2 py-0.5 rounded font-black border ${Math.abs(auditVendas) < 0.01 ? 'bg-gray-50 text-gray-400 border-gray-100' : 'bg-red-50 text-red-500 border-red-100'}`}
+                                            title={`Gross: ${totalGrossSold.toFixed(2)} | Disc: ${totalDiscounts.toFixed(2)} | Paid: ${totalPaymentsReceived.toFixed(2)}`}
+                                        >
+                                            {Math.abs(auditVendas) < 0.01 ? 'INTEGRO' : `R$ ${auditVendas.toFixed(2)}`}
                                         </span>
                                     ) : (
                                         <span className="text-gray-300 text-[10px] italic">Em curso</span>
+                                    )}
+                                </td>
+                                <td className="p-4">
+                                    {cash.status === 'CLOSED' ? (
+                                        <span className={`text-[10px] px-2 py-0.5 rounded font-black border ${Math.abs(auditFisico) < 0.01 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-orange-50 text-orange-600 border-orange-100'}`}>
+                                            {Math.abs(auditFisico) < 0.01 ? 'CONFERIDO' : `R$ ${auditFisico.toFixed(2)}`}
+                                        </span>
+                                    ) : (
+                                        <span className="text-gray-300 text-[10px] italic">-</span>
                                     )}
                                 </td>
                                 <td className="p-4 text-center">

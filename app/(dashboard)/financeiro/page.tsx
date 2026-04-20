@@ -20,7 +20,20 @@ export default async function FinanceiroRoute() {
   const cashRegisters = await prisma.cashRegister.findMany({
       where: { openedAt: { gte: thirtyDaysAgo } },
       orderBy: { openedAt: 'desc' },
-      include: { user: true, payments: true }
+      include: { 
+          user: true, 
+          payments: {
+              include: {
+                  order: {
+                      include: {
+                          items: {
+                              include: { product: true, service: true }
+                          }
+                      }
+                  }
+              }
+          } 
+      }
   });
 
   // Consulta Lançamentos Financeiros (Pagar/Receber)
