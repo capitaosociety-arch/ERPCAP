@@ -249,7 +249,7 @@ export async function voidPaymentAction(paymentId: string) {
                 include: { order: true }
             });
 
-            if (!payment) throw new Error("Pagamento não encontrado");
+            if (!payment) throw new Error(`Pagamento não encontrado! Tentou ID: [${paymentId}]`);
 
             // 1. Remove o pagamento
             await tx.payment.delete({
