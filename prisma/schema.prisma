@@ -178,6 +178,18 @@ model CashRegister {
   
   user        User     @relation(fields: [userId], references: [id])
   payments    Payment[]
+  deposits    CashDeposit[]
+}
+
+model CashDeposit {
+  id             String   @id @default(cuid())
+  cashRegisterId String
+  amount         Float
+  date           DateTime @default(now())
+  notes          String?
+  status         String   @default("PENDING") // PENDING, CONFERIDO
+
+  cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
 }
 
 model Payment {

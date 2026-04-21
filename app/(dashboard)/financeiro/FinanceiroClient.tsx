@@ -11,9 +11,9 @@ import {
 } from 'lucide-react';
 import { downloadExcel } from '../../../lib/excel-export';
 import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry } from '../../actions/financeiro';
-import { getRegisterSummary, deleteCashSessionAction } from '../../actions/caixa';
+import { getRegisterSummary, deleteCashSessionAction, getSessionsForDepositAction, recordCashDepositAction } from '../../actions/caixa';
 import { voidPaymentAction } from '../../actions/comandas';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Landmark, History } from 'lucide-react';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#0ea5e9'];
 
@@ -44,6 +44,13 @@ export default function FinanceiroClient({ payload }: any) {
   const [selectedCashRegister, setSelectedCashRegister] = useState<any>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [loadingDetails, setLoadingDetails] = useState(false);
+
+  // States para Depósitos
+  const [depositSessions, setDepositSessions] = useState<any[]>([]);
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [selectedSessionForDep, setSelectedSessionForDep] = useState<any>(null);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [depositNotes, setDepositNotes] = useState('');
 
   const todayVal = dailyChart[dailyChart.length - 1]?.valor || 0;
   
@@ -162,6 +169,38 @@ export default function FinanceiroClient({ payload }: any) {
       });
   };
 
+  // Funções de Depósito
+  const fetchDepositSessions = async () => {
+      try {
+          const data = await getSessionsForDepositAction();
+          setDepositSessions(data);
+      } catch (err) {
+          console.error("Erro ao buscar depósitos:", err);
+      }
+  };
+
+  const handleRecordDeposit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!selectedSessionForDep || !depositAmount) return;
+
+      startTransition(async () => {
+          const res = await recordCashDepositAction(
+              selectedSessionForDep.id, 
+              parseFloat(depositAmount.replace(',', '.')), 
+              depositNotes
+          );
+          if (res.success) {
+              alert("Depósito registrado com sucesso!");
+              setShowDepositModal(false);
+              setDepositAmount('');
+              setDepositNotes('');
+              fetchDepositSessions();
+          } else {
+              alert("Erro ao registrar depósito: " + res.error);
+          }
+      });
+  };
+
   return (
     <div className="animate-in fade-in duration-500 pb-20">
       
@@ -180,6 +219,15 @@ export default function FinanceiroClient({ payload }: any) {
             </button>
             <button onClick={() => setActiveTab('CASHIER')} className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${activeTab === 'CASHIER' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
                 <Wallet size={14}/> Sessões de Caixa
+            </button>
+            <button 
+                onClick={() => {
+                    setActiveTab('DEPOSITS');
+                    fetchDepositSessions();
+                }} 
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${activeTab === 'DEPOSITS' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}
+            >
+                <Landmark size={14}/> Gestão de Depósitos
             </button>
           </div>
           {activeTab === 'BILLING' && (
@@ -516,6 +564,106 @@ export default function FinanceiroClient({ payload }: any) {
                 </div>
           </div>
       )}
+      
+      {activeTab === 'DEPOSITS' && (
+          <div className="space-y-4">
+              <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div>
+                      <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2 tracking-tight">
+                          <Landmark className="text-mrts-blue"/> Reconciliação de Depósitos em Espécie
+                      </h3>
+                      <p className="text-gray-500 text-xs mt-0.5">Controle o fluxo do dinheiro físico das gavetas para as contas bancárias.</p>
+                  </div>
+                  <div className="flex bg-slate-50 p-1.5 rounded-xl border border-gray-100 items-center gap-4">
+                      <div className="px-3 border-r border-gray-200">
+                          <p className="text-[9px] uppercase font-black text-gray-400">Total Pendente em Mão</p>
+                          <p className="text-sm font-black text-red-500">
+                              R$ {depositSessions.reduce((acc, s) => acc + (s.remainingAmount || 0), 0).toFixed(2).replace('.',',')}
+                          </p>
+                      </div>
+                      <div className="px-3">
+                          <p className="text-[9px] uppercase font-black text-gray-400">Sessões em Aberto</p>
+                          <p className="text-sm font-black text-slate-700">{depositSessions.filter(s => s.remainingAmount > 0).length}</p>
+                      </div>
+                  </div>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse whitespace-nowrap">
+                          <thead>
+                              <tr className="bg-slate-50 border-b border-gray-100 text-[10px] uppercase text-gray-400 font-black tracking-widest text-center">
+                                  <th className="p-4 text-left">Sessão / Operador</th>
+                                  <th className="p-4 bg-slate-100/50">Montante Declarado (Gaveta)</th>
+                                  <th className="p-4">Auditoria Física</th>
+                                  <th className="p-4 text-emerald-600 bg-emerald-50/20">Já Depositado</th>
+                                  <th className="p-4 text-red-600 bg-red-50/20">Saldo Pendente</th>
+                                  <th className="p-4 text-center">Reconciliar</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50 text-center">
+                              {depositSessions.map((reg: any) => (
+                                  <tr key={reg.id} className="hover:bg-slate-50/50 transition group">
+                                      <td className="p-4 text-left">
+                                          <div className="flex items-center gap-3">
+                                              <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold flex items-center justify-center text-xs">
+                                                  {reg.operatorName?.charAt(0)}
+                                              </div>
+                                              <div>
+                                                  <p className="font-bold text-slate-800 text-sm leading-tight">{reg.operatorName}</p>
+                                                  <p className="text-[10px] text-gray-400 font-medium">Fechado em: {new Date(reg.closedAt).toLocaleDateString('pt-BR')} {new Date(reg.closedAt).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</p>
+                                              </div>
+                                          </div>
+                                      </td>
+                                      <td className="p-4 font-black text-slate-800 text-sm bg-slate-50/30">R$ {reg.declaredAmount.toFixed(2).replace('.',',')}</td>
+                                      <td className="p-4 font-bold text-slate-500 text-sm italic">R$ {reg.auditAmount.toFixed(2).replace('.',',')}</td>
+                                      <td className="p-4 font-bold text-emerald-600 text-sm bg-emerald-50/10">R$ {reg.depositedAmount.toFixed(2).replace('.',',')}</td>
+                                      <td className="p-4">
+                                          {reg.remainingAmount > 0.01 ? (
+                                              <span className="inline-flex items-center gap-1.5 text-[11px] font-black text-red-600 bg-red-50 px-3 py-1 rounded-full border border-red-100 ring-4 ring-white">
+                                                  R$ {reg.remainingAmount.toFixed(2).replace('.',',')}
+                                              </span>
+                                          ) : (
+                                              <span className="inline-flex items-center gap-1.5 text-[10px] font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
+                                                  CONCLUÍDO
+                                              </span>
+                                          )}
+                                      </td>
+                                      <td className="p-4">
+                                          <div className="flex justify-center gap-2">
+                                              {reg.remainingAmount > 0 && (
+                                                  <button 
+                                                      onClick={() => {
+                                                          setSelectedSessionForDep(reg);
+                                                          setShowDepositModal(true);
+                                                      }} 
+                                                      className="bg-mrts-blue text-white px-3 py-1.5 rounded-xl text-[11px] font-black shadow-lg shadow-blue-500/10 hover:scale-105 transition flex items-center gap-1.5"
+                                                  >
+                                                      <Banknote size={14}/> DEPOSITAR
+                                                  </button>
+                                              )}
+                                              {reg.deposits.length > 0 && (
+                                                  <button className="p-2 text-slate-400 hover:text-slate-800 transition" title="Ver Histórico de Depósitos">
+                                                      <History size={16}/>
+                                                  </button>
+                                              )}
+                                          </div>
+                                      </td>
+                                  </tr>
+                              ))}
+                              {depositSessions.length === 0 && (
+                                  <tr>
+                                      <td colSpan={6} className="p-20 text-center text-gray-300 font-bold italic text-sm">
+                                          Nenhuma sessão fechada encontrada para depósito.
+                                      </td>
+                                  </tr>
+                              )}
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* MODAL NOVO LANÇAMENTO */}
       {showAddModal && (
@@ -813,6 +961,83 @@ export default function FinanceiroClient({ payload }: any) {
                                     </div>
                                 </div>
                             )}
+
+      {/* MODAL REGISTRAR DEPÓSITO */}
+      {showDepositModal && selectedSessionForDep && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+              <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl animate-in zoom-in-95 overflow-hidden border border-gray-100">
+                  <form onSubmit={handleRecordDeposit}>
+                      <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-slate-50">
+                          <div>
+                            <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                                <Landmark className="text-mrts-blue"/> Registrar Depósito
+                            </h2>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Sessão: {selectedSessionForDep.operatorName} | {new Date(selectedSessionForDep.closedAt).toLocaleDateString()}</p>
+                          </div>
+                          <button type="button" onClick={() => setShowDepositModal(false)} className="text-gray-400 hover:text-gray-600 bg-white p-2 rounded-full shadow-sm">
+                              <XCircle size={20}/>
+                          </button>
+                      </div>
+
+                      <div className="p-8 space-y-6">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                    <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Montante Declarado</p>
+                                    <p className="text-lg font-black text-slate-700">R$ {selectedSessionForDep.declaredAmount.toFixed(2)}</p>
+                                </div>
+                                <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
+                                    <p className="text-[9px] font-black text-red-400 uppercase mb-1">Pendente em Mão</p>
+                                    <p className="text-lg font-black text-red-600">R$ {selectedSessionForDep.remainingAmount.toFixed(2)}</p>
+                                </div>
+                            </div>
+
+                          <div>
+                              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                                  <Banknote size={14} className="text-mrts-blue"/> Valor do Depósito (R$)
+                              </label>
+                              <input 
+                                  type="text" 
+                                  required
+                                  value={depositAmount}
+                                  onChange={(e) => setDepositAmount(e.target.value)}
+                                  placeholder="0,00"
+                                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 outline-none focus:border-mrts-blue font-black text-2xl text-slate-800 transition placeholder:text-gray-200"
+                              />
+                              <p className="text-[10px] text-gray-400 mt-2 italic">* Informe o valor exato que foi transferido para a conta bancária.</p>
+                          </div>
+
+                          <div>
+                              <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Observações / Comprovante</label>
+                              <textarea 
+                                  value={depositNotes}
+                                  onChange={(e) => setDepositNotes(e.target.value)}
+                                  rows={2}
+                                  placeholder="Ex: Depósito via envelope, transferência Bradesco..."
+                                  className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-5 py-3 outline-none focus:border-mrts-blue font-medium text-sm text-slate-700 transition"
+                              ></textarea>
+                          </div>
+                      </div>
+
+                      <div className="p-6 bg-slate-50 border-t border-gray-100 flex gap-3">
+                          <button 
+                            type="button" 
+                            onClick={() => setShowDepositModal(false)}
+                            className="flex-1 bg-white text-gray-500 font-bold py-3 rounded-2xl border border-gray-200 hover:bg-gray-50 transition"
+                          >
+                              Cancelar
+                          </button>
+                          <button 
+                            type="submit"
+                            disabled={isPending}
+                            className="flex-[2] bg-mrts-blue text-white font-black py-3 rounded-2xl shadow-xl shadow-blue-500/20 hover:scale-[1.02] active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                              {isPending ? 'PROCESSANDO...' : <><Landmark size={18}/> CONFIRMAR DEPÓSITO</>}
+                          </button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+      )}
                         </div>
                       ) : null}
                   </div>

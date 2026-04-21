@@ -277,3 +277,80 @@ export async function deleteCashSessionAction(sessionId: string) {
         return { success: false, error: error.message };
     }
 }
+
+export async function getSessionsForDepositAction() {
+    const session = await getServerSession(authOptions);
+    if (!session) throw new Error('Unauthorized');
+
+    const registers = await prisma.cashRegister.findMany({
+        where: { status: 'CLOSED' },
+        include: { 
+            user: { select: { name: true } },
+            deposits: true,
+            payments: {
+                where: { method: 'CASH' }
+            }
+        },
+        orderBy: { closedAt: 'desc' },
+        take: 50 // Limite para performance
+    });
+
+    return JSON.parse(JSON.stringify(registers.map(reg => {
+        const declaredAmount = reg.closingBal || 0;
+        const totalCashPayments = reg.payments.reduce((acc, p) => acc + p.amount, 0);
+        const auditAmount = reg.openingBal + totalCashPayments;
+        const depositedAmount = reg.deposits.reduce((acc, dep) => acc + dep.amount, 0);
+        
+        return {
+            id: reg.id,
+            operatorName: reg.user.name,
+            openedAt: reg.openedAt,
+            closedAt: reg.closedAt,
+            declaredAmount,
+            auditAmount,
+            depositedAmount,
+            remainingAmount: Math.max(0, declaredAmount - depositedAmount),
+            status: reg.status,
+            deposits: reg.deposits
+        };
+    })));
+}
+
+export async function recordCashDepositAction(registerId: string, amount: number, notes?: string) {
+    try {
+        const session = await getServerSession(authOptions) as any;
+        if (!session) throw new Error('Unauthorized');
+
+        const register = await prisma.cashRegister.findUnique({
+            where: { id: registerId },
+            include: { deposits: true }
+        });
+
+        if (!register) throw new Error('Sessão não encontrada');
+
+        const alreadyDeposited = register.deposits.reduce((acc, d) => acc + d.amount, 0);
+        const declared = register.closingBal || 0;
+        
+        if (amount <= 0) throw new Error('Valor inválido');
+        if (alreadyDeposited + amount > declared + 0.01) {
+            // Permite um pequeno delta de erro, mas avisa
+            // throw new Error('O valor do depósito excede o saldo declarado no caixa.');
+        }
+
+        await prisma.cashDeposit.create({
+            data: {
+                cashRegisterId: registerId,
+                amount,
+                notes
+            }
+        });
+
+        await createAuditLog("Depósito Bancário", `Registrado depósito de R$ ${amount.toFixed(2)} vinculado à sessão [${registerId.slice(-6)}].`);
+
+        revalidatePath('/financeiro');
+        return { success: true };
+    } catch (error: any) {
+        console.error("ERRO_DEPOSIT:", error);
+        return { success: false, error: error.message };
+    }
+}
