@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { downloadExcel } from '../../../lib/excel-export';
 import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry } from '../../actions/financeiro';
-import { getRegisterSummary, deleteCashSessionAction, getSessionsForDepositAction, recordCashDepositAction } from '../../actions/caixa';
+import { getRegisterSummary, deleteCashSessionAction, getSessionsForDepositAction, recordCashDepositAction, recordGlobalCashDepositAction } from '../../actions/caixa';
 import { voidPaymentAction } from '../../actions/comandas';
 import { RotateCcw, Landmark, History } from 'lucide-react';
 
@@ -48,6 +48,7 @@ export default function FinanceiroClient({ payload }: any) {
   // States para Depósitos
   const [depositSessions, setDepositSessions] = useState<any[]>([]);
   const [showDepositModal, setShowDepositModal] = useState(false);
+  const [isGlobalDeposit, setIsGlobalDeposit] = useState(false);
   const [selectedSessionForDep, setSelectedSessionForDep] = useState<any>(null);
   const [depositAmount, setDepositAmount] = useState('');
   const [depositNotes, setDepositNotes] = useState('');
@@ -181,22 +182,39 @@ export default function FinanceiroClient({ payload }: any) {
 
   const handleRecordDeposit = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!selectedSessionForDep || !depositAmount) return;
+      if (!depositAmount) return;
 
       startTransition(async () => {
-          const res = await recordCashDepositAction(
-              selectedSessionForDep.id, 
-              parseFloat(depositAmount.replace(',', '.')), 
-              depositNotes
-          );
-          if (res.success) {
-              alert("Depósito registrado com sucesso!");
-              setShowDepositModal(false);
-              setDepositAmount('');
-              setDepositNotes('');
-              fetchDepositSessions();
+          if (isGlobalDeposit) {
+            const res = await recordGlobalCashDepositAction(
+                parseFloat(depositAmount.replace(',', '.')), 
+                depositNotes
+            );
+            if (res.success) {
+                alert("Depósito Global registrado com sucesso!");
+                setShowDepositModal(false);
+                setDepositAmount('');
+                setDepositNotes('');
+                fetchDepositSessions();
+            } else {
+                alert("Erro ao registrar depósito global: " + res.error);
+            }
           } else {
-              alert("Erro ao registrar depósito: " + res.error);
+            if (!selectedSessionForDep) return;
+            const res = await recordCashDepositAction(
+                selectedSessionForDep.id, 
+                parseFloat(depositAmount.replace(',', '.')), 
+                depositNotes
+            );
+            if (res.success) {
+                alert("Depósito registrado com sucesso!");
+                setShowDepositModal(false);
+                setDepositAmount('');
+                setDepositNotes('');
+                fetchDepositSessions();
+            } else {
+                alert("Erro ao registrar depósito: " + res.error);
+            }
           }
       });
   };
@@ -662,6 +680,27 @@ export default function FinanceiroClient({ payload }: any) {
                       </table>
                   </div>
               </div>
+
+              <div className="mt-8 bg-slate-900 rounded-3xl p-8 shadow-2xl border border-slate-800 flex flex-col items-center justify-center text-center">
+                  <h3 className="text-white font-black text-2xl mb-2 flex items-center gap-2">
+                       Novo Depósito Global
+                  </h3>
+                  <p className="text-slate-400 text-sm mb-6 max-w-lg">
+                       Zere os valores pendentes em mãos através de um único depósito somando todos os saldos residuais das sessões fechadas.
+                  </p>
+                  <button
+                      onClick={() => {
+                          const totalPending = depositSessions.reduce((acc, s) => acc + (s.remainingAmount || 0), 0);
+                          setDepositAmount(totalPending.toFixed(2));
+                          setIsGlobalDeposit(true);
+                          setSelectedSessionForDep(null);
+                          setShowDepositModal(true);
+                      }}
+                      className="bg-emerald-500 hover:bg-emerald-400 text-white font-black px-10 py-5 rounded-2xl shadow-xl hover:shadow-emerald-500/20 hover:scale-105 active:scale-95 transition flex items-center gap-3 text-lg"
+                  >
+                      <Landmark size={24}/> DEPÓSITO DO CICLO
+                  </button>
+              </div>
           </div>
       )}
 
@@ -963,16 +1002,18 @@ export default function FinanceiroClient({ payload }: any) {
                             )}
 
       {/* MODAL REGISTRAR DEPÓSITO */}
-      {showDepositModal && selectedSessionForDep && (
+      {showDepositModal && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
               <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl animate-in zoom-in-95 overflow-hidden border border-gray-100">
                   <form onSubmit={handleRecordDeposit}>
                       <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-slate-50">
                           <div>
                             <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                                <Landmark className="text-mrts-blue"/> Registrar Depósito
+                                <Landmark className="text-mrts-blue"/> {isGlobalDeposit ? 'Depósito Global do Ciclo' : 'Registrar Depósito'}
                             </h2>
-                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Sessão: {selectedSessionForDep.operatorName} | {new Date(selectedSessionForDep.closedAt).toLocaleDateString()}</p>
+                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
+                                {isGlobalDeposit ? 'Zerar todos os caixas pendentes' : `Sessão: ${selectedSessionForDep?.operatorName} | ${selectedSessionForDep?.closedAt ? new Date(selectedSessionForDep.closedAt).toLocaleDateString() : ''}`}
+                            </p>
                           </div>
                           <button type="button" onClick={() => setShowDepositModal(false)} className="text-gray-400 hover:text-gray-600 bg-white p-2 rounded-full shadow-sm">
                               <XCircle size={20}/>
@@ -980,16 +1021,27 @@ export default function FinanceiroClient({ payload }: any) {
                       </div>
 
                       <div className="p-8 space-y-6">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                    <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Montante Declarado</p>
-                                    <p className="text-lg font-black text-slate-700">R$ {selectedSessionForDep.declaredAmount.toFixed(2)}</p>
+                            {!isGlobalDeposit && selectedSessionForDep && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                        <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Montante Declarado</p>
+                                        <p className="text-lg font-black text-slate-700">R$ {selectedSessionForDep.declaredAmount.toFixed(2)}</p>
+                                    </div>
+                                    <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
+                                        <p className="text-[9px] font-black text-red-400 uppercase mb-1">Pendente em Mão</p>
+                                        <p className="text-lg font-black text-red-600">R$ {selectedSessionForDep.remainingAmount.toFixed(2)}</p>
+                                    </div>
                                 </div>
-                                <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
-                                    <p className="text-[9px] font-black text-red-400 uppercase mb-1">Pendente em Mão</p>
-                                    <p className="text-lg font-black text-red-600">R$ {selectedSessionForDep.remainingAmount.toFixed(2)}</p>
+                            )}
+
+                            {isGlobalDeposit && (
+                                <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 text-center">
+                                    <p className="text-[10px] font-black text-emerald-600 uppercase mb-2 tracking-widest">Total Acumulado (Resíduo de Caixas)</p>
+                                    <p className="text-4xl font-black text-emerald-700 flex items-center justify-center gap-2">
+                                       <Banknote size={32}/> R$ {depositSessions.reduce((acc, s) => acc + (s.remainingAmount || 0), 0).toFixed(2).replace('.',',')}
+                                    </p>
                                 </div>
-                            </div>
+                            )}
 
                           <div>
                               <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">

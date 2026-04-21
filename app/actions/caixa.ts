@@ -267,8 +267,12 @@ export async function getSessionsForDepositAction() {
 
     const result = registers.map((reg: any) => {
         const declaredAmount = reg.closingBal || 0;
-        const totalCashPayments = reg.payments?.reduce((acc: number, p: any) => acc + p.amount, 0) || 0;
-        const auditAmount = (reg.openingBal || 0) + totalCashPayments;
+        const openingBal = reg.openingBal || 0;
+        
+        // Montante a depositar = dinheiro na gaveta - troco inicial
+        const amountForDeposit = Math.max(0, declaredAmount - openingBal);
+        
+        // Quanto já foi depositado deste caixa específico
         const depositedAmount = reg.deposits?.reduce((acc: number, dep: any) => acc + dep.amount, 0) || 0;
         
         return {
@@ -277,9 +281,10 @@ export async function getSessionsForDepositAction() {
             openedAt: reg.openedAt,
             closedAt: reg.closedAt,
             declaredAmount,
-            auditAmount,
+            openingBal,
+            depositTarget: amountForDeposit,
             depositedAmount,
-            remainingAmount: Math.max(0, declaredAmount - depositedAmount),
+            remainingAmount: Math.max(0, amountForDeposit - depositedAmount),
             status: reg.status,
             deposits: reg.deposits
         };
@@ -319,6 +324,60 @@ export async function recordCashDepositAction(registerId: string, amount: number
         return { success: true };
     } catch (error: any) {
         console.error("ERRO_DEPOSIT:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+export async function recordGlobalCashDepositAction(amountToDeposit: number, notes?: string) {
+    try {
+        const session = await getServerSession(authOptions) as any;
+        if (!session) throw new Error('Unauthorized');
+
+        if (amountToDeposit <= 0) throw new Error('Valor inválido');
+
+        // Pega todos os caixas fechados, em ordem ascendente (mais antigos primeiro) para ir abatendo o depósito
+        const registers = await prisma.cashRegister.findMany({
+            where: { status: 'CLOSED' },
+            include: { deposits: true },
+            orderBy: { closedAt: 'asc' }
+        });
+
+        let remainingGlobalDeposit = amountToDeposit;
+        let totalDepositedInThisAction = 0;
+
+        for (const reg of registers) {
+            if (remainingGlobalDeposit <= 0) break;
+
+            const declaredAmount = reg.closingBal || 0;
+            const openingBal = reg.openingBal || 0;
+            const amountForDeposit = Math.max(0, declaredAmount - openingBal);
+            const alreadyDeposited = reg.deposits?.reduce((acc: number, d: any) => acc + d.amount, 0) || 0;
+            
+            const pendingForSession = Math.max(0, amountForDeposit - alreadyDeposited);
+
+            if (pendingForSession > 0) {
+                const depositForThisSession = Math.min(pendingForSession, remainingGlobalDeposit);
+                
+                await prisma.cashDeposit.create({
+                    data: {
+                        cashRegisterId: reg.id,
+                        amount: depositForThisSession,
+                        notes: notes || 'Depósito Global Unificado'
+                    }
+                });
+
+                remainingGlobalDeposit -= depositForThisSession;
+                totalDepositedInThisAction += depositForThisSession;
+            }
+        }
+
+        await createAuditLog("Depósito Bancário Global", `Registrado depósito global/ciclo de R$ ${totalDepositedInThisAction.toFixed(2)}.`);
+
+        revalidatePath('/financeiro');
+        revalidatePath('/dashboard');
+        return { success: true, deposited: totalDepositedInThisAction };
+    } catch (error: any) {
+        console.error("ERRO_GLOBAL_DEPOSIT:", error);
         return { success: false, error: error.message };
     }
 }
