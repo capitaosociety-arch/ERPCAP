@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react';
-import { Plus, Search, Coffee, X, ShoppingBag, Eye, Banknote, QrCode, CreditCard, Receipt, Trash2 } from 'lucide-react';
-import { createComanda, closeComanda, addItemToOrder, processPayment, removeItemFromOrder, deleteComandaAction } from '../../actions/comandas';
+import { Plus, Search, Coffee, X, ShoppingBag, Eye, Banknote, QrCode, CreditCard, Receipt, Trash2, RotateCcw } from 'lucide-react';
+import { createComanda, closeComanda, addItemToOrder, processPayment, removeItemFromOrder, deleteComandaAction, voidPaymentAction } from '../../actions/comandas';
 
 export default function ComandaBoard({ openOrders, products, openRegister }: { openOrders: any[], products: any[], openRegister?: any }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -96,6 +96,18 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
         try {
             await deleteComandaAction(orderId);
             setIsViewModalOpen(false);
+        } catch (e: any) {
+            alert(e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleVoidPayment = async (paymentId: string) => {
+        if (!confirm("Deseja realmente ESTORNAR este pagamento parcial?")) return;
+        setLoading(true);
+        try {
+            await voidPaymentAction(paymentId);
         } catch (e: any) {
             alert(e.message);
         } finally {
@@ -248,8 +260,18 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
                                     <h3 className="font-bold text-sm text-gray-400 mb-4 px-2 uppercase tracking-wider">Histórico de Pagamentos (Parciais)</h3>
                                     <div className="flex flex-col gap-2">
                                         {activeViewOrder.payments.map((p: any) => (
-                                            <div key={p.id} className="flex justify-between items-center px-4 py-3 bg-green-50 text-green-700 rounded-xl border border-green-200">
-                                                <p className="font-bold text-sm">{p.method}</p>
+                                            <div key={p.id} className="flex justify-between items-center px-4 py-3 bg-green-50 text-green-700 rounded-xl border border-green-200 group">
+                                                <div className="flex items-center gap-3">
+                                                    <p className="font-bold text-sm">{p.method}</p>
+                                                    <button 
+                                                        disabled={loading}
+                                                        onClick={() => handleVoidPayment(p.id)}
+                                                        className="p-1 text-green-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                        title="Estornar Pagamento"
+                                                    >
+                                                        <RotateCcw size={14} />
+                                                    </button>
+                                                </div>
                                                 <p className="font-bold">R$ {p.amount.toFixed(2).replace('.',',')}</p>
                                             </div>
                                         ))}

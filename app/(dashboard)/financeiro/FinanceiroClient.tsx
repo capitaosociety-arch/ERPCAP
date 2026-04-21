@@ -12,6 +12,8 @@ import {
 import { downloadExcel } from '../../../lib/excel-export';
 import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry } from '../../actions/financeiro';
 import { getRegisterSummary, deleteCashSessionAction } from '../../actions/caixa';
+import { voidPaymentAction } from '../../actions/comandas';
+import { RotateCcw } from 'lucide-react';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#0ea5e9'];
 
@@ -131,6 +133,24 @@ export default function FinanceiroClient({ payload }: any) {
       if (filterType === 'ALL') return true;
       return e.type === filterType;
   });
+
+  const handleVoidPayment = async (paymentId: string) => {
+      if (!confirm("Deseja realmente ESTORNAR este pagamento? O valor será removido do caixa e a comanda será reaberta se estiver fechada.")) return;
+      
+      startTransition(async () => {
+          try {
+              await voidPaymentAction(paymentId);
+              // Refresh summary
+              if (selectedCashRegister) {
+                  const data = await getRegisterSummary(selectedCashRegister.id);
+                  setSelectedCashRegister({ ...selectedCashRegister, ...data });
+              }
+              alert("Pagamento estornado com sucesso!");
+          } catch (err: any) {
+              alert("Falha no estorno: " + err.message);
+          }
+      });
+  };
 
   return (
     <div className="animate-in fade-in duration-500 pb-20">
@@ -684,17 +704,42 @@ export default function FinanceiroClient({ payload }: any) {
                                 {/* Tabela Resumo Pagamentos */}
                                 <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
                                     <h4 className="text-sm uppercase tracking-wider font-bold text-gray-500 mb-6 flex items-center gap-2"><CreditCard size={18}/> Dinheiro, Cartões e Transações</h4>
-                                    <div className="space-y-3">
-                                        <div className="flex justify-between items-center py-2 border-b border-dashed border-gray-200">
-                                           <span className="font-bold text-slate-700">Fundo de Troco Operacional (Entrada)</span>
-                                           <span className="font-black text-gray-500">R$ {selectedCashRegister.openingBal.toFixed(2).replace('.', ',')}</span>
+                                    <div className="space-y-4">
+                                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                                            <p className="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Fundo de Troco Operacional (Entrada)</p>
+                                            <p className="text-xl font-black text-slate-800">R$ {selectedCashRegister.openingBal.toFixed(2).replace('.', ',')}</p>
                                         </div>
-                                        {selectedCashRegister.payments.map((p: any, i: number) => (
-                                            <div key={i} className="flex justify-between items-center py-2 border-b border-dashed border-gray-200">
-                                                <span className="font-bold text-slate-700">{p.methodName}</span>
-                                                <span className="font-black text-green-600">+ R$ {p.amount.toFixed(2).replace('.', ',')}</span>
-                                            </div>
-                                        ))}
+
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider px-1">Transações Individuais</p>
+                                            {selectedCashRegister.individualPayments && selectedCashRegister.individualPayments.length > 0 ? (
+                                                selectedCashRegister.individualPayments.map((p: any) => (
+                                                    <div key={p.id} className="flex justify-between items-center py-2.5 px-4 bg-white border border-gray-100 rounded-xl shadow-sm group">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-bold text-slate-700 text-sm">{p.method === 'CASH' ? 'Dinheiro' : p.method === 'PIX' ? 'Pix' : p.method === 'DEBIT' ? 'Débito' : 'Crédito'}</span>
+                                                                <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-medium">{p.orderName}</span>
+                                                            </div>
+                                                            <p className="text-[10px] text-gray-400 font-medium">{new Date(p.date).toLocaleTimeString('pt-BR')}</p>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="font-black text-green-600">R$ {p.amount.toFixed(2).replace('.', ',')}</span>
+                                                            <button 
+                                                                onClick={() => handleVoidPayment(p.id)}
+                                                                className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                                title="Estornar Pagamento"
+                                                            >
+                                                                <RotateCcw size={14} />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="text-center py-6 text-gray-400 italic text-xs font-bold bg-white rounded-xl border border-dashed border-gray-200">
+                                                    Nenhum pagamento registrado nesta sessão.
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="mt-8 bg-slate-900 text-white rounded-xl p-5 border border-slate-700 shadow-inner ring-4 ring-slate-900/5">
                                         <p className="text-[11px] font-bold text-green-400 mb-1 uppercase tracking-wider">Dinheiro Em Gaveta Declarado</p>

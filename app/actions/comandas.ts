@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../api/auth/[...nextauth]/route";
+import { createAuditLog } from "./audit";
 
 export async function createComanda(name: string) {
     if(!name) throw new Error("Name required");
@@ -235,4 +236,46 @@ export async function deleteComandaAction(orderId: string) {
 
     revalidatePath("/mesas");
     revalidatePath("/dashboard");
+}
+
+export async function voidPaymentAction(paymentId: string) {
+    const session = await getServerSession(authOptions) as any;
+    if (!session) throw new Error("Não autorizado");
+
+    const result = await prisma.$transaction(async (tx) => {
+        const payment = await tx.payment.findUnique({
+            where: { id: paymentId },
+            include: { order: true }
+        });
+
+        if (!payment) throw new Error("Pagamento não encontrado");
+
+        // 1. Remove o pagamento
+        await tx.payment.delete({
+            where: { id: paymentId }
+        });
+
+        // 2. Se a ordem estava fechada, reabre ela
+        if (payment.order.status === "CLOSED") {
+            await tx.order.update({
+                where: { id: payment.orderId },
+                data: { 
+                    status: "OPEN", 
+                    closedAt: null 
+                }
+            });
+        }
+
+        return { orderId: payment.orderId, amount: payment.amount, method: payment.method };
+    });
+
+    await createAuditLog(
+        "Estorno de Pagamento", 
+        `Estornou R$ ${result.amount.toFixed(2)} (${result.method}) da comanda [${result.orderId.slice(-6)}].`
+    );
+
+    revalidatePath("/mesas");
+    revalidatePath("/financeiro");
+    revalidatePath("/dashboard");
+    revalidatePath("/pdv");
 }

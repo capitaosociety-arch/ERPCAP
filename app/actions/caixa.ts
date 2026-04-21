@@ -109,13 +109,19 @@ export async function getRegisterSummary(registerId: string) {
         where: { status: 'OPEN' }
     });
 
-    const payments = await prisma.payment.groupBy({
+    const groupedPayments = await prisma.payment.groupBy({
         by: ['method'],
         where: { cashRegisterId: registerId },
         _sum: { amount: true }
     });
 
-    const expectedCashInDrawer = registerToClose.openingBal + (payments.find(p => p.method === 'CASH')?._sum?.amount || 0);
+    const individualPaymentsRaw = await prisma.payment.findMany({
+        where: { cashRegisterId: registerId },
+        include: { order: true },
+        orderBy: { date: 'desc' }
+    });
+
+    const expectedCashInDrawer = registerToClose.openingBal + (groupedPayments.find(p => p.method === 'CASH')?._sum?.amount || 0);
 
     const methodsMap: Record<string, string> = {
         'CASH': 'Dinheiro',
@@ -124,7 +130,7 @@ export async function getRegisterSummary(registerId: string) {
         'DEBIT': 'Cartão de Débito'
     };
 
-    const formattedPayments = payments.map(p => ({
+    const formattedPayments = groupedPayments.map(p => ({
         methodName: methodsMap[p.method] || p.method,
         amount: p._sum.amount || 0
     }));
@@ -196,6 +202,15 @@ export async function getRegisterSummary(registerId: string) {
 
     const totalGrossSold = orderItems.reduce((acc, item) => acc + item.subtotal, 0);
 
+    const individualPayments = individualPaymentsRaw.map(p => ({
+        id: p.id,
+        method: p.method,
+        amount: p.amount,
+        date: p.date,
+        orderId: p.orderId,
+        orderName: p.order?.notes || 'Venda PDV'
+    }));
+
     return {
         openOrdersCount,
         openingBal: registerToClose.openingBal,
@@ -203,6 +218,7 @@ export async function getRegisterSummary(registerId: string) {
         sumAllPayments,
         totalGrossSold,
         payments: formattedPayments,
+        individualPayments, // Novo: lista para estorno
         productsSold,
         closingNotes: registerToClose.notes,
         totalSessionDiscounts: totalSessionDiscounts._sum.discount || 0,
