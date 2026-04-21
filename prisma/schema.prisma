@@ -35,6 +35,10 @@ model User {
   payments      Payment[]
   requestedTransfers  TransferRequest[] @relation("RequestedTransfers")
   authorizedTransfers TransferRequest[] @relation("AuthorizedTransfers")
+
+  @@index([name])
+  @@index([role])
+  @@index([isActive])
 }
 
 model Customer {
@@ -52,6 +56,10 @@ model Customer {
   services     Service[]      @relation("CustomerServices")
   subscription Subscription?
   rentals      Rental[]
+
+  @@index([name])
+  @@index([cpf])
+  @@index([phone])
 }
 
 model Table {
@@ -61,6 +69,8 @@ model Table {
   capacity  Int      @default(4)
   
   orders    Order[]
+
+  @@index([status])
 }
 
 model Order {
@@ -81,6 +91,12 @@ model Order {
   
   items       OrderItem[]
   payments    Payment[]
+
+  @@index([status])
+  @@index([openedAt])
+  @@index([tableId])
+  @@index([customerId])
+  @@index([userId])
 }
 
 model OrderItem {
@@ -97,6 +113,9 @@ model OrderItem {
   order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product     Product? @relation(fields: [productId], references: [id])
   service     Service? @relation(fields: [serviceId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
 }
 
 model Product {
@@ -121,12 +140,18 @@ model Product {
   depotStock       DepotStock?
   depotMovements   DepotMovement[]
   transferRequests TransferRequest[]
+
+  @@index([name])
+  @@index([categoryId])
+  @@index([isActive])
 }
 
 model ProductCategory {
   id          String   @id @default(cuid())
   name        String
   products    Product[]
+
+  @@index([name])
 }
 
 model Service {
@@ -141,6 +166,9 @@ model Service {
 
   customer    Customer? @relation("CustomerServices", fields: [customerId], references: [id])
   orderItems  OrderItem[]
+
+  @@index([name])
+  @@index([category])
 }
 
 model Stock {
@@ -164,6 +192,9 @@ model StockMovement {
   date        DateTime @default(now())
 
   product     Product  @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@index([date])
 }
 
 model CashRegister {
@@ -179,6 +210,10 @@ model CashRegister {
   user        User     @relation(fields: [userId], references: [id])
   payments    Payment[]
   deposits    CashDeposit[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([openedAt])
 }
 
 model CashDeposit {
@@ -190,6 +225,9 @@ model CashDeposit {
   status         String   @default("PENDING") // PENDING, CONFERIDO
 
   cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
+
+  @@index([cashRegisterId])
+  @@index([date])
 }
 
 model Payment {
@@ -204,6 +242,10 @@ model Payment {
   order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
   user           User     @relation(fields: [userId], references: [id])
+
+  @@index([orderId])
+  @@index([cashRegisterId])
+  @@index([date])
 }
 
 model AuditLog {
@@ -214,6 +256,10 @@ model AuditLog {
   timestamp   DateTime @default(now())
 
   user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([timestamp])
+  @@index([action])
 }
 
 model PriceHistory {
@@ -225,6 +271,9 @@ model PriceHistory {
   date        DateTime @default(now())
 
   product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([date])
 }
 
 model Subscription {
@@ -238,6 +287,9 @@ model Subscription {
 
   customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   payments    SubscriptionPayment[]
+
+  @@index([isActive])
+  @@index([dueDate])
 }
 
 model SubscriptionPayment {
@@ -248,6 +300,9 @@ model SubscriptionPayment {
   referenceMonth DateTime     
   
   subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@index([paymentDate])
 }
 
 model Rental {
@@ -261,6 +316,10 @@ model Rental {
   createdAt   DateTime @default(now())
 
   customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([status])
+  @@index([startTime])
 }
 
 model FinancialEntry {
@@ -280,6 +339,12 @@ model FinancialEntry {
   notes            String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  @@index([type])
+  @@index([status])
+  @@index([dueDate])
+  @@index([paymentDate])
+  @@index([category])
 }
 
 model DepotStock {
@@ -303,6 +368,9 @@ model DepotMovement {
   date        DateTime @default(now())
 
   product     Product  @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@index([date])
 }
 
 model TransferRequest {
@@ -319,4 +387,8 @@ model TransferRequest {
   product         Product  @relation(fields: [productId], references: [id])
   user            User     @relation("RequestedTransfers", fields: [userId], references: [id])
   authorizedBy    User?    @relation("AuthorizedTransfers", fields: [authorizedById], references: [id])
+
+  @@index([productId])
+  @@index([status])
+  @@index([createdAt])
 }
