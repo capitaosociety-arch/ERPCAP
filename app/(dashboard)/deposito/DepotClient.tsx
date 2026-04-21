@@ -50,8 +50,8 @@ export default function DepotClient({
     const canAuthorize = isAdmin || isManager;
 
     const filtered = initialInventory.filter(p => {
-        const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
-                           (p.code && p.code.toLowerCase().includes(search.toLowerCase()));
+        const matchSearch = (p.name || '').toLowerCase().includes((search || '').toLowerCase()) || 
+                           (p.code && p.code.toLowerCase().includes((search || '').toLowerCase()));
         
         if (filter === 'LOW') {
             const depotQty = p.depotStock?.quantity || 0;
@@ -65,9 +65,10 @@ export default function DepotClient({
     const pendingRequests = initialRequests.filter(r => r.status === 'PENDING');
     const processedRequests = initialRequests.filter(r => r.status !== 'PENDING');
     
+    const safeSearch = (search || '').toLowerCase();
     const allMovements = initialMovements.filter(m => 
-        m.product?.name.toLowerCase().includes(search.toLowerCase()) ||
-        (m.document && m.document.toLowerCase().includes(search.toLowerCase()))
+        (m.product?.name || '').toLowerCase().includes(safeSearch) ||
+        (m.document && m.document.toLowerCase().includes(safeSearch))
     );
 
     // Handlers
@@ -120,7 +121,7 @@ export default function DepotClient({
                     let matchedId = '';
                     if (item.nome) {
                         const lowerItem = String(item.nome).toLowerCase();
-                        const match = initialInventory.find((p: any) => p.name.toLowerCase().includes(lowerItem) || lowerItem.includes(p.name.toLowerCase()));
+                        const match = initialInventory.find((p: any) => (p.name || '').toLowerCase().includes(lowerItem) || lowerItem.includes((p.name || '').toLowerCase()));
                         if (match) matchedId = match.id;
                     }
                     initialMap[i] = { productId: matchedId, quantity: item.quantidade, price: item.preco_unitario };
@@ -282,8 +283,8 @@ export default function DepotClient({
                                                                 {product.iconUrl ? <img src={product.iconUrl} className="w-6 h-6" /> : <Box size={20} className="text-slate-300"/>}
                                                             </div>
                                                             <div>
-                                                                <p className="font-bold text-slate-800">{product.name}</p>
-                                                                <p className="text-[10px] text-gray-400 uppercase">{product.category.name}</p>
+                                                                <p className="font-bold text-slate-800">{product.name || 'Sem nome'}</p>
+                                                                <p className="text-[10px] text-gray-400 uppercase">{product.category?.name || 'Vários'}</p>
                                                             </div>
                                                         </div>
                                                     </td>
