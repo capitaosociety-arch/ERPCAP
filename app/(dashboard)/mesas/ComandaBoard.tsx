@@ -107,9 +107,14 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
         if (!confirm("Deseja realmente ESTORNAR este pagamento parcial?")) return;
         setLoading(true);
         try {
-            await voidPaymentAction(paymentId);
+            const res = await voidPaymentAction(paymentId);
+            if (res && !res.success) {
+                alert("Falha no estorno: " + res.error);
+            } else {
+                alert("Pagamento estornado!");
+            }
         } catch (e: any) {
-            alert(e.message);
+            alert("Erro técnico: " + e.message);
         } finally {
             setLoading(false);
         }

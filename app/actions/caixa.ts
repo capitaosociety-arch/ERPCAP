@@ -211,7 +211,7 @@ export async function getRegisterSummary(registerId: string) {
         orderName: p.order?.notes || 'Venda PDV'
     }));
 
-    return {
+    return JSON.parse(JSON.stringify({
         openOrdersCount,
         openingBal: registerToClose.openingBal,
         expectedCashInDrawer,
@@ -229,7 +229,7 @@ export async function getRegisterSummary(registerId: string) {
             discount: o.discount,
             items: o.items.map(i => i.product?.name || i.service?.name || 'Item')
         }))
-    };
+    }));
 }
 
 export async function deleteCashSessionAction(sessionId: string) {

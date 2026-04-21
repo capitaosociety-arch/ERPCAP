@@ -239,43 +239,50 @@ export async function deleteComandaAction(orderId: string) {
 }
 
 export async function voidPaymentAction(paymentId: string) {
-    const session = await getServerSession(authOptions) as any;
-    if (!session) throw new Error("Não autorizado");
+    try {
+        const session = await getServerSession(authOptions) as any;
+        if (!session) throw new Error("Não autorizado");
 
-    const result = await prisma.$transaction(async (tx) => {
-        const payment = await tx.payment.findUnique({
-            where: { id: paymentId },
-            include: { order: true }
-        });
-
-        if (!payment) throw new Error("Pagamento não encontrado");
-
-        // 1. Remove o pagamento
-        await tx.payment.delete({
-            where: { id: paymentId }
-        });
-
-        // 2. Se a ordem estava fechada, reabre ela
-        if (payment.order.status === "CLOSED") {
-            await tx.order.update({
-                where: { id: payment.orderId },
-                data: { 
-                    status: "OPEN", 
-                    closedAt: null 
-                }
+        const result = await prisma.$transaction(async (tx) => {
+            const payment = await tx.payment.findUnique({
+                where: { id: paymentId },
+                include: { order: true }
             });
-        }
 
-        return { orderId: payment.orderId, amount: payment.amount, method: payment.method };
-    });
+            if (!payment) throw new Error("Pagamento não encontrado");
 
-    await createAuditLog(
-        "Estorno de Pagamento", 
-        `Estornou R$ ${result.amount.toFixed(2)} (${result.method}) da comanda [${result.orderId.slice(-6)}].`
-    );
+            // 1. Remove o pagamento
+            await tx.payment.delete({
+                where: { id: paymentId }
+            });
 
-    revalidatePath("/mesas");
-    revalidatePath("/financeiro");
-    revalidatePath("/dashboard");
-    revalidatePath("/pdv");
+            // 2. Se a ordem estava fechada, reabre ela
+            if (payment.order.status === "CLOSED") {
+                await tx.order.update({
+                    where: { id: payment.orderId },
+                    data: { 
+                        status: "OPEN", 
+                        closedAt: null 
+                    }
+                });
+            }
+
+            return { orderId: payment.orderId, amount: payment.amount, method: payment.method };
+        });
+
+        await createAuditLog(
+            "Estorno de Pagamento", 
+            `Estornou R$ ${result.amount.toFixed(2)} (${result.method}) da comanda [${result.orderId.slice(-6)}].`
+        );
+
+        revalidatePath("/mesas");
+        revalidatePath("/financeiro");
+        revalidatePath("/dashboard");
+        revalidatePath("/pdv");
+
+        return { success: true };
+    } catch (error: any) {
+        console.error("ERRO_ESTORNO:", error);
+        return { success: false, error: error.message };
+    }
 }

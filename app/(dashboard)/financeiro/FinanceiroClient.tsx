@@ -107,9 +107,14 @@ export default function FinanceiroClient({ payload }: any) {
       if (!confirm("ATENÇÃO: Deseja realmente EXCLUIR esta sessão de caixa e TODO o seu histórico de vendas e pagamentos? Esta ação removerá os dados de auditoria permanentemente e é recomendada apenas para limpar testes.")) return;
       startTransition(async () => {
           try {
-              await deleteCashSessionAction(id);
+              const res = await deleteCashSessionAction(id);
+              if (res && !res.success) {
+                  alert("Falha ao excluir: " + res.error);
+              } else {
+                  alert("Sessão excluída com sucesso!");
+              }
           } catch (e: any) {
-              alert(e.message);
+              alert("Erro técnico: " + e.message);
           }
       });
   };
@@ -139,7 +144,12 @@ export default function FinanceiroClient({ payload }: any) {
       
       startTransition(async () => {
           try {
-              await voidPaymentAction(paymentId);
+              const res = await voidPaymentAction(paymentId);
+              if (res && !res.success) {
+                  alert("Falha no estorno: " + res.error);
+                  return;
+              }
+              
               // Refresh summary
               if (selectedCashRegister) {
                   const data = await getRegisterSummary(selectedCashRegister.id);
@@ -147,7 +157,7 @@ export default function FinanceiroClient({ payload }: any) {
               }
               alert("Pagamento estornado com sucesso!");
           } catch (err: any) {
-              alert("Falha no estorno: " + err.message);
+              alert("Falha técnica no estorno: " + err.message);
           }
       });
   };
