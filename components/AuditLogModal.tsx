@@ -8,12 +8,6 @@ export default function AuditLogModal({ isOpen, onClose }: { isOpen: boolean, on
     const [logs, setLogs] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
 
-    useEffect(() => {
-        if (isOpen) {
-            loadLogs();
-        }
-    }, [isOpen]);
-
     const loadLogs = async () => {
         setLoading(true);
         const res = await getAuditLogs();
@@ -22,6 +16,15 @@ export default function AuditLogModal({ isOpen, onClose }: { isOpen: boolean, on
         }
         setLoading(false);
     };
+
+    useEffect(() => {
+        const initLogs = async () => {
+            if (isOpen) {
+                await loadLogs();
+            }
+        };
+        initLogs();
+    }, [isOpen]);
 
     const getActionIcon = (action: string) => {
         const a = action.toLowerCase();

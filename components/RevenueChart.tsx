@@ -9,11 +9,13 @@ export default function RevenueChart() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
-    getRevenueData(filter).then(chartData => {
+    const fetchData = async () => {
+      setLoading(true);
+      const chartData = await getRevenueData(filter);
       setData(chartData);
       setLoading(false);
-    });
+    };
+    fetchData();
   }, [filter]);
 
   return (

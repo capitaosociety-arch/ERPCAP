@@ -12,7 +12,7 @@ export async function createComanda(name: string) {
     const session = await getServerSession(authOptions) as any;
     const userId = session?.user?.id || (await prisma.user.findFirst())?.id;
 
-    let register = await prisma.cashRegister.findFirst({ where: { status: "OPEN" } });
+    const register = await prisma.cashRegister.findFirst({ where: { status: "OPEN" } });
     if (!register) throw new Error("Nenhum caixa aberto! Abra o caixa antes de criar novas comandas.");
 
     await prisma.order.create({
@@ -87,7 +87,7 @@ export async function processPayment(orderId: string, amount: number, method: st
     if (!userId) throw new Error("UsuÃ¡rio nÃ£o logado");
 
     // Garante que existe um Caixa ("CashRegister") aberto onde esse pagamento vai cair
-    let register = await prisma.cashRegister.findFirst({
+    const register = await prisma.cashRegister.findFirst({
         where: { status: "OPEN" }
     });
 

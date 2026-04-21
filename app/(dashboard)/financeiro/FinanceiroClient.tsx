@@ -854,7 +854,7 @@ export default function FinanceiroClient({ payload }: any) {
                                     <h4 className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2 flex items-center gap-2">
                                         <AlertCircle size={14}/> Observações de Fechamento
                                     </h4>
-                                    <p className="text-sm font-medium text-amber-900 italic">"{selectedCashRegister.closingNotes}"</p>
+                                    <p className="text-sm font-medium text-amber-900 italic">&quot;{selectedCashRegister.closingNotes}&quot;</p>
                                 </div>
                             )}
 

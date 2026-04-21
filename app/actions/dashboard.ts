@@ -4,7 +4,7 @@ import { prisma } from "../../lib/prisma";
 
 export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') {
   const now = new Date();
-  let startDate = new Date();
+  const startDate = new Date();
   
   if (filter === 'day') {
     startDate.setHours(0, 0, 0, 0);

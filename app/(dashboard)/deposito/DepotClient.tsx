@@ -407,7 +407,7 @@ export default function DepotClient({
                                             </td>
                                             <td className="p-4">
                                                 <p className="font-bold text-slate-700">{req.product?.name}</p>
-                                                {req.notes && <p className="text-[10px] text-indigo-500 font-bold italic">"{req.notes}"</p>}
+                                                {req.notes && <p className="text-[10px] text-indigo-500 font-bold italic">&quot;{req.notes}&quot;</p>}
                                             </td>
                                             <td className="p-4 text-center">
                                                 <span className="text-xl font-black text-slate-900">{req.quantity}</span> <span className="text-[10px] uppercase text-slate-500">{req.product?.unit}</span>
