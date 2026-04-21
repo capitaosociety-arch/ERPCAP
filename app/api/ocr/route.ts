@@ -15,12 +15,13 @@ const MODELS_FALLBACK = [
     "gemini-1.5-flash-002",           // Variante 002 legada
 ];
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
+// genAI is instantiated lazily inside functions to avoid build-time errors
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Tenta gerar conteúdo com retry automático e fallback de modelos
 async function generateWithRetry(buffer: Buffer, mimeType: string, prompt: string): Promise<string> {
+    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
     for (let modelIdx = 0; modelIdx < MODELS_FALLBACK.length; modelIdx++) {
         const modelName = MODELS_FALLBACK[modelIdx];
         

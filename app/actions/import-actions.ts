@@ -4,13 +4,14 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
+// genAI is instantiated lazily inside functions to avoid build-time errors
 
 export async function processProductsWithAI(rawData: any[]) {
     if (!rawData || rawData.length === 0) {
         throw new Error("Nenhum dado encontrado na planilha.");
     }
 
+    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
     const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     // Preparar dados para a IA (enviar apenas uma amostra significativa para mapeamento ou o lote todo se pequeno)

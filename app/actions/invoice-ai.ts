@@ -3,8 +3,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabaseAdmin } from "@/lib/supabase";
 
-// Configurar o AI usando a versão estável
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
+// genAI is instantiated lazily inside functions to avoid build-time errors
 
 export async function parseInvoiceImage(formData: FormData) {
     const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "";
@@ -40,6 +39,7 @@ export async function parseInvoiceImage(formData: FormData) {
         const imageUrl = publicUrlData?.publicUrl || null;
 
         // 2. Processar a imagem com IA (Gemini 1.5 Flash - Estável)
+        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         
         // Converter file para o formato Gemini
