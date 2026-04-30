@@ -459,7 +459,20 @@ export default function PDVClient({ products, services = [], categories, user, o
                         <label className="block text-sm font-bold text-slate-700 mb-2">Desconto Opcional (Se Abatimento)</label>
                         <div className="relative">
                             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">R$</span>
-                            <input type="number" placeholder="0.00" value={discountValue} onChange={e => setDiscountValue(e.target.value)} className="w-full border-2 border-gray-200 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-mrts-blue font-bold text-red-500 bg-white" />
+                            <input 
+                                type="number" 
+                                placeholder="0.00" 
+                                value={discountValue} 
+                                onChange={e => {
+                                    const val = e.target.value;
+                                    setDiscountValue(val);
+                                    const disc = Number(val) || 0;
+                                    const totalPaid = paymentOrder.payments?.reduce((acc: any, p: any) => acc + p.amount, 0) || 0;
+                                    const newBalance = Math.max(0, paymentOrder.total - paymentOrder.discount - totalPaid - disc);
+                                    setPaymentAmount(newBalance.toFixed(2));
+                                }} 
+                                className="w-full border-2 border-gray-200 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-mrts-blue font-bold text-red-500 bg-white" 
+                            />
                         </div>
                     </div>
 

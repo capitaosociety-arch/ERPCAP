@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, ShoppingCart, Coffee, Box, Users, DollarSign, Settings, FileText, X, Warehouse } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Coffee, Box, Users, DollarSign, Settings, FileText, X, Warehouse, Calendar } from 'lucide-react';
 
 const MENU_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permKey: 'permDashboard' },
@@ -11,6 +11,7 @@ const MENU_ITEMS = [
   { href: '/estoque', label: 'Estoque Balcão', icon: FileText, permKey: 'permStock' },
   { href: '/deposito', label: 'Depósito (Matriz)', icon: Warehouse, permKey: 'permDepot' },
   { href: '/clientes', label: 'Clientes', icon: Users, permKey: 'permCustomers' },
+  { href: '/quadras', label: 'Quadras', icon: Calendar, permKey: 'permFinance' },
   { href: '/financeiro', label: 'Financeiro', icon: DollarSign, permKey: 'permFinance' },
   { href: '/usuarios', label: 'Usuários', icon: Settings, permKey: 'permUsers' },
 ];
