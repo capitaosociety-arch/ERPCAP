@@ -185,6 +185,27 @@ export async function getRegisterSummary(registerId: string) {
         orderName: p.order?.notes || 'Venda PDV'
     }));
 
+    const salesHistoryMap = new Map();
+    individualPaymentsRaw.forEach(p => {
+        const orderId = p.orderId || `avulso_${p.id}`;
+        if (!salesHistoryMap.has(orderId)) {
+            salesHistoryMap.set(orderId, {
+                orderId: orderId,
+                notes: p.order?.notes || 'Venda Avulsa / PDV',
+                totalBruto: p.order?.total || p.amount,
+                discount: p.order?.discount || 0,
+                payments: []
+            });
+        }
+        salesHistoryMap.get(orderId).payments.push({
+            id: p.id,
+            method: p.method,
+            amount: p.amount,
+            date: p.date
+        });
+    });
+    const salesHistory = Array.from(salesHistoryMap.values());
+
     return JSON.parse(JSON.stringify({
         openOrdersCount,
         openingBal: registerToClose.openingBal,
@@ -193,6 +214,7 @@ export async function getRegisterSummary(registerId: string) {
         totalGrossSold,
         payments: formattedPayments,
         individualPayments,
+        salesHistory,
         productsSold,
         closingNotes: registerToClose.notes || '',
         totalSessionDiscounts: totalSessionDiscountsRaw._sum.discount || 0,

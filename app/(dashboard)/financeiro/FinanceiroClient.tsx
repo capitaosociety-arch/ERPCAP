@@ -778,27 +778,43 @@ export default function FinanceiroClient({ payload }: any) {
                                             <p className="text-xl font-black text-slate-800">R$ {selectedCashRegister.openingBal.toFixed(2).replace('.', ',')}</p>
                                         </div>
 
-                                        <div className="space-y-2">
-                                            <p className="text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider px-1">Transações Individuais</p>
-                                            {selectedCashRegister.individualPayments && selectedCashRegister.individualPayments.length > 0 ? (
-                                                selectedCashRegister.individualPayments.map((p: any) => (
-                                                    <div key={p.id} className="flex justify-between items-center py-2.5 px-4 bg-white border border-gray-100 rounded-xl shadow-sm group">
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="font-bold text-slate-700 text-sm">{p.method === 'CASH' ? 'Dinheiro' : p.method === 'PIX' ? 'Pix' : p.method === 'DEBIT' ? 'Débito' : 'Crédito'}</span>
-                                                                <span className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-medium">{p.orderName}</span>
+                                        <div className="space-y-3">
+                                            <p className="text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider px-1">Histórico de Pagamentos por Venda</p>
+                                            {selectedCashRegister.salesHistory && selectedCashRegister.salesHistory.length > 0 ? (
+                                                selectedCashRegister.salesHistory.map((sale: any) => (
+                                                    <div key={sale.orderId} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden mb-3">
+                                                        <div className="bg-slate-50 border-b border-gray-100 p-3 flex justify-between items-center">
+                                                            <div>
+                                                                <p className="text-xs font-bold text-slate-800">{sale.notes}</p>
+                                                                <p className="text-[10px] text-gray-500">Valor Bruto: R$ {sale.totalBruto.toFixed(2).replace('.', ',')}</p>
                                                             </div>
-                                                            <p className="text-[10px] text-gray-400 font-medium">{new Date(p.date).toLocaleTimeString('pt-BR')}</p>
+                                                            {sale.discount > 0 && (
+                                                                <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded font-black uppercase">
+                                                                    Desconto Info: - R$ {sale.discount.toFixed(2).replace('.', ',')}
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="font-black text-green-600">R$ {p.amount.toFixed(2).replace('.', ',')}</span>
-                                                            <button 
-                                                                onClick={() => handleVoidPayment(p.id)}
-                                                                className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                                                title="Estornar Pagamento"
-                                                            >
-                                                                <RotateCcw size={14} />
-                                                            </button>
+                                                        <div className="p-2 space-y-1 bg-white">
+                                                            {sale.payments.map((p: any) => (
+                                                                <div key={p.id} className="flex justify-between items-center py-1.5 px-3 rounded-lg hover:bg-slate-50 transition group">
+                                                                    <div className="flex-1">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="font-bold text-slate-700 text-[11px] uppercase">{p.method === 'CASH' ? 'Dinheiro' : p.method === 'PIX' ? 'Pix' : p.method === 'DEBIT' ? 'Débito' : 'Crédito'}</span>
+                                                                        </div>
+                                                                        <p className="text-[9px] text-gray-400 font-medium">{new Date(p.date).toLocaleTimeString('pt-BR')}</p>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-black text-green-600 text-xs">Pago: R$ {p.amount.toFixed(2).replace('.', ',')}</span>
+                                                                        <button 
+                                                                            onClick={() => handleVoidPayment(p.id)}
+                                                                            className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
+                                                                            title="Estornar Pagamento"
+                                                                        >
+                                                                            <RotateCcw size={12} />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
                                                         </div>
                                                     </div>
                                                 ))
