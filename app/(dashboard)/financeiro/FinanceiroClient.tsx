@@ -341,8 +341,9 @@ export default function FinanceiroClient({ payload }: any) {
               </div>
 
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  <table className="w-full text-left border-collapse">
-                      <thead>
+                  <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse whitespace-nowrap">
+                          <thead>
                           <tr className="bg-slate-50 border-b border-gray-100 text-[10px] uppercase text-gray-400 font-black tracking-widest">
                               <th className="p-4">Descrição / Categoria</th>
                               <th className="p-4">Vencimento</th>
@@ -423,6 +424,7 @@ export default function FinanceiroClient({ payload }: any) {
                           )}
                       </tbody>
                   </table>
+                  </div>
               </div>
           </div>
       )}

@@ -50,6 +50,8 @@ export default function DepotClient({
     const canAuthorize = isAdmin || isManager;
 
     const filtered = initialInventory.filter(p => {
+        if (p.isActive === false) return false;
+
         const matchSearch = (p.name || '').toLowerCase().includes((search || '').toLowerCase()) || 
                            (p.code && p.code.toLowerCase().includes((search || '').toLowerCase()));
         

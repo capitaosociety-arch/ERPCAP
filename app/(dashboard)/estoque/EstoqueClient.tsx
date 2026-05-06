@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition, useMemo } from 'react';
-import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp } from 'lucide-react';
+import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search } from 'lucide-react';
 import { registerStockMovement, updateMinStock, registerBatchStockMovement } from '../../actions/stock';
 import { parseInvoiceImage } from '../../actions/invoice-ai';
 import { quickCreateProductFromInvoice } from '../../actions/products';
@@ -25,6 +25,7 @@ interface NfItem {
 export default function EstoqueClient({ initialProducts }: { initialProducts: Product[] }) {
   const [products, setProducts] = useState<Product[]>(initialProducts || []);
   const [filter, setFilter] = useState('ALL'); // ALL, LOW, HISTORY
+  const [searchQuery, setSearchQuery] = useState('');
   
   // Modals
   const [isMovementModalOpen, setMovementModalOpen] = useState(false);
@@ -302,6 +303,10 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
   };
 
   const filteredProducts = products.filter((p: any) => {
+      if (p.isActive === false) return false;
+      if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+          return false;
+      }
       if (filter === 'LOW') {
           const qty = p.stock?.quantity || 0;
           const min = p.stock?.minQuantity || 5;
@@ -312,10 +317,15 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
 
   // Filtra histórico de movimentos
   const allMovements = useMemo(() => {
-    return products
+    let movs = products
       .flatMap((p: any) => p.stockMovements?.map((m: any) => ({ ...m, product: p })) || [])
       .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [products]);
+    
+    if (searchQuery) {
+        movs = movs.filter((m: any) => m.product?.name?.toLowerCase().includes(searchQuery.toLowerCase()));
+    }
+    return movs;
+  }, [products, searchQuery]);
 
   return (
     <div className="animate-in fade-in duration-500">
@@ -325,6 +335,16 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
           <p className="text-gray-500 text-sm mt-1">Monitore o fluxo de insumos e gerencie notas fiscais.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+            <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <input 
+                    type="text" 
+                    placeholder="Buscar produto..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-mrts-blue w-full sm:w-64 transition-all"
+                />
+            </div>
             <button onClick={() => {
                 setNfModalOpen(true);
                 setParsedNfData(null);

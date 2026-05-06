@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Plus, Edit3, X, DollarSign, ToggleLeft, ToggleRight, Sheet, Upload, CheckCircle2, RefreshCw, Trash2 } from 'lucide-react';
+import { Plus, Edit3, X, DollarSign, ToggleLeft, ToggleRight, Sheet, Upload, CheckCircle2, RefreshCw, Trash2, Search } from 'lucide-react';
 import { updateProductPrice, upsertProduct, toggleProductStatus, deleteProduct } from '../../actions/products';
 import { processProductsWithAI, saveBatchProducts } from '../../actions/import-actions';
 import { downloadExcel } from '../../../lib/excel-export';
@@ -9,6 +9,7 @@ import * as XLSX from 'xlsx';
 
 export default function ProductsClient({ initialProducts, categories = [] }: any) {
   const [products, setProducts] = useState(initialProducts);
+  const [searchQuery, setSearchQuery] = useState('');
   
   // Price Modal
   const [isPriceModalOpen, setPriceModalOpen] = useState(false);
@@ -189,6 +190,13 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
     downloadExcel(exportData, "Relatorio_Produtos");
   };
 
+  const filteredProducts = products.filter((p: any) => {
+      if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+          return false;
+      }
+      return true;
+  });
+
   return (
     <div className="animate-in fade-in duration-500">
       <div className="flex justify-between items-center mb-6">
@@ -196,7 +204,17 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
           <h1 className="text-2xl font-bold text-gray-800">Produtos</h1>
           <p className="text-gray-500 text-sm mt-1">Gerencie seu cardápio, estoque e preços.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative">
+             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+             <input 
+                 type="text" 
+                 placeholder="Buscar produto..." 
+                 value={searchQuery}
+                 onChange={(e) => setSearchQuery(e.target.value)}
+                 className="pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-mrts-blue w-full sm:w-64 transition-all"
+             />
+          </div>
           <label className={`cursor-pointer bg-white border border-gray-200 text-slate-600 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm flex items-center gap-2 hover:bg-gray-50 transition-all ${isProcessingAI ? 'opacity-50 pointer-events-none' : ''}`}>
             {isProcessingAI ? <RefreshCw size={18} className="animate-spin" /> : <Upload size={18} />}
             {isProcessingAI ? 'Processando...' : 'Importar Planilha (IA)'}
@@ -224,7 +242,7 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {products.map((product: any) => (
+              {filteredProducts.map((product: any) => (
                 <tr key={product.id} className={`hover:bg-blue-50/40 transition ${!product.isActive ? 'opacity-50 grayscale' : ''}`}>
                   <td className="p-4">
                     <div className="flex items-center gap-3">
