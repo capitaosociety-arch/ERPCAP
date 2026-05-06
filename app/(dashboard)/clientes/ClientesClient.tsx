@@ -126,7 +126,7 @@ export default function ClientesClient({ initialCustomers }: any) {
       <div className="flex justify-between items-end mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Clientes & Assinaturas</h1>
-          <p className="text-gray-500 text-sm mt-1">CRM, Mensalidades e locação de horários (Quadras/Mesas).</p>
+          <p className="text-gray-500 text-sm mt-1">CRM, Mensalidades e locação de horários (Mesas).</p>
         </div>
         <div className="flex gap-4">
             <div className="flex bg-white rounded-xl shadow-sm border border-gray-200 p-1">
@@ -308,10 +308,10 @@ export default function ClientesClient({ initialCustomers }: any) {
                        ) : (
                            <div className="flex flex-col gap-6">
                                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col gap-4">
-                                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5"><Clock size={16}/> Agendar Quadra / Espaço</h3>
+                                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5"><Clock size={16}/> Agendar Espaço / Mesa</h3>
                                     
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">O que está alugando? (Ex: Quadra 1)</label>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">O que está alugando? (Ex: Mesa 5)</label>
                                         <input type="text" value={rentalResource} onChange={e => setRentalResource(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:border-mrts-blue text-sm font-medium text-slate-700"/>
                                     </div>
 

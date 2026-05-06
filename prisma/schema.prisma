@@ -393,34 +393,3 @@ model TransferRequest {
   @@index([createdAt])
 }
 
-model Mensalista {
-  id           String   @id @default(cuid())
-  nome         String
-  telefone     String?
-  dia_semana   String   
-  horario      String   
-  valor_mensal Float
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  pagamentos   PagamentoLocacao[]
-}
-
-model PagamentoLocacao {
-  id               String      @id @default(cuid())
-  mensalistaId     String?
-  mensalista       Mensalista? @relation(fields: [mensalistaId], references: [id])
-  
-  clienteAvulso    String?     
-  data             DateTime    
-  hora             String?     
-  valor            Float
-  status           String      @default("PENDENTE") // PENDENTE, PAGO, CANCELADO
-  tipo             String      @default("MENSALISTA") // MENSALISTA, HORISTA
-  
-  financialEntryId String?     @unique
-  
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
-}
