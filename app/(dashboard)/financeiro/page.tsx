@@ -5,19 +5,16 @@ export default async function FinanceiroRoute() {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  // Consulta pagamentos padrao
-  const payments = await prisma.payment.findMany({
-    where: { date: { gte: thirtyDaysAgo } },
-    include: { user: true }
-  });
-
-  // Consulta mensalidades
-  const subPayments = await prisma.subscriptionPayment.findMany({
-    where: { paymentDate: { gte: thirtyDaysAgo } }
-  });
-
-  // Consulta Fechamentos (Caixas Abertos/Fechados)
-  const cashRegisters = await prisma.cashRegister.findMany({
+  // Execute all heavy queries in parallel
+  const [payments, subPayments, cashRegisters, financialEntries] = await Promise.all([
+    prisma.payment.findMany({
+      where: { date: { gte: thirtyDaysAgo } },
+      include: { user: true }
+    }),
+    prisma.subscriptionPayment.findMany({
+      where: { paymentDate: { gte: thirtyDaysAgo } }
+    }),
+    prisma.cashRegister.findMany({
       where: { openedAt: { gte: thirtyDaysAgo } },
       orderBy: { openedAt: 'desc' },
       include: { 
@@ -34,12 +31,11 @@ export default async function FinanceiroRoute() {
               }
           } 
       }
-  });
-
-  // Consulta Lançamentos Financeiros (Pagar/Receber)
-  const financialEntries = await prisma.financialEntry.findMany({
+    }),
+    prisma.financialEntry.findMany({
       orderBy: { dueDate: 'asc' }
-  });
+    })
+  ]);
 
   // Consolidação de Informações
   let totalRevenue = 0;

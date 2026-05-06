@@ -8,18 +8,21 @@ import { DollarSign, Coffee, Users, ShoppingBag } from "lucide-react";
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   
-  // Basic KPI queries
-  const totalUsers = await prisma.user.count();
-  const totalProducts = await prisma.product.count({ where: { isActive: true } });
-  const openOrders = await prisma.order.count({ where: { status: 'OPEN' } });
-  
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  const todayOrders = await prisma.order.findMany({
-    where: { openedAt: { gte: today }, status: 'CLOSED' },
-    select: { total: true, discount: true }
-  });
+  // Basic KPI queries in parallel for better performance
+  const [totalUsers, totalProducts, openOrders, todayOrders] = await Promise.all([
+    prisma.user.count(),
+    prisma.product.count({ where: { isActive: true } }),
+    prisma.order.count({ where: { status: 'OPEN' } }),
+    prisma.order.findMany({
+      where: { 
+        openedAt: { 
+          gte: new Date(new Date().setHours(0, 0, 0, 0)) 
+        }, 
+        status: 'CLOSED' 
+      },
+      select: { total: true, discount: true }
+    })
+  ]);
   
   const todayRevenue = todayOrders.reduce((acc, order) => acc + (order.total - (order.discount || 0)), 0);
 
