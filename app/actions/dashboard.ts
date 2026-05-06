@@ -22,7 +22,7 @@ export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') 
       openedAt: { gte: startDate },
       status: "CLOSED"
     },
-    select: { total: true, openedAt: true }
+    select: { total: true, discount: true, openedAt: true }
   });
 
   const grouped: Record<string, number> = {};
@@ -40,7 +40,8 @@ export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') 
       key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     }
 
-    grouped[key] = (grouped[key] || 0) + order.total;
+    const netTotal = order.total - (order.discount || 0);
+    grouped[key] = (grouped[key] || 0) + netTotal;
   });
 
   const chartData = Object.entries(grouped)

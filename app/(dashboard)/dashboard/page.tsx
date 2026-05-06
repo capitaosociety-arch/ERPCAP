@@ -17,11 +17,11 @@ export default async function DashboardPage() {
   today.setHours(0, 0, 0, 0);
   
   const todayOrders = await prisma.order.findMany({
-    where: { openedAt: { gte: today } },
-    select: { total: true }
+    where: { openedAt: { gte: today }, status: 'CLOSED' },
+    select: { total: true, discount: true }
   });
   
-  const todayRevenue = todayOrders.reduce((acc, order) => acc + order.total, 0);
+  const todayRevenue = todayOrders.reduce((acc, order) => acc + (order.total - (order.discount || 0)), 0);
 
   return (
     <div className="animate-in fade-in duration-500 pb-10">
