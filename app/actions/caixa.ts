@@ -96,7 +96,18 @@ export async function getRegisterSummary(registerId: string) {
 
     const individualPaymentsRaw = await prisma.payment.findMany({
         where: { cashRegisterId: registerId },
-        include: { order: true },
+        include: { 
+            order: {
+                include: {
+                    items: {
+                        include: {
+                            product: true,
+                            service: true
+                        }
+                    }
+                }
+            } 
+        },
         orderBy: { date: 'desc' }
     });
 
@@ -194,7 +205,12 @@ export async function getRegisterSummary(registerId: string) {
                 notes: p.order?.notes || 'Venda Avulsa / PDV',
                 totalBruto: p.order?.total || p.amount,
                 discount: p.order?.discount || 0,
-                payments: []
+                payments: [],
+                items: p.order?.items?.map((i: any) => ({
+                    name: i.product?.name || i.service?.name || 'Item',
+                    quantity: i.quantity,
+                    subtotal: i.subtotal
+                })) || []
             });
         }
         salesHistoryMap.get(orderId).payments.push({

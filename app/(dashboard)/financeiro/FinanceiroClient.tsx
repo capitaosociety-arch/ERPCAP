@@ -785,15 +785,27 @@ export default function FinanceiroClient({ payload }: any) {
                                             {selectedCashRegister.salesHistory && selectedCashRegister.salesHistory.length > 0 ? (
                                                 selectedCashRegister.salesHistory.map((sale: any) => (
                                                     <div key={sale.orderId} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden mb-3">
-                                                        <div className="bg-slate-50 border-b border-gray-100 p-3 flex justify-between items-center">
-                                                            <div>
-                                                                <p className="text-xs font-bold text-slate-800">{sale.notes}</p>
-                                                                <p className="text-[10px] text-gray-500">Valor Bruto: R$ {sale.totalBruto.toFixed(2).replace('.', ',')}</p>
+                                                        <div className="bg-slate-50 border-b border-gray-100 p-3 flex flex-col justify-between">
+                                                            <div className="flex justify-between items-center">
+                                                                <div>
+                                                                    <p className="text-xs font-bold text-slate-800">{sale.notes}</p>
+                                                                    <p className="text-[10px] text-gray-500">Valor Bruto: R$ {sale.totalBruto.toFixed(2).replace('.', ',')}</p>
+                                                                </div>
+                                                                {sale.discount > 0 && (
+                                                                    <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded font-black uppercase">
+                                                                        Desconto Info: - R$ {sale.discount.toFixed(2).replace('.', ',')}
+                                                                    </span>
+                                                                )}
                                                             </div>
-                                                            {sale.discount > 0 && (
-                                                                <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded font-black uppercase">
-                                                                    Desconto Info: - R$ {sale.discount.toFixed(2).replace('.', ',')}
-                                                                </span>
+                                                            {sale.items && sale.items.length > 0 && (
+                                                                <div className="mt-2 pt-2 border-t border-gray-200/60 space-y-1">
+                                                                    {sale.items.map((it: any, idx: number) => (
+                                                                        <div key={idx} className="flex justify-between items-center text-[10px] text-slate-500">
+                                                                            <span>{it.quantity}x {it.name}</span>
+                                                                            <span className="font-bold">R$ {it.subtotal.toFixed(2).replace('.', ',')}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
                                                             )}
                                                         </div>
                                                         <div className="p-2 space-y-1 bg-white">
