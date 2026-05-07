@@ -68,7 +68,7 @@ export default function DashboardClient({ stats, payments, userName, userRole }:
                         <DollarSign size={28} />
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-gray-500">Faturamento Hoje</p>
+                        <p className="text-sm font-medium text-gray-500">Último Faturamento</p>
                         <h3 className="text-2xl font-bold text-gray-800">R$ {stats.todayRevenue.toFixed(2).replace('.',',')}</h3>
                         <p className="text-[10px] text-emerald-600 font-bold uppercase mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Clique para ver detalhes</p>
                     </div>
@@ -112,7 +112,7 @@ export default function DashboardClient({ stats, payments, userName, userRole }:
                         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                             <div>
                                 <h2 className="text-xl font-bold text-gray-800">Detalhamento de Faturamento</h2>
-                                <p className="text-sm text-gray-500">Pagamentos realizados hoje</p>
+                                <p className="text-sm text-gray-500">Pagamentos vinculados ao último caixa</p>
                             </div>
                             <button 
                                 onClick={() => setIsModalOpen(false)}

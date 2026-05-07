@@ -8,16 +8,19 @@ import DashboardClient from "./DashboardClient";
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Buscar o último caixa aberto/fechado
+  const lastRegister = await prisma.cashRegister.findFirst({
+    orderBy: { openedAt: 'desc' },
+    select: { id: true }
+  });
 
   // Basic KPI queries in parallel for better performance
-  const [totalUsers, totalProducts, openOrders, todayPayments, todaySubscriptions] = await Promise.all([
+  const [totalUsers, totalProducts, openOrders, lastRegisterPayments] = await Promise.all([
     prisma.user.count(),
     prisma.product.count({ where: { isActive: true } }),
     prisma.order.count({ where: { status: 'OPEN' } }),
-    prisma.payment.findMany({
-      where: { date: { gte: today } },
+    lastRegister ? prisma.payment.findMany({
+      where: { cashRegisterId: lastRegister.id },
       include: { 
         order: { 
             include: { customer: { select: { name: true } } } 
@@ -25,21 +28,11 @@ export default async function DashboardPage() {
         user: { select: { name: true } }
       },
       orderBy: { date: 'desc' }
-    }),
-    prisma.subscriptionPayment.findMany({
-      where: { paymentDate: { gte: today } },
-      include: { 
-        subscription: { 
-            include: { customer: { select: { name: true } } } 
-        } 
-      },
-      orderBy: { paymentDate: 'desc' }
-    })
+    }) : Promise.resolve([])
   ]);
   
   // Transform data for the client component
-  const paymentsList = [
-    ...todayPayments.map(p => ({
+  const paymentsList = lastRegisterPayments.map(p => ({
         id: p.id,
         amount: p.amount,
         method: p.method,
@@ -47,25 +40,15 @@ export default async function DashboardPage() {
         order: { customerName: p.order?.customer?.name || 'Venda Balcão' },
         user: { name: p.user?.name || 'Sistema' },
         type: 'ORDER' as const
-    })),
-    ...todaySubscriptions.map(p => ({
-        id: p.id,
-        amount: p.amount,
-        method: 'SUBSCRIPTION',
-        date: p.paymentDate,
-        order: { customerName: p.subscription?.customer?.name || 'Mensalista' },
-        user: { name: 'Sistema' },
-        type: 'SUBSCRIPTION' as const
-    }))
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }));
 
-  const todayRevenue = paymentsList.reduce((acc, p) => acc + p.amount, 0);
+  const lastRevenue = paymentsList.reduce((acc, p) => acc + p.amount, 0);
 
   const stats = {
       totalUsers,
       totalProducts,
       openOrders,
-      todayRevenue
+      todayRevenue: lastRevenue // Mantido o nome da prop para evitar quebra no cliente, mas valor alterado
   };
 
   return (
