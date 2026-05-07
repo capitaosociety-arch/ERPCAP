@@ -1,19 +1,19 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import React, { useState, useTransition } from 'react';
 import { 
-    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, 
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, 
     PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { 
     DollarSign, Wallet, Activity, Database, Users, Lock, Unlock, ArrowRight, Sheet, 
-    Plus, Calendar, CheckCircle, XCircle, Trash2, Filter, AlertCircle, TrendingUp, TrendingDown, Eye, CreditCard, Banknote, ShoppingBag 
+    Plus, Calendar, CheckCircle, XCircle, Trash2, Filter, AlertCircle, TrendingUp, TrendingDown, 
+    Eye, CreditCard, Banknote, ShoppingBag, RotateCcw, Landmark
 } from 'lucide-react';
 import { downloadExcel } from '../../../lib/excel-export';
 import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry } from '../../actions/financeiro';
 import { getRegisterSummary, deleteCashSessionAction, getSessionsForDepositAction, recordCashDepositAction, recordGlobalCashDepositAction } from '../../actions/caixa';
 import { voidPaymentAction } from '../../actions/comandas';
-import { RotateCcw, Landmark, History } from 'lucide-react';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#0ea5e9'];
 
@@ -53,11 +53,11 @@ export default function FinanceiroClient({ payload }: any) {
   const [depositAmount, setDepositAmount] = useState('');
   const [depositNotes, setDepositNotes] = useState('');
 
-  const todayVal = dailyChart[dailyChart.length - 1]?.valor || 0;
+  const todayVal = dailyChart[dailyChart.length - 1]?.total || 0;
   
   const handleExportExcel = () => {
       const exportData = cashRegisters.map((cash: any) => {
-          const shiftEntries = cash.payments?.reduce((acc:number, p:any) => acc + p.amount, 0) || 0;
+          const shiftEntries = (cash.payments || []).reduce((acc:number, p:any) => acc + (p.amount || 0), 0) || 0;
           return {
               "Operador": cash.user?.name || "-",
               "Status": cash.status === "OPEN" ? "Aberto" : "Fechado",
@@ -255,28 +255,28 @@ export default function FinanceiroClient({ payload }: any) {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-white border text-left border-gray-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group">
                     <p className="text-[10px] font-black text-gray-400 tracking-widest mb-1 relative z-10 flex items-center gap-2 uppercase">Receita (30d)</p>
-                    <h2 className="text-2xl font-black text-slate-800 relative z-10">R$ {totalRevenue.toFixed(2).replace('.',',')}</h2>
+                    <h2 className="text-2xl font-black text-slate-800 relative z-10">R$ {Number(totalRevenue || 0).toFixed(2).replace('.',',')}</h2>
                     <div className="absolute right-0 bottom-0 p-2 opacity-5">
                         <TrendingUp size={64} className="text-emerald-500"/>
                     </div>
                 </div>
                 <div className="bg-white border text-left border-gray-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group">
                     <p className="text-[10px] font-black text-orange-400 tracking-widest mb-1 relative z-10 flex items-center gap-2 uppercase">Pendente a Receber</p>
-                    <h2 className="text-2xl font-black text-slate-800 relative z-10">R$ {totalPendingReceivable.toFixed(2).replace('.',',')}</h2>
+                    <h2 className="text-2xl font-black text-slate-800 relative z-10">R$ {Number(totalPendingReceivable || 0).toFixed(2).replace('.',',')}</h2>
                     <div className="absolute right-0 bottom-0 p-2 opacity-5">
                         <TrendingUp size={64} className="text-orange-500"/>
                     </div>
                 </div>
                 <div className="bg-white border text-left border-gray-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group border-l-4 border-l-red-500">
                     <p className="text-[10px] font-black text-red-400 tracking-widest mb-1 relative z-10 flex items-center gap-2 uppercase">Pendente a Pagar</p>
-                    <h2 className="text-2xl font-black text-slate-800 relative z-10">R$ {totalPendingPayable.toFixed(2).replace('.',',')}</h2>
+                    <h2 className="text-2xl font-black text-slate-800 relative z-10">R$ {Number(totalPendingPayable || 0).toFixed(2).replace('.',',')}</h2>
                     <div className="absolute right-0 bottom-0 p-2 opacity-5">
                         <TrendingDown size={64} className="text-red-500"/>
                     </div>
                 </div>
                 <div className="bg-slate-900 border text-left border-slate-800 rounded-2xl p-5 shadow-xl relative overflow-hidden group">
                     <p className="text-[10px] font-black text-slate-400 tracking-widest mb-1 relative z-10 flex items-center gap-2 uppercase">Saldo Previsto</p>
-                    <h2 className="text-2xl font-black text-white relative z-10">R$ {(totalRevenue + totalPendingReceivable - totalPendingPayable).toFixed(2).replace('.',',')}</h2>
+                    <h2 className="text-2xl font-black text-white relative z-10">R$ {Number((totalRevenue || 0) + (totalPendingReceivable || 0) - (totalPendingPayable || 0)).toFixed(2).replace('.',',')}</h2>
                     <div className="absolute right-0 bottom-0 p-2 opacity-10">
                         <DollarSign size={64} className="text-white"/>
                     </div>
@@ -287,19 +287,53 @@ export default function FinanceiroClient({ payload }: any) {
                 
                 {/* EVOLUTION CHART */}
                 <div className="col-span-2 bg-white rounded-3xl shadow-sm border border-gray-100 p-6 flex flex-col items-start min-w-0">
-                    <h3 className="font-bold text-lg text-slate-800 mb-6 flex items-center gap-2">Fluxo Diário <span className="text-xs font-medium text-gray-400 font-mono">(30 Dias)</span></h3>
+                    <div className="flex justify-between items-center w-full mb-6">
+                        <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">Desempenho por Setor <span className="text-xs font-medium text-gray-400 font-mono">(30 Dias)</span></h3>
+                        <div className="flex gap-4">
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
+                                <span className="text-[10px] font-bold text-gray-500 uppercase">Aluguel</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                                <span className="text-[10px] font-bold text-gray-500 uppercase">Produtos/Bar</span>
+                            </div>
+                        </div>
+                    </div>
                     <div className="w-full h-80">
                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={dailyChart}>
+                            <AreaChart data={dailyChart} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9"/>
                                 <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false}/>
                                 <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(val) => `R$ ${val}`}/>
                                 <RTooltip 
-                                    formatter={(value: any) => [`R$ ${parseFloat(value.toString()).toFixed(2).replace('.',',')}`, 'Vendas']}
+                                    formatter={(value: any, name: any) => [
+                                        `R$ ${Number(value || 0).toFixed(2).replace('.',',')}`, 
+                                        name === 'aluguel' ? 'Aluguel de Campos' : 'Bar / Produtos'
+                                    ] as [string, string]}
                                     contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }}
                                 />
-                                <Line type="monotone" dataKey="valor" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} activeDot={{ r: 6 }} />
-                            </LineChart>
+                                <Area 
+                                    type="monotone" 
+                                    dataKey="aluguel" 
+                                    name="aluguel"
+                                    stackId="1" 
+                                    stroke="#10b981" 
+                                    strokeWidth={3}
+                                    fill="#10b981"
+                                    fillOpacity={0.1}
+                                />
+                                <Area 
+                                    type="monotone" 
+                                    dataKey="produtos" 
+                                    name="produtos"
+                                    stackId="1" 
+                                    stroke="#3b82f6" 
+                                    strokeWidth={3}
+                                    fill="#3b82f6"
+                                    fillOpacity={0.1}
+                                />
+                            </AreaChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
@@ -316,7 +350,7 @@ export default function FinanceiroClient({ payload }: any) {
                                     <Pie data={methodChart} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={8} dataKey="value">
                                         {methodChart.map((e:any, i:number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                                     </Pie>
-                                    <RTooltip formatter={(v: any) => `R$ ${parseFloat(v.toString()).toFixed(2)}`} />
+                                    <RTooltip formatter={(v: any) => `R$ ${Number(v || 0).toFixed(2)}`} />
                                     <Legend iconType="circle" />
                                 </PieChart>
                             </ResponsiveContainer>
@@ -373,7 +407,7 @@ export default function FinanceiroClient({ payload }: any) {
                                   </td>
                                   <td className="p-4">
                                       <span className={`text-sm font-black ${e.type === 'PAYABLE' ? 'text-red-500' : 'text-emerald-500'}`}>
-                                          {e.type === 'PAYABLE' ? '-' : '+'} R$ {e.amount.toFixed(2).replace('.',',')}
+                                          {e.type === 'PAYABLE' ? '-' : '+'} R$ {Number(e.amount || 0).toFixed(2).replace('.',',')}
                                       </span>
                                   </td>
                                   <td className="p-4">
@@ -509,21 +543,21 @@ export default function FinanceiroClient({ payload }: any) {
                                         </span>
                                     )}
                                 </td>
-                                <td className="p-4 font-bold text-slate-700 text-sm bg-emerald-50/10">R$ {byMethod.CASH.toFixed(2).replace('.',',')}</td>
-                                <td className="p-4 font-bold text-slate-700 text-sm bg-blue-50/10">R$ {byMethod.PIX.toFixed(2).replace('.',',')}</td>
-                                <td className="p-4 font-bold text-slate-700 text-sm bg-orange-50/10">R$ {byMethod.DEBIT.toFixed(2).replace('.',',')}</td>
-                                <td className="p-4 font-bold text-slate-700 text-sm bg-indigo-50/10">R$ {byMethod.CREDIT.toFixed(2).replace('.',',')}</td>
+                                <td className="p-4 font-bold text-slate-700 text-sm bg-emerald-50/10">R$ {Number(byMethod.CASH || 0).toFixed(2).replace('.',',')}</td>
+                                <td className="p-4 font-bold text-slate-700 text-sm bg-blue-50/10">R$ {Number(byMethod.PIX || 0).toFixed(2).replace('.',',')}</td>
+                                <td className="p-4 font-bold text-slate-700 text-sm bg-orange-50/10">R$ {Number(byMethod.DEBIT || 0).toFixed(2).replace('.',',')}</td>
+                                <td className="p-4 font-bold text-slate-700 text-sm bg-indigo-50/10">R$ {Number(byMethod.CREDIT || 0).toFixed(2).replace('.',',')}</td>
                                 
-                                <td className="p-4 font-medium text-slate-500 text-sm border-l border-gray-100">R$ {cash.openingBal.toFixed(2).replace('.',',')}</td>
-                                <td className="p-4 font-black text-slate-800 text-sm border-r border-gray-100">{cash.closingBal !== null ? `R$ ${cash.closingBal.toFixed(2).replace('.',',')}` : '-'}</td>
+                                <td className="p-4 font-medium text-slate-500 text-sm border-l border-gray-100">R$ {Number(cash.openingBal || 0).toFixed(2).replace('.',',')}</td>
+                                <td className="p-4 font-black text-slate-800 text-sm border-r border-gray-100">{cash.closingBal !== null ? `R$ ${Number(cash.closingBal || 0).toFixed(2).replace('.',',')}` : '-'}</td>
                                 
                                 <td className="p-4">
                                     {cash.status === 'CLOSED' ? (
                                         <span 
                                             className={`text-[10px] px-2 py-0.5 rounded font-black border ${Math.abs(auditVendas) < 0.01 ? 'bg-gray-50 text-gray-400 border-gray-100' : 'bg-red-50 text-red-500 border-red-100'}`}
-                                            title={`Gross: ${totalGrossSold.toFixed(2)} | Disc: ${totalDiscounts.toFixed(2)} | Paid: ${totalPaymentsReceived.toFixed(2)}`}
+                                            title={`Gross: ${Number(totalGrossSold || 0).toFixed(2)} | Disc: ${Number(totalDiscounts || 0).toFixed(2)} | Paid: ${Number(totalPaymentsReceived || 0).toFixed(2)}`}
                                         >
-                                            {Math.abs(auditVendas) < 0.01 ? 'INTEGRO' : `R$ ${auditVendas.toFixed(2)}`}
+                                            {Math.abs(auditVendas) < 0.01 ? 'INTEGRO' : `R$ ${Number(auditVendas || 0).toFixed(2)}`}
                                         </span>
                                     ) : (
                                         <span className="text-gray-300 text-[10px] italic">Em curso</span>
@@ -537,11 +571,11 @@ export default function FinanceiroClient({ payload }: any) {
                                             </span>
                                         ) : auditFisico < 0 ? (
                                             <span className="text-[10px] px-2 py-0.5 rounded font-black border bg-red-50 text-red-600 border-red-100">
-                                                R$ {auditFisico.toFixed(2).replace('.',',')} (FALTA)
+                                                R$ {Number(auditFisico || 0).toFixed(2).replace('.',',')} (FALTA)
                                             </span>
                                         ) : (
                                             <span className="text-[10px] px-2 py-0.5 rounded font-black border bg-blue-50 text-blue-600 border-blue-100">
-                                                + R$ {auditFisico.toFixed(2).replace('.',',')} (SOBRA)
+                                                + R$ {Number(auditFisico || 0).toFixed(2).replace('.',',')} (SOBRA)
                                             </span>
                                         )
                                     ) : (
@@ -758,7 +792,7 @@ export default function FinanceiroClient({ payload }: any) {
                             <div className="bg-white border text-center border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden">
                                 <div className="absolute top-0 w-full h-1 bg-gradient-to-r from-blue-500 to-green-500 left-0"></div>
                                 <h3 className="text-lg font-bold text-slate-800 mb-1">Apuração Bruta de Receitas Deste Turno</h3>
-                                <p className="text-4xl font-black text-slate-900">R$ {selectedCashRegister.sumAllPayments.toFixed(2).replace('.', ',')}</p>
+                                <p className="text-4xl font-black text-slate-900">R$ {Number(selectedCashRegister.sumAllPayments || 0).toFixed(2).replace('.', ',')}</p>
                             </div>
 
                             {selectedCashRegister.closingNotes && (
@@ -777,7 +811,7 @@ export default function FinanceiroClient({ payload }: any) {
                                     <div className="space-y-4">
                                         <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
                                             <p className="text-[10px] font-bold text-gray-400 mb-1 uppercase tracking-wider">Fundo de Troco Operacional (Entrada)</p>
-                                            <p className="text-xl font-black text-slate-800">R$ {selectedCashRegister.openingBal.toFixed(2).replace('.', ',')}</p>
+                                            <p className="text-xl font-black text-slate-800">R$ {Number(selectedCashRegister.openingBal || 0).toFixed(2).replace('.', ',')}</p>
                                         </div>
 
                                         <div className="space-y-3">
@@ -789,11 +823,11 @@ export default function FinanceiroClient({ payload }: any) {
                                                             <div className="flex justify-between items-center">
                                                                 <div>
                                                                     <p className="text-xs font-bold text-slate-800">{sale.notes}</p>
-                                                                    <p className="text-[10px] text-gray-500">Valor Bruto: R$ {sale.totalBruto.toFixed(2).replace('.', ',')}</p>
+                                                                    <p className="text-[10px] text-gray-500">Valor Bruto: R$ {Number(sale.totalBruto || 0).toFixed(2).replace('.', ',')}</p>
                                                                 </div>
                                                                 {sale.discount > 0 && (
                                                                     <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded font-black uppercase">
-                                                                        Desconto Info: - R$ {sale.discount.toFixed(2).replace('.', ',')}
+                                                                        Desconto Info: - R$ {Number(sale.discount || 0).toFixed(2).replace('.', ',')}
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -802,7 +836,7 @@ export default function FinanceiroClient({ payload }: any) {
                                                                     {sale.items.map((it: any, idx: number) => (
                                                                         <div key={idx} className="flex justify-between items-center text-[10px] text-slate-500">
                                                                             <span>{it.quantity}x {it.name}</span>
-                                                                            <span className="font-bold">R$ {it.subtotal.toFixed(2).replace('.', ',')}</span>
+                                                                            <span className="font-bold">R$ {Number(it.subtotal || 0).toFixed(2).replace('.', ',')}</span>
                                                                         </div>
                                                                     ))}
                                                                 </div>
@@ -818,7 +852,7 @@ export default function FinanceiroClient({ payload }: any) {
                                                                         <p className="text-[9px] text-gray-400 font-medium">{new Date(p.date).toLocaleTimeString('pt-BR')}</p>
                                                                     </div>
                                                                     <div className="flex items-center gap-2">
-                                                                        <span className="font-black text-green-600 text-xs">Pago: R$ {p.amount.toFixed(2).replace('.', ',')}</span>
+                                                                        <span className="font-black text-green-600 text-xs">Pago: R$ {Number(p.amount || 0).toFixed(2).replace('.', ',')}</span>
                                                                         <button 
                                                                             onClick={() => handleVoidPayment(p.id)}
                                                                             className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
@@ -841,14 +875,14 @@ export default function FinanceiroClient({ payload }: any) {
                                     </div>
                                     <div className="mt-8 bg-slate-900 text-white rounded-xl p-5 border border-slate-700 shadow-inner ring-4 ring-slate-900/5">
                                         <p className="text-[11px] font-bold text-green-400 mb-1 uppercase tracking-wider">Dinheiro Em Gaveta Declarado</p>
-                                        <p className="text-3xl font-black flex items-center gap-2"><Banknote size={28}/> R$ {selectedCashRegister.expectedCashInDrawer.toFixed(2).replace('.', ',')}</p>
+                                        <p className="text-3xl font-black flex items-center gap-2"><Banknote size={28}/> R$ {Number(selectedCashRegister.expectedCashInDrawer || 0).toFixed(2).replace('.', ',')}</p>
                                     </div>
                                     {selectedCashRegister.totalSessionDiscounts > 0 && (
                                         <div className="mt-4 bg-red-50 text-red-600 rounded-xl p-4 border border-red-100">
                                             <p className="text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-2">
                                                 <TrendingDown size={14}/> Total de Descontos Concedidos
                                             </p>
-                                            <p className="text-xl font-black">R$ {selectedCashRegister.totalSessionDiscounts.toFixed(2).replace('.', ',')}</p>
+                                            <p className="text-xl font-black">R$ {Number(selectedCashRegister.totalSessionDiscounts || 0).toFixed(2).replace('.', ',')}</p>
                                         </div>
                                     )}
                                 </div>
@@ -870,7 +904,7 @@ export default function FinanceiroClient({ payload }: any) {
                                                     <p className="text-[11px] uppercase tracking-wide text-mrts-blue font-black">{prod.quantity} volumes líquidos</p>
                                                 </div>
                                                 <div className="text-right shrink-0">
-                                                    <p className="font-black text-slate-900 text-sm">R$ {prod.total.toFixed(2).replace('.', ',')}</p>
+                                                    <p className="font-black text-slate-900 text-sm">R$ {Number(prod.total || 0).toFixed(2).replace('.', ',')}</p>
                                                 </div>
                                             </div>
                                         ))}
@@ -878,29 +912,35 @@ export default function FinanceiroClient({ payload }: any) {
                                 </div>
                             </div>
 
-                            {selectedCashRegister.ordersWithDiscount && selectedCashRegister.ordersWithDiscount.length > 0 && (
-                                <div className="mt-8 border-t border-gray-100 pt-8">
-                                    <h4 className="text-sm uppercase tracking-wider font-bold text-gray-500 mb-6 flex items-center gap-2">
-                                        <TrendingDown size={18} className="text-red-500"/> Detalhamento de Vendas com Desconto
-                                    </h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {selectedCashRegister.ordersWithDiscount.map((ord: any) => (
-                                            <div key={ord.id} className="bg-white border border-red-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition">
-                                                <div className="flex justify-between items-start mb-3">
-                                                    <p className="font-bold text-slate-800 text-sm truncate pr-2">Comanda: {ord.notes || 'Sem identificação'}</p>
-                                                    <span className="bg-red-50 text-red-600 text-[10px] px-2 py-1 rounded font-black uppercase shrink-0">- R$ {ord.discount.toFixed(2)}</span>
-                                                </div>
-                                                <div className="flex flex-wrap gap-1 mb-2">
-                                                    {ord.items.map((it: string, idx: number) => (
-                                                        <span key={idx} className="text-[9px] bg-slate-50 text-slate-500 px-1.5 py-0.5 rounded border border-gray-100">{it}</span>
-                                                    ))}
-                                                </div>
-                                                <p className="text-[10px] text-gray-400 font-medium">Total Bruto Sem Desconto: R$ {ord.totalBruto.toFixed(2)}</p>
-                                            </div>
-                                        ))}
+                    {selectedCashRegister.ordersWithDiscount && selectedCashRegister.ordersWithDiscount.length > 0 && (
+                        <div className="mt-8 border-t border-gray-100 pt-8">
+                            <h4 className="text-sm uppercase tracking-wider font-bold text-gray-500 mb-6 flex items-center gap-2">
+                                <TrendingDown size={18} className="text-red-500"/> Detalhamento de Vendas com Desconto
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {selectedCashRegister.ordersWithDiscount.map((ord: any) => (
+                                    <div key={ord.id} className="bg-white border border-red-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <p className="font-bold text-slate-800 text-sm truncate pr-2">Comanda: {ord.notes || 'Sem identificação'}</p>
+                                            <span className="bg-red-50 text-red-600 text-[10px] px-2 py-1 rounded font-black uppercase shrink-0">- R$ {Number(ord.discount || 0).toFixed(2)}</span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1 mb-2">
+                                            {ord.items.map((it: string, idx: number) => (
+                                                <span key={idx} className="text-[9px] bg-slate-50 text-slate-500 px-1.5 py-0.5 rounded border border-gray-100">{it}</span>
+                                            ))}
+                                        </div>
+                                        <p className="text-[10px] text-gray-400 font-medium">Total Bruto Sem Desconto: R$ {Number(ord.totalBruto || 0).toFixed(2)}</p>
                                     </div>
-                                </div>
-                            )}
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+      )}
 
       {/* MODAL REGISTRAR DEPÓSITO */}
       {showDepositModal && (
@@ -926,11 +966,11 @@ export default function FinanceiroClient({ payload }: any) {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                         <p className="text-[9px] font-black text-gray-400 uppercase mb-1">Montante Declarado</p>
-                                        <p className="text-lg font-black text-slate-700">R$ {selectedSessionForDep.declaredAmount.toFixed(2)}</p>
+                                        <p className="text-lg font-black text-slate-700">R$ {Number(selectedSessionForDep.declaredAmount || 0).toFixed(2)}</p>
                                     </div>
                                     <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
                                         <p className="text-[9px] font-black text-red-400 uppercase mb-1">Pendente em Mão</p>
-                                        <p className="text-lg font-black text-red-600">R$ {selectedSessionForDep.remainingAmount.toFixed(2)}</p>
+                                        <p className="text-lg font-black text-red-600">R$ {Number(selectedSessionForDep.remainingAmount || 0).toFixed(2)}</p>
                                     </div>
                                 </div>
                             )}
@@ -988,12 +1028,6 @@ export default function FinanceiroClient({ payload }: any) {
                           </button>
                       </div>
                   </form>
-              </div>
-          </div>
-      )}
-                        </div>
-                      ) : null}
-                  </div>
               </div>
           </div>
       )}
