@@ -136,12 +136,57 @@ export default async function FinanceiroRoute() {
       value: methodTotals[m]
   })).filter(x => x.value > 0);
 
+  // Agrupar aluguéis por campo (resource) e por dia
+  const fieldNames = Array.from(new Set(rentals.map(r => r.resource))).sort();
+  
+  const fieldDailyMap: Record<string, Record<string, number>> = {};
+  // Init: todos os campos em todos os dias = 0
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const st = d.toISOString().split('T')[0];
+    fieldDailyMap[st] = {};
+    fieldNames.forEach(name => { fieldDailyMap[st][name] = 0; });
+  }
+
+  rentals.forEach(r => {
+    const day = r.startTime.toISOString().split('T')[0];
+    if (fieldDailyMap[day]) {
+      if (!fieldDailyMap[day][r.resource]) fieldDailyMap[day][r.resource] = 0;
+      fieldDailyMap[day][r.resource] += r.totalAmount;
+    }
+  });
+
+  // Mensalidades: só contam como aluguel genérico (sem campo específico identificado)
+  // subPayments não têm resource, então somamos como "Mensalistas"
+  const subFieldName = 'Mensalistas';
+  if (subPayments.length > 0) {
+    fieldNames.push(subFieldName);
+    Object.keys(fieldDailyMap).forEach(day => { fieldDailyMap[day][subFieldName] = 0; });
+    subPayments.forEach(p => {
+      const day = p.paymentDate.toISOString().split('T')[0];
+      if (fieldDailyMap[day]) fieldDailyMap[day][subFieldName] += p.amount;
+    });
+  }
+
+  const fieldChart = Object.keys(fieldDailyMap)
+    .sort()
+    .map(date => ({
+      date: new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+      rawDate: date,
+      ...Object.fromEntries(
+        Object.entries(fieldDailyMap[date]).map(([k, v]) => [k, Number(v.toFixed(2))])
+      )
+    }));
+
   const payload = {
       totalRevenue,
       totalPendingPayable,
       totalPendingReceivable,
       dailyChart,
       methodChart,
+      fieldChart,
+      fieldNames: [...fieldNames],
       cashRegisters,
       financialEntries
   };
