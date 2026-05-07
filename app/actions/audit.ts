@@ -29,7 +29,7 @@ export async function createAuditLog(action: string, details?: string) {
 }
 
 // Utilitário para gerar texto de mudanças
-export function formatChangeLog(oldData: any, newData: any, fields: Record<string, string>) {
+export async function formatChangeLog(oldData: any, newData: any, fields: Record<string, string>) {
     const changes: string[] = [];
     
     for (const key in fields) {

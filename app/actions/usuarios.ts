@@ -67,7 +67,7 @@ export async function updateUserDetails(id: string, name: string, email: string,
     });
 
     if (oldUser) {
-        let details = formatChangeLog(oldUser, dataToUpdate, {
+        let details = await formatChangeLog(oldUser, dataToUpdate, {
             name: "Nome",
             email: "E-mail",
             phone: "Telefone"

@@ -72,7 +72,7 @@ export async function upsertProduct(data: {
             }
         });
 
-        const details = oldProduct ? formatChangeLog(oldProduct, data, {
+        const details = oldProduct ? await formatChangeLog(oldProduct, data, {
             name: "Nome",
             price: "Preço",
             cost: "Custo",
