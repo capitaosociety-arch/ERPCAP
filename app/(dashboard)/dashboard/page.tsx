@@ -19,7 +19,9 @@ export default async function DashboardPage() {
     prisma.payment.findMany({
       where: { date: { gte: today } },
       include: { 
-        order: { select: { customerName: true } },
+        order: { 
+            include: { customer: { select: { name: true } } } 
+        },
         user: { select: { name: true } }
       },
       orderBy: { date: 'desc' }
@@ -42,7 +44,7 @@ export default async function DashboardPage() {
         amount: p.amount,
         method: p.method,
         date: p.date,
-        order: { customerName: p.order?.customerName || 'Venda Balcão' },
+        order: { customerName: p.order?.customer?.name || 'Venda Balcão' },
         user: { name: p.user?.name || 'Sistema' },
         type: 'ORDER' as const
     })),
