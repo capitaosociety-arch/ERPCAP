@@ -3,7 +3,7 @@
 import { prisma } from '../../lib/prisma';
 import bcrypt from 'bcryptjs';
 import { revalidatePath } from 'next/cache';
-import { createAuditLog } from './audit';
+import { createAuditLog, formatChangeLog } from './audit';
 
 export async function getUsers() {
     return await prisma.user.findMany({
@@ -40,14 +40,21 @@ export async function createUser(data: any) {
 }
 
 export async function updateUserRole(id: string, role: string) {
+    const user = await prisma.user.findUnique({ where: { id } });
     await prisma.user.update({
         where: { id },
         data: { role }
     });
+
+    if (user) {
+        await createAuditLog("Cargo de Usuário", `Alterou cargo de ${user.name}: ${user.role} → ${role}`);
+    }
+
     revalidatePath('/usuarios');
 }
 
 export async function updateUserDetails(id: string, name: string, email: string, phone: string, newPassword?: string) {
+    const oldUser = await prisma.user.findUnique({ where: { id } });
     const dataToUpdate: any = { name, email, phone };
     
     if (newPassword && newPassword.trim().length > 0) {
@@ -58,6 +65,17 @@ export async function updateUserDetails(id: string, name: string, email: string,
         where: { id },
         data: dataToUpdate
     });
+
+    if (oldUser) {
+        let details = formatChangeLog(oldUser, dataToUpdate, {
+            name: "Nome",
+            email: "E-mail",
+            phone: "Telefone"
+        });
+        if (newPassword) details += " | Senha: Alterada";
+        await createAuditLog("Edição de Perfil", `Alterou dados de ${oldUser.name}: ${details}`);
+    }
+
     revalidatePath('/usuarios');
 }
 
@@ -65,12 +83,26 @@ export async function toggleUserPermission(id: string, field: string) {
     const user = await prisma.user.findUnique({ where: { id } }) as any;
     if (!user) throw new Error("Usuário não encontrado.");
     
+    const newValue = !user[field];
     await prisma.user.update({
         where: { id },
-        data: { [field]: !user[field] }
+        data: { [field]: newValue }
     });
 
-    await createAuditLog("Alteração de Permissão", `Alterou a permissão [${field}] do usuário ${user.name}.`);
+    const fieldNames: any = {
+        permDashboard: "Dashboard",
+        permPDV: "PDV/Vendas",
+        permComandas: "Comandas",
+        permProducts: "Produtos",
+        permStock: "Estoque",
+        permCustomers: "Clientes",
+        permFinance: "Financeiro",
+        permUsers: "Usuários",
+        permDepot: "Depósito"
+    };
+
+    const action = newValue ? "CONCEDIDA" : "REVOGADA";
+    await createAuditLog("Alteração de Permissão", `Permissão [${fieldNames[field] || field}] ${action} para o usuário ${user.name}.`);
 
     revalidatePath('/usuarios');
 }

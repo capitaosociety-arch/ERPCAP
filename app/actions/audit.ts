@@ -17,7 +17,7 @@ export async function createAuditLog(action: string, details?: string) {
             data: {
                 userId,
                 action,
-                details
+                details: details || "Sem detalhes adicionais"
             }
         });
 
@@ -26,6 +26,22 @@ export async function createAuditLog(action: string, details?: string) {
         console.error("ERRO_CREATE_AUDIT_LOG:", error);
         return { success: false, error: "Falha ao registrar log" };
     }
+}
+
+// Utilitário para gerar texto de mudanças
+export function formatChangeLog(oldData: any, newData: any, fields: Record<string, string>) {
+    const changes: string[] = [];
+    
+    for (const key in fields) {
+        const oldValue = oldData[key];
+        const newValue = newData[key];
+
+        if (oldValue !== newValue) {
+            changes.push(`${fields[key]}: "${oldValue ?? 'vazio'}" → "${newValue ?? 'vazio'}"`);
+        }
+    }
+
+    return changes.length > 0 ? changes.join(" | ") : "Nenhuma alteração detectada";
 }
 
 export async function getAuditLogs() {

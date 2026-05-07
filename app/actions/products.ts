@@ -2,7 +2,7 @@
 
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
-import { createAuditLog } from "./audit";
+import { createAuditLog, formatChangeLog } from "./audit";
 
 export async function updateProductPrice(
     productId: string,
@@ -58,6 +58,8 @@ export async function upsertProduct(data: {
     }
 
     if (data.id) {
+        const oldProduct = await prisma.product.findUnique({ where: { id: data.id } });
+        
         await prisma.product.update({
             where: { id: data.id },
             data: {
@@ -69,7 +71,16 @@ export async function upsertProduct(data: {
                 unit: data.unit
             }
         });
-        await createAuditLog("Edição de Produto", `Editou informações do produto ${data.name}.`);
+
+        const details = oldProduct ? formatChangeLog(oldProduct, data, {
+            name: "Nome",
+            price: "Preço",
+            cost: "Custo",
+            unit: "Unidade",
+            categoryId: "Categoria"
+        }) : `Editou informações do produto ${data.name}.`;
+
+        await createAuditLog("Edição de Produto", details);
     } else {
         await prisma.product.create({
             data: {
