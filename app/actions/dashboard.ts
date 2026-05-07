@@ -17,31 +17,50 @@ export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') 
     startDate.setFullYear(now.getFullYear() - 1);
   }
 
-  const orders = await prisma.order.findMany({
-    where: {
-      openedAt: { gte: startDate },
-      status: "CLOSED"
-    },
-    select: { total: true, discount: true, openedAt: true }
-  });
+  // Buscar pagamentos de comandas e mensalidades (Igual ao Financeiro)
+  const [payments, subscriptionPayments] = await Promise.all([
+    prisma.payment.findMany({
+      where: { date: { gte: startDate } },
+      select: { amount: true, date: true }
+    }),
+    prisma.subscriptionPayment.findMany({
+      where: { paymentDate: { gte: startDate } },
+      select: { amount: true, paymentDate: true }
+    })
+  ]);
 
   const grouped: Record<string, number> = {};
 
-  orders.forEach(order => {
+  // Processar pagamentos comuns
+  payments.forEach(p => {
     let key = '';
-    const date = new Date(order.openedAt);
+    const date = new Date(p.date);
     
     if (filter === 'day') {
       key = `${String(date.getHours()).padStart(2, '0')}h`;
     } else if (filter === 'week' || filter === 'month') {
-      // YYYY-MM-DD para organizar cronologicamente e ajudar a agrupar perfeitamente
       key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     } else if (filter === 'year') {
       key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     }
 
-    const netTotal = order.total - (order.discount || 0);
-    grouped[key] = (grouped[key] || 0) + netTotal;
+    grouped[key] = (grouped[key] || 0) + p.amount;
+  });
+
+  // Processar mensalidades
+  subscriptionPayments.forEach(p => {
+    let key = '';
+    const date = new Date(p.paymentDate);
+    
+    if (filter === 'day') {
+      key = `${String(date.getHours()).padStart(2, '0')}h`;
+    } else if (filter === 'week' || filter === 'month') {
+      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    } else if (filter === 'year') {
+      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    grouped[key] = (grouped[key] || 0) + p.amount;
   });
 
   const chartData = Object.entries(grouped)
