@@ -179,6 +179,37 @@ export default async function FinanceiroRoute() {
       )
     }));
 
+  // --- CONTAGEM UNITÁRIA DE LOCAÇÕES POR CAMPO ---
+  // Apenas rentals avulsos (sem mensalistas, pois eles não têm resource)
+  const countFieldNames = Array.from(new Set(rentals.map(r => r.resource))).sort();
+
+  const fieldCountMap: Record<string, Record<string, number>> = {};
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const st = d.toISOString().split('T')[0];
+    fieldCountMap[st] = {};
+    countFieldNames.forEach(name => { fieldCountMap[st][name] = 0; });
+  }
+
+  rentals.forEach(r => {
+    const day = r.startTime.toISOString().split('T')[0];
+    if (fieldCountMap[day]) {
+      if (!fieldCountMap[day][r.resource]) fieldCountMap[day][r.resource] = 0;
+      fieldCountMap[day][r.resource] += 1; // contagem unitária
+    }
+  });
+
+  const fieldCountChart = Object.keys(fieldCountMap)
+    .sort()
+    .map(date => ({
+      date: new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+      rawDate: date,
+      ...Object.fromEntries(
+        Object.entries(fieldCountMap[date]).map(([k, v]) => [k, v])
+      )
+    }));
+
   const payload = {
       totalRevenue,
       totalPendingPayable,
@@ -187,6 +218,8 @@ export default async function FinanceiroRoute() {
       methodChart,
       fieldChart,
       fieldNames: [...fieldNames],
+      fieldCountChart,
+      fieldCountNames: countFieldNames,
       cashRegisters,
       financialEntries
   };
