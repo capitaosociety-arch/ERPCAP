@@ -23,7 +23,13 @@ export default async function DashboardPage() {
       where: { cashRegisterId: lastRegister.id },
       include: { 
         order: { 
-            include: { customer: { select: { name: true } } } 
+            include: { 
+                customer: { select: { name: true } },
+                items: {
+                    where: { status: 'ACTIVE' },
+                    include: { product: { select: { cost: true } } }
+                }
+            } 
         },
         user: { select: { name: true } }
       },
@@ -32,23 +38,32 @@ export default async function DashboardPage() {
   ]);
   
   // Transform data for the client component
-  const paymentsList = lastRegisterPayments.map(p => ({
-        id: p.id,
-        amount: p.amount,
-        method: p.method,
-        date: p.date,
-        order: { customerName: p.order?.customer?.name || 'Venda Balcão' },
-        user: { name: p.user?.name || 'Sistema' },
-        type: 'ORDER' as const
-  }));
+  let totalCost = 0;
+  const paymentsList = lastRegisterPayments.map(p => {
+        // Calcular custo desta venda
+        const orderCost = p.order?.items.reduce((acc, item) => acc + ((item.product?.cost || 0) * item.quantity), 0) || 0;
+        totalCost += orderCost;
+
+        return {
+            id: p.id,
+            amount: p.amount,
+            method: p.method,
+            date: p.date,
+            order: { customerName: p.order?.customer?.name || 'Venda Balcão' },
+            user: { name: p.user?.name || 'Sistema' },
+            type: 'ORDER' as const
+        };
+  });
 
   const lastRevenue = paymentsList.reduce((acc, p) => acc + p.amount, 0);
+  const grossProfit = lastRevenue - totalCost;
 
   const stats = {
       totalUsers,
       totalProducts,
       openOrders,
-      todayRevenue: lastRevenue // Mantido o nome da prop para evitar quebra no cliente, mas valor alterado
+      todayRevenue: lastRevenue,
+      grossProfit
   };
 
   return (

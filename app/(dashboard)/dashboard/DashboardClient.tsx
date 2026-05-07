@@ -23,6 +23,7 @@ interface DashboardClientProps {
         totalProducts: number
         openOrders: number
         todayRevenue: number
+        grossProfit: number
     }
     payments: PaymentDetail[]
     userName: string
@@ -58,49 +59,60 @@ export default function DashboardClient({ stats, payments, userName, userRole }:
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Bem-vindo, {userName} 👋</h1>
             <p className="text-gray-500 mb-8">Aqui está o resumo da sua operação de hoje.</p>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                {/* Faturamento Hoje - Clicável */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+                {/* Último Faturamento - Clicável */}
                 <button 
                     onClick={() => setIsModalOpen(true)}
-                    className="bg-white p-6 rounded-2xl shadow-soft border border-gray-100 flex items-center gap-4 text-left transition-all hover:shadow-lg hover:border-emerald-200 group"
+                    className="bg-white p-5 rounded-2xl shadow-soft border border-gray-100 flex items-center gap-4 text-left transition-all hover:shadow-xl hover:border-emerald-200 hover:-translate-y-1 group"
                 >
-                    <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <DollarSign size={28} />
+                    <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <DollarSign size={24} />
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-gray-500">Último Faturamento</p>
-                        <h3 className="text-2xl font-bold text-gray-800">R$ {stats.todayRevenue.toFixed(2).replace('.',',')}</h3>
-                        <p className="text-[10px] text-emerald-600 font-bold uppercase mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Clique para ver detalhes</p>
+                        <p className="text-xs font-medium text-gray-500">Último Faturamento</p>
+                        <h3 className="text-xl font-bold text-gray-800">R$ {stats.todayRevenue.toFixed(2).replace('.',',')}</h3>
+                        <p className="text-[10px] text-emerald-600 font-bold uppercase mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Ver detalhes</p>
                     </div>
                 </button>
 
-                <div className="bg-white p-6 rounded-2xl shadow-soft border border-gray-100 flex items-center gap-4">
-                    <div className="w-14 h-14 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center">
-                        <Coffee size={28} />
+                {/* NOVO: Lucro Bruto */}
+                <div className="bg-white p-5 rounded-2xl shadow-soft border border-gray-100 flex items-center gap-4 transition-all hover:shadow-xl hover:border-blue-200 hover:-translate-y-1 group">
+                    <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <Landmark size={24} />
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-gray-500">Comandas Abertas</p>
-                        <h3 className="text-2xl font-bold text-gray-800">{stats.openOrders}</h3>
+                        <p className="text-xs font-medium text-gray-500">Lucro Bruto (Turno)</p>
+                        <h3 className="text-xl font-bold text-emerald-600">R$ {stats.grossProfit.toFixed(2).replace('.',',')}</h3>
                     </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-2xl shadow-soft border border-gray-100 flex items-center gap-4">
-                    <div className="w-14 h-14 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center">
-                        <ShoppingBag size={28} />
+                <div className="bg-white p-5 rounded-2xl shadow-soft border border-gray-100 flex items-center gap-4 transition-all hover:shadow-xl hover:border-amber-200 hover:-translate-y-1 group">
+                    <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <Coffee size={24} />
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-gray-500">Produtos Ativos</p>
-                        <h3 className="text-2xl font-bold text-gray-800">{stats.totalProducts}</h3>
+                        <p className="text-xs font-medium text-gray-500">Comandas Abertas</p>
+                        <h3 className="text-xl font-bold text-gray-800">{stats.openOrders}</h3>
                     </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-2xl shadow-soft border border-gray-100 flex items-center gap-4">
-                    <div className="w-14 h-14 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center">
-                        <Users size={28} />
+                <div className="bg-white p-5 rounded-2xl shadow-soft border border-gray-100 flex items-center gap-4 transition-all hover:shadow-xl hover:border-purple-200 hover:-translate-y-1 group">
+                    <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <ShoppingBag size={24} />
                     </div>
                     <div>
-                        <p className="text-sm font-medium text-gray-500">Equipe</p>
-                        <h3 className="text-2xl font-bold text-gray-800">{stats.totalUsers}</h3>
+                        <p className="text-xs font-medium text-gray-500">Produtos Ativos</p>
+                        <h3 className="text-xl font-bold text-gray-800">{stats.totalProducts}</h3>
+                    </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl shadow-soft border border-gray-100 flex items-center gap-4 transition-all hover:shadow-xl hover:border-orange-200 hover:-translate-y-1 group">
+                    <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <Users size={24} />
+                    </div>
+                    <div>
+                        <p className="text-xs font-medium text-gray-500">Equipe</p>
+                        <h3 className="text-xl font-bold text-gray-800">{stats.totalUsers}</h3>
                     </div>
                 </div>
             </div>
