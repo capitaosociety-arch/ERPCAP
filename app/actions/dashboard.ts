@@ -113,12 +113,18 @@ export async function getTopProducts() {
 
   return topProducts;
 }
-export async function getDashboardKpis() {
-  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
-  const startOfDay = new Date(todayStr + 'T00:00:00');
-  const endOfDay = new Date(todayStr + 'T23:59:59');
 
-  const [rentals, payments, orderItems] = await Promise.all([
+export async function getDashboardKpis() {
+  // Pegar a data atual em Cuiabá e forçar o início e fim do dia absoluto
+  const formatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit', day: '2-digit' });
+  const [{ value: year }, , { value: month }, , { value: day }] = formatter.formatToParts(new Date());
+  const todayStr = `${year}-${month}-${day}`;
+  
+  // Criar datas que o Prisma entenderá como o dia correto em Cuiabá (UTC-4)
+  const startOfDay = new Date(`${todayStr}T00:00:00-04:00`);
+  const endOfDay = new Date(`${todayStr}T23:59:59-04:00`);
+
+  const [rentals, payments, orderItems, closedOrders] = await Promise.all([
     prisma.rental.findMany({ 
       where: { startTime: { gte: startOfDay, lte: endOfDay } } 
     }),
@@ -139,45 +145,53 @@ export async function getDashboardKpis() {
         order: { status: 'CLOSED', closedAt: { gte: startOfDay, lte: endOfDay } } 
       },
       include: { product: true }
+    }),
+    prisma.order.findMany({
+        where: { status: 'CLOSED', closedAt: { gte: startOfDay, lte: endOfDay } },
+        include: { items: { include: { product: { include: { category: true } } } } }
     })
   ]);
 
-  // 1. Taxa de Ocupação
-  // Assumindo 2 quadras operando 8h por dia (16h às 00h) = 16h total de capacidade
+  // 1. Taxa de Ocupação (Capacidade: 16h/dia)
   const totalBookedHours = rentals.reduce((acc, r) => {
       const duration = (r.endTime.getTime() - r.startTime.getTime()) / (1000 * 60 * 60);
       return acc + duration;
   }, 0);
-  const totalCapacity = 16; 
-  const occupancyRate = (totalBookedHours / totalCapacity) * 100;
+  const occupancyRate = (totalBookedHours / 16) * 100;
 
-  // 2. Ticket Médio Bar
-  const barOrders = payments.filter(p => 
-    p.order?.items.some(it => !it.serviceId && !it.product?.category?.name?.toLowerCase().includes('aluguel'))
+  // 2. Ticket Médio Bar (Apenas produtos, excluindo aluguéis)
+  const barOrdersToday = closedOrders.filter(order => 
+    order.items.some(it => !it.serviceId && !it.product?.category?.name?.toLowerCase().includes('aluguel'))
   );
-  const totalBarRevenue = barOrders.reduce((acc, p) => acc + p.amount, 0);
-  const barTicketAverage = barOrders.length > 0 ? totalBarRevenue / barOrders.length : 0;
+  
+  let totalBarRevenue = 0;
+  barOrdersToday.forEach(order => {
+      order.items.forEach(it => {
+          const isRental = it.serviceId || it.product?.category?.name?.toLowerCase().includes('aluguel');
+          if (!isRental) totalBarRevenue += it.subtotal;
+      });
+  });
+  
+  const barTicketAverage = barOrdersToday.length > 0 ? totalBarRevenue / barOrdersToday.length : 0;
 
-  // 3. Faturamento por Campo
+  // 3. Faturamento por Campo (Consolidado)
   const fieldRevenue: Record<string, number> = {};
   rentals.forEach(r => {
       if (r.status === 'PAID') {
           fieldRevenue[r.resource] = (fieldRevenue[r.resource] || 0) + r.totalAmount;
       }
   });
-  // Somar também aluguéis lançados como produtos no PDV
   payments.forEach(p => {
       p.order?.items.forEach(it => {
           const isFieldProduct = it.product?.category?.name?.toLowerCase().includes('aluguel') || 
-                                it.product?.category?.name?.toLowerCase().includes('campo') ||
-                                it.product?.name?.toLowerCase().includes('aluguel');
+                                it.product?.category?.name?.toLowerCase().includes('campo');
           if (isFieldProduct && it.product?.name) {
               fieldRevenue[it.product.name] = (fieldRevenue[it.product.name] || 0) + it.subtotal;
           }
       });
   });
 
-  // 4. Lucro do Dia (Receita - Custo)
+  // 4. Lucro Líquido do Dia (Faturamento Total - Custo dos Produtos)
   const todayRevenue = payments.reduce((acc, p) => acc + p.amount, 0);
   const totalCost = orderItems.reduce((acc, it) => acc + ((it.product?.cost || 0) * it.quantity), 0);
   const dailyProfit = todayRevenue - totalCost;
@@ -187,6 +201,7 @@ export async function getDashboardKpis() {
       barTicketAverage,
       fieldRevenue,
       dailyProfit,
-      totalRentals: rentals.length
+      totalRentals: rentals.length,
+      todayRevenue
   };
 }

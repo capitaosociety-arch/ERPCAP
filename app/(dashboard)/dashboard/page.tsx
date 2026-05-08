@@ -57,15 +57,10 @@ export default async function DashboardPage() {
         };
   });
 
-  const lastRevenue = paymentsList.reduce((acc, p) => acc + p.amount, 0);
-  const grossProfit = lastRevenue - totalCost;
-
   const stats = {
       totalUsers,
       totalProducts,
       openOrders,
-      todayRevenue: lastRevenue,
-      grossProfit,
       ...kpis
   };
 
