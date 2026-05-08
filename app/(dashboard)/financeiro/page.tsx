@@ -23,12 +23,15 @@ export default async function FinanceiroRoute() {
       where: { paymentDate: { gte: thirtyDaysAgo } }
     }),
     prisma.rental.findMany({
-      where: { startTime: { gte: thirtyDaysAgo }, status: 'PAID' }
+      where: { startTime: { gte: thirtyDaysAgo } }
     }),
     prisma.cashRegister.findMany({
       where: { openedAt: { gte: thirtyDaysAgo } },
       orderBy: { openedAt: 'desc' },
-      include: { user: true }
+      include: { 
+        user: true,
+        payments: { include: { order: { include: { items: true } } } }
+      }
     }),
     prisma.financialEntry.findMany({
       orderBy: { dueDate: 'asc' }
@@ -106,11 +109,13 @@ export default async function FinanceiroRoute() {
 
   // Locações avulsas diretas
   rentals.forEach(r => {
-      totalRevenue += r.totalAmount;
-      const day = r.startTime.toISOString().split('T')[0];
-      if (dailyRevenueMap[day]) {
-          dailyRevenueMap[day].total += r.totalAmount;
-          dailyRevenueMap[day].aluguel += r.totalAmount;
+      if (r.status === 'PAID') {
+          totalRevenue += r.totalAmount;
+          const day = r.startTime.toISOString().split('T')[0];
+          if (dailyRevenueMap[day]) {
+              dailyRevenueMap[day].total += r.totalAmount;
+              dailyRevenueMap[day].aluguel += r.totalAmount;
+          }
       }
   });
 
@@ -150,10 +155,12 @@ export default async function FinanceiroRoute() {
   }
 
   rentals.forEach(r => {
-    const day = r.startTime.toISOString().split('T')[0];
-    if (fieldDailyMap[day]) {
-      if (!fieldDailyMap[day][r.resource]) fieldDailyMap[day][r.resource] = 0;
-      fieldDailyMap[day][r.resource] += r.totalAmount;
+    if (r.status === 'PAID') {
+        const day = r.startTime.toISOString().split('T')[0];
+        if (fieldDailyMap[day]) {
+          if (!fieldDailyMap[day][r.resource]) fieldDailyMap[day][r.resource] = 0;
+          fieldDailyMap[day][r.resource] += r.totalAmount;
+        }
     }
   });
 
