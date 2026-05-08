@@ -1,6 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { supabase } from '../../../lib/supabase-browser'
 import { 
     DollarSign, Coffee, Users, ShoppingBag, X, Receipt, CreditCard, 
     Landmark, Banknote, Activity, Utensils, TrendingUp, PieChart 
@@ -38,7 +40,34 @@ interface DashboardClientProps {
 }
 
 export default function DashboardClient({ stats, payments, userName, userRole }: DashboardClientProps) {
+    const router = useRouter()
     const [isModalOpen, setIsModalOpen] = useState(false)
+
+    // Configuração do Tempo Real
+    useEffect(() => {
+        const channel = supabase
+            .channel('dashboard-realtime')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'Payment' },
+                () => router.refresh()
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'Rental' },
+                () => router.refresh()
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'Order' },
+                () => router.refresh()
+            )
+            .subscribe()
+
+        return () => {
+            supabase.removeChannel(channel)
+        }
+    }, [router])
 
     const getMethodIcon = (method: string) => {
         switch (method) {
