@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../../lib/supabase-browser'
+import { getSupabaseClient } from '../../../lib/supabase-browser'
 import { 
     DollarSign, Coffee, Users, ShoppingBag, X, Receipt, CreditCard, 
     Landmark, Banknote, Activity, Utensils, TrendingUp, PieChart 
@@ -43,8 +43,11 @@ export default function DashboardClient({ stats, payments, userName, userRole }:
     const router = useRouter()
     const [isModalOpen, setIsModalOpen] = useState(false)
 
-    // Configuração do Tempo Real
+    // Configuração Segura do Tempo Real
     useEffect(() => {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+
         const channel = supabase
             .channel('dashboard-realtime')
             .on(
