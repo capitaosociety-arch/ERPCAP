@@ -26,7 +26,6 @@ interface DashboardClientProps {
         totalProducts: number
         openOrders: number
         todayRevenue: number
-        grossProfit: number
         occupancyRate: number
         barTicketAverage: number
         fieldRevenue: Record<string, number>
