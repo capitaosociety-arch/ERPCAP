@@ -80,7 +80,7 @@ export default function ClientesClient({ initialCustomers }: any) {
 
   // Reserving Rental fields
   const [rentalResource, setRentalResource] = useState("");
-  const [rentalDate, setRentalDate] = useState(new Date().toISOString().split('T')[0]);
+  const [rentalDate, setRentalDate] = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }));
   const [rentalStart, setRentalStart] = useState("10:00");
   const [rentalEnd, setRentalEnd] = useState("11:00");
   const [rentalAmount, setRentalAmount] = useState(0);

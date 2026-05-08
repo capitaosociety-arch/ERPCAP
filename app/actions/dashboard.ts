@@ -37,11 +37,14 @@ export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') 
     const date = new Date(p.date);
     
     if (filter === 'day') {
-      key = `${String(date.getHours()).padStart(2, '0')}h`;
+      // Pega a hora exata em Cuiabá
+      const hour = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', hour12: false, timeZone: 'America/Cuiaba' }).format(date);
+      key = `${hour}h`;
     } else if (filter === 'week' || filter === 'month') {
-      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      key = date.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
     } else if (filter === 'year') {
-      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const parts = new Intl.DateTimeFormat('pt-BR', { year: 'numeric', month: '2-digit', timeZone: 'America/Cuiaba' }).format(date).split('/');
+      key = `${parts[1]}-${parts[0]}`;
     }
 
     grouped[key] = (grouped[key] || 0) + p.amount;
@@ -53,11 +56,13 @@ export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') 
     const date = new Date(p.paymentDate);
     
     if (filter === 'day') {
-      key = `${String(date.getHours()).padStart(2, '0')}h`;
+      const hour = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', hour12: false, timeZone: 'America/Cuiaba' }).format(date);
+      key = `${hour}h`;
     } else if (filter === 'week' || filter === 'month') {
-      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      key = date.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
     } else if (filter === 'year') {
-      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const parts = new Intl.DateTimeFormat('pt-BR', { year: 'numeric', month: '2-digit', timeZone: 'America/Cuiaba' }).format(date).split('/');
+      key = `${parts[1]}-${parts[0]}`;
     }
 
     grouped[key] = (grouped[key] || 0) + p.amount;

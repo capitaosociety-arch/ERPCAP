@@ -17,7 +17,7 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
   const [price, setPrice] = useState("");
   const [cost, setCost] = useState("");
   const [invoice, setInvoice] = useState("");
-  const [dateStr, setDateStr] = useState(new Date().toISOString().split('T')[0]);
+  const [dateStr, setDateStr] = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }));
 
   // Product Form Modal (Create / Edit)
   const [isFormModalOpen, setFormModalOpen] = useState(false);
@@ -36,7 +36,7 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
     setPrice(product.price.toString());
     setCost((product.cost || 0).toString());
     setInvoice("");
-    setDateStr(new Date().toISOString().split('T')[0]);
+    setDateStr(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }));
     setPriceModalOpen(true);
   };
 

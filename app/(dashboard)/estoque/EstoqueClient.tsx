@@ -37,7 +37,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
   const [type, setType] = useState('IN'); // IN, OUT_MANUAL, LOSS
   const [quantity, setQuantity] = useState('');
   const [document, setDocument] = useState('');
-  const [dateStr, setDateStr] = useState(new Date().toISOString().split('T')[0]);
+  const [dateStr, setDateStr] = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }));
   const [notes, setNotes] = useState('');
 
   // Form states - Min Stock
@@ -50,7 +50,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
   const [parsedNfData, setParsedNfData] = useState<any>(null);
   const [nfImageUrl, setNfImageUrl] = useState<string | null>(null);
   const [mappedItems, setMappedItems] = useState<Record<number, any>>({});
-  const [nfDateStr, setNfDateStr] = useState(new Date().toISOString().split('T')[0]);
+  const [nfDateStr, setNfDateStr] = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }));
 
   // NEW: DE-PARA Verification & Zoom State
   const [verifiedRows, setVerifiedRows] = useState<Set<number>>(new Set());
@@ -92,7 +92,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
       setQuantity('');
       setDocument('');
       setNotes('');
-      setDateStr(new Date().toISOString().split('T')[0]);
+      setDateStr(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }));
       setMovementModalOpen(true);
   };
 

@@ -220,13 +220,18 @@ export default async function FinanceiroRoute() {
 
   const fieldChart = Object.keys(fieldDailyMap)
     .sort()
-    .map(date => ({
-      date: new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
-      rawDate: date,
-      ...Object.fromEntries(
-        Object.entries(fieldDailyMap[date]).map(([k, v]) => [k, Number(v.toFixed(2))])
-      )
-    }));
+    .map(date => {
+      const dayEntries = Object.entries(fieldDailyMap[date]);
+      const dayTotal = dayEntries.reduce((sum, [_, val]) => sum + val, 0);
+      return {
+        date: new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+        rawDate: date,
+        total_geral: Number(dayTotal.toFixed(2)),
+        ...Object.fromEntries(
+          dayEntries.map(([k, v]) => [k, Number(v.toFixed(2))])
+        )
+      };
+    });
 
   const fieldCountChart = Object.keys(fieldCountMap)
     .sort()

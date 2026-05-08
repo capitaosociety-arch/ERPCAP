@@ -34,7 +34,7 @@ export default function DepotClient({
     const [parsedNfData, setParsedNfData] = useState<any>(null);
     const [nfImageUrl, setNfImageUrl] = useState<string | null>(null);
     const [mappedItems, setMappedItems] = useState<Record<number, any>>({});
-    const [nfDateStr, setNfDateStr] = useState(new Date().toISOString().split('T')[0]);
+    const [nfDateStr, setNfDateStr] = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }));
     const [verifiedRows, setVerifiedRows] = useState<Set<number>>(new Set());
     const [imgZoom, setImgZoom] = useState(1);
     const [imgPos, setImgPos] = useState({ x: 0, y: 0 });

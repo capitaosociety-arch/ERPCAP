@@ -35,7 +35,7 @@ export default function FinanceiroClient({ payload }: any) {
     description: '',
     type: 'PAYABLE',
     amount: '',
-    dueDate: new Date().toISOString().split('T')[0],
+    dueDate: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }),
     category: 'Diversos',
     notes: '',
     method: 'PIX',
@@ -90,7 +90,7 @@ export default function FinanceiroClient({ payload }: any) {
             description: '',
             type: 'PAYABLE',
             amount: '',
-            dueDate: new Date().toISOString().split('T')[0],
+            dueDate: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }),
             category: 'Diversos',
             notes: '',
             method: 'PIX',
@@ -378,6 +378,10 @@ export default function FinanceiroClient({ payload }: any) {
                                 <span className="text-[10px] font-bold text-gray-500 uppercase">{name}</span>
                             </div>
                         ))}
+                        <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-200">
+                            <div className="w-3 h-3 rounded-sm bg-slate-800"></div>
+                            <span className="text-[10px] font-bold text-slate-800 uppercase">Total do Dia</span>
+                        </div>
                     </div>
                 </div>
 
@@ -408,7 +412,7 @@ export default function FinanceiroClient({ payload }: any) {
                                 <RTooltip
                                     formatter={(value: any, name: any) => [
                                         `R$ ${Number(value || 0).toFixed(2).replace('.',',')}`,
-                                        String(name)
+                                        name === 'total_geral' ? 'Total Financeiro do Dia' : String(name)
                                     ] as [string, string]}
                                     contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)', fontSize: '12px' }}
                                     cursor={{ fill: '#f8fafc' }}
@@ -422,6 +426,12 @@ export default function FinanceiroClient({ payload }: any) {
                                         maxBarSize={28}
                                     />
                                 ))}
+                                <Bar 
+                                    dataKey="total_geral" 
+                                    fill="#1e293b" 
+                                    radius={[4, 4, 0, 0]}
+                                    maxBarSize={32}
+                                />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
