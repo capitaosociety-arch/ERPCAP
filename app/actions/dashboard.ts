@@ -113,3 +113,80 @@ export async function getTopProducts() {
 
   return topProducts;
 }
+export async function getDashboardKpis() {
+  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
+  const startOfDay = new Date(todayStr + 'T00:00:00');
+  const endOfDay = new Date(todayStr + 'T23:59:59');
+
+  const [rentals, payments, orderItems] = await Promise.all([
+    prisma.rental.findMany({ 
+      where: { startTime: { gte: startOfDay, lte: endOfDay } } 
+    }),
+    prisma.payment.findMany({
+      where: { date: { gte: startOfDay, lte: endOfDay } },
+      include: { 
+        order: { 
+          include: { 
+            items: { 
+              include: { product: { include: { category: true } } } 
+            } 
+          } 
+        } 
+      }
+    }),
+    prisma.orderItem.findMany({
+      where: { 
+        order: { status: 'CLOSED', closedAt: { gte: startOfDay, lte: endOfDay } } 
+      },
+      include: { product: true }
+    })
+  ]);
+
+  // 1. Taxa de Ocupação
+  // Assumindo 2 quadras operando 8h por dia (16h às 00h) = 16h total de capacidade
+  const totalBookedHours = rentals.reduce((acc, r) => {
+      const duration = (r.endTime.getTime() - r.startTime.getTime()) / (1000 * 60 * 60);
+      return acc + duration;
+  }, 0);
+  const totalCapacity = 16; 
+  const occupancyRate = (totalBookedHours / totalCapacity) * 100;
+
+  // 2. Ticket Médio Bar
+  const barOrders = payments.filter(p => 
+    p.order?.items.some(it => !it.serviceId && !it.product?.category?.name?.toLowerCase().includes('aluguel'))
+  );
+  const totalBarRevenue = barOrders.reduce((acc, p) => acc + p.amount, 0);
+  const barTicketAverage = barOrders.length > 0 ? totalBarRevenue / barOrders.length : 0;
+
+  // 3. Faturamento por Campo
+  const fieldRevenue: Record<string, number> = {};
+  rentals.forEach(r => {
+      if (r.status === 'PAID') {
+          fieldRevenue[r.resource] = (fieldRevenue[r.resource] || 0) + r.totalAmount;
+      }
+  });
+  // Somar também aluguéis lançados como produtos no PDV
+  payments.forEach(p => {
+      p.order?.items.forEach(it => {
+          const isFieldProduct = it.product?.category?.name?.toLowerCase().includes('aluguel') || 
+                                it.product?.category?.name?.toLowerCase().includes('campo') ||
+                                it.product?.name?.toLowerCase().includes('aluguel');
+          if (isFieldProduct && it.product?.name) {
+              fieldRevenue[it.product.name] = (fieldRevenue[it.product.name] || 0) + it.subtotal;
+          }
+      });
+  });
+
+  // 4. Lucro do Dia (Receita - Custo)
+  const todayRevenue = payments.reduce((acc, p) => acc + p.amount, 0);
+  const totalCost = orderItems.reduce((acc, it) => acc + ((it.product?.cost || 0) * it.quantity), 0);
+  const dailyProfit = todayRevenue - totalCost;
+
+  return {
+      occupancyRate: Math.min(occupancyRate, 100),
+      barTicketAverage,
+      fieldRevenue,
+      dailyProfit,
+      totalRentals: rentals.length
+  };
+}

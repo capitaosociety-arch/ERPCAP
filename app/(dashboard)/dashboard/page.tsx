@@ -4,6 +4,7 @@ import { prisma } from "../../../lib/prisma";
 import RevenueChart from "../../../components/RevenueChart";
 import TopProductsChart from "../../../components/TopProductsChart";
 import DashboardClient from "./DashboardClient";
+import { getDashboardKpis } from "../../actions/dashboard";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -15,7 +16,7 @@ export default async function DashboardPage() {
   });
 
   // Basic KPI queries in parallel for better performance
-  const [totalUsers, totalProducts, openOrders, lastRegisterPayments] = await Promise.all([
+  const [totalUsers, totalProducts, openOrders, lastRegisterPayments, kpis] = await Promise.all([
     prisma.user.count(),
     prisma.product.count({ where: { isActive: true } }),
     prisma.order.count({ where: { status: 'OPEN' } }),
@@ -34,7 +35,8 @@ export default async function DashboardPage() {
         user: { select: { name: true } }
       },
       orderBy: { date: 'desc' }
-    }) : Promise.resolve([])
+    }) : Promise.resolve([]),
+    getDashboardKpis()
   ]);
   
   // Transform data for the client component
@@ -63,7 +65,8 @@ export default async function DashboardPage() {
       totalProducts,
       openOrders,
       todayRevenue: lastRevenue,
-      grossProfit
+      grossProfit,
+      ...kpis
   };
 
   return (
