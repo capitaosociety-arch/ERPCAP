@@ -78,7 +78,10 @@ export default async function FinanceiroRoute() {
           let orderProdutos = 0;
 
           orderItems.forEach(item => {
-              const isRental = !!item.serviceId || item.product?.category?.name.toLowerCase().includes('aluguel') || item.product?.category?.name.toLowerCase().includes('campo');
+              const prodName = item.product?.name?.toLowerCase() || '';
+              const catName = item.product?.category?.name?.toLowerCase() || '';
+              const isRental = !!item.serviceId || catName.includes('aluguel') || catName.includes('campo') || prodName.includes('aluguel') || prodName.includes('campo');
+              
               if (isRental) orderAluguel += item.subtotal;
               else orderProdutos += item.subtotal;
           });
