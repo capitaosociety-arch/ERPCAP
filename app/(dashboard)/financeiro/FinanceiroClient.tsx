@@ -569,10 +569,14 @@ export default function FinanceiroClient({ payload }: any) {
                     <div className="flex flex-wrap gap-3">
                         {(fieldCountNames || []).map((name: string, i: number) => (
                             <div key={name} className="flex items-center gap-2">
-                                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: ['#f59e0b', '#8b5cf6'][i % 2] }}></div>
+                                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: ['#f59e0b', '#8b5cf6', '#10b981', '#3b82f6'][i % 4] }}></div>
                                 <span className="text-[10px] font-bold text-gray-500 uppercase">{name}</span>
                             </div>
                         ))}
+                        <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-200">
+                            <div className="w-3 h-3 rounded-sm bg-slate-800"></div>
+                            <span className="text-[10px] font-bold text-slate-800 uppercase">Total do Dia</span>
+                        </div>
                     </div>
                 </div>
 
@@ -604,7 +608,7 @@ export default function FinanceiroClient({ payload }: any) {
                                 <RTooltip
                                     formatter={(value: any, name: any) => [
                                         `${Number(value || 0)} locaç${Number(value || 0) === 1 ? 'ão' : 'ões'}`,
-                                        String(name)
+                                        name === 'total_geral' ? 'Total Geral de Jogos' : String(name)
                                     ] as [string, string]}
                                     contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)', fontSize: '12px' }}
                                     cursor={{ fill: '#fafafa' }}
@@ -613,11 +617,17 @@ export default function FinanceiroClient({ payload }: any) {
                                     <Bar
                                         key={name}
                                         dataKey={name}
-                                        fill={['#f59e0b', '#8b5cf6'][i % 2]}
+                                        fill={['#f59e0b', '#8b5cf6', '#10b981', '#3b82f6'][i % 4]}
                                         radius={[4, 4, 0, 0]}
                                         maxBarSize={28}
                                     />
                                 ))}
+                                <Bar 
+                                    dataKey="total_geral" 
+                                    fill="#1e293b" 
+                                    radius={[4, 4, 0, 0]}
+                                    maxBarSize={32}
+                                />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>

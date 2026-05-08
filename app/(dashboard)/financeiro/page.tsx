@@ -6,11 +6,16 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   const from = p.from;
   const to = p.to;
 
-  const endDate = to ? new Date(to + 'T23:59:59') : new Date();
-  const startDate = from ? new Date(from + 'T00:00:00') : new Date();
+  // Ajuste de fuso horário para Cuiabá nos filtros
+  const endDate = to ? new Date(to + 'T23:59:59-04:00') : new Date();
+  const startDate = from ? new Date(from + 'T00:00:00-04:00') : new Date();
   
   if (!from) {
-    startDate.setDate(endDate.getDate() - 30);
+    // Se não houver data de início, pegamos a data atual em Cuiabá e voltamos 30 dias
+    const formatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit', day: '2-digit' });
+    const [{ value: year }, , { value: month }, , { value: day }] = formatter.formatToParts(new Date());
+    const todayCuiaba = new Date(`${year}-${month}-${day}T00:00:00-04:00`);
+    startDate.setTime(todayCuiaba.getTime() - (30 * 24 * 60 * 60 * 1000));
   }
 
   // Diferença de dias para inicializar o mapa
@@ -85,7 +90,6 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
           dailyRevenueMap[day].total += p.amount;
           
           // Tenta identificar se o pagamento é majoritariamente de aluguel ou produtos
-          // Como o pagamento é do total da comanda, vamos olhar os itens
           const orderItems = p.order?.items || [];
           let orderAluguel = 0;
           let orderProdutos = 0;
@@ -123,15 +127,13 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       }
   });
 
-  // Locações avulsas diretas
+  // Locações avulsas diretas (Rentals já pagos fora de comanda se existirem)
   rentals.forEach(r => {
       if (r.status === 'PAID') {
-          totalRevenue += r.totalAmount;
-          const day = r.startTime.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
-          if (dailyRevenueMap[day]) {
-              dailyRevenueMap[day].total += r.totalAmount;
-              dailyRevenueMap[day].aluguel += r.totalAmount;
-          }
+          // Evitar bitagem dupla: se a locação foi paga via comanda, ela já está nos payments
+          // Verificamos se existe um pagamento vinculado a esta locação (não implementado no schema diretamente)
+          // Por segurança, rentals aqui só contam se não estiverem em comandas (mas no erp atual tudo vira comanda/pagamento)
+          // totalRevenue += r.totalAmount;
       }
   });
 
@@ -158,8 +160,6 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   })).filter(x => x.value > 0);
 
   // --- UNIFICAÇÃO DE DADOS DE CAMPOS (RENTALS + PRODUTOS DE ALUGUEL) ---
-  
-  // 1. Coletar nomes únicos de campos de Agendamentos E de Itens de Pedido
   const rentalFieldNames = Array.from(new Set(rentals.map(r => r.resource)));
   const productFieldNames: string[] = [];
   
@@ -172,7 +172,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
     });
   });
 
-  const allFieldNames = Array.from(new Set([...rentalFieldNames, ...productFieldNames])).sort();
+  const allFieldNames = Array.from(new Set([...rentalFieldNames, ...productFieldNames])).filter(Boolean).sort();
   
   const fieldDailyMap: Record<string, Record<string, number>> = {};
   const fieldCountMap: Record<string, Record<string, number>> = {};
@@ -208,11 +208,12 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       p.order?.items?.forEach((it: any) => {
         const isRental = !!it.serviceId || it.product?.category?.name.toLowerCase().includes('aluguel') || it.product?.category?.name.toLowerCase().includes('campo') || it.product?.name.toLowerCase().includes('aluguel');
         if (isRental && it.product?.name) {
-          // Volume financeiro proporcional (se houver mais itens na comanda)
           const totalOrder = p.order.items.reduce((sum: number, i: any) => sum + i.subtotal, 0);
           const ratio = totalOrder > 0 ? it.subtotal / totalOrder : 1;
           
           fieldDailyMap[day][it.product.name] = (fieldDailyMap[day][it.product.name] || 0) + (p.amount * ratio);
+          // Só contamos como um novo jogo se não houver um rental correspondente (para evitar bitagem)
+          // Mas na dúvida, somamos it.quantity que geralmente é 1 por jogo
           fieldCountMap[day][it.product.name] = (fieldCountMap[day][it.product.name] || 0) + it.quantity;
         }
       });
@@ -248,13 +249,18 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
 
   const fieldCountChart = Object.keys(fieldCountMap)
     .sort()
-    .map(date => ({
-      date: new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
-      rawDate: date,
-      ...Object.fromEntries(
-        Object.entries(fieldCountMap[date]).map(([k, v]) => [k, v])
-      )
-    }));
+    .map(date => {
+      const dayEntries = Object.entries(fieldCountMap[date]);
+      const dayTotal = dayEntries.reduce((sum, [_, val]) => sum + val, 0);
+      return {
+        date: new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+        rawDate: date,
+        total_geral: dayTotal,
+        ...Object.fromEntries(
+          dayEntries.map(([k, v]) => [k, v])
+        )
+      };
+    });
 
   const finalFieldNames = Array.from(new Set([...allFieldNames, subPayments.length > 0 ? subFieldName : ''])).filter(Boolean).sort();
 

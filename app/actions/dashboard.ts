@@ -131,7 +131,7 @@ export async function getDashboardKpis() {
     const startOfDay = new Date(`${todayStr}T00:00:00-04:00`);
     const endOfDay = new Date(`${todayStr}T23:59:59-04:00`);
 
-    const [rentals, payments, orderItems, closedOrders] = await Promise.all([
+    const [rentals, payments, orderItems, closedOrders, subPayments] = await Promise.all([
       prisma.rental.findMany({ 
         where: { startTime: { gte: startOfDay, lte: endOfDay } } 
       }),
@@ -156,6 +156,9 @@ export async function getDashboardKpis() {
       prisma.order.findMany({
           where: { status: 'CLOSED', closedAt: { gte: startOfDay, lte: endOfDay } },
           include: { items: { include: { product: { include: { category: true } } } } }
+      }),
+      prisma.subscriptionPayment.findMany({
+          where: { paymentDate: { gte: startOfDay, lte: endOfDay } }
       })
     ]);
 
@@ -183,15 +186,17 @@ export async function getDashboardKpis() {
 
     // 3. Faturamento por Campo (Consolidado)
     const fieldRevenue: Record<string, number> = {};
-    rentals.forEach(r => {
-        if (r.status === 'PAID') {
-            fieldRevenue[r.resource] = (fieldRevenue[r.resource] || 0) + r.totalAmount;
-        }
-    });
+    
+    // Mensalidades: Contam como receita de campo
+    const subRevenue = subPayments.reduce((acc, sp) => acc + sp.amount, 0);
+    if (subRevenue > 0) fieldRevenue['Mensalistas'] = subRevenue;
+
+    // Pagamentos de PDV e Rentals (evitando duplicidade)
     payments.forEach(p => {
         p.order?.items.forEach(it => {
             const isFieldProduct = it.product?.category?.name?.toLowerCase().includes('aluguel') || 
-                                  it.product?.category?.name?.toLowerCase().includes('campo');
+                                  it.product?.category?.name?.toLowerCase().includes('campo') ||
+                                  it.product?.name?.toLowerCase().includes('aluguel');
             if (isFieldProduct && it.product?.name) {
                 fieldRevenue[it.product.name] = (fieldRevenue[it.product.name] || 0) + it.subtotal;
             }
@@ -199,7 +204,7 @@ export async function getDashboardKpis() {
     });
 
     // 4. Lucro Líquido do Dia (Faturamento Total - Custo dos Produtos)
-    const todayRevenue = payments.reduce((acc, p) => acc + p.amount, 0);
+    const todayRevenue = payments.reduce((acc, p) => acc + p.amount, 0) + subRevenue;
     const totalCost = orderItems.reduce((acc, it) => acc + ((it.product?.cost || 0) * it.quantity), 0);
     const dailyProfit = todayRevenue - totalCost;
 
