@@ -141,38 +141,77 @@ export default async function FinanceiroRoute() {
       value: methodTotals[m]
   })).filter(x => x.value > 0);
 
-  // Agrupar aluguéis por campo (resource) e por dia
-  const fieldNames = Array.from(new Set(rentals.map(r => r.resource))).sort();
+  // --- UNIFICAÇÃO DE DADOS DE CAMPOS (RENTALS + PRODUTOS DE ALUGUEL) ---
+  
+  // 1. Coletar nomes únicos de campos de Agendamentos E de Itens de Pedido
+  const rentalFieldNames = Array.from(new Set(rentals.map(r => r.resource)));
+  const productFieldNames: string[] = [];
+  
+  payments.forEach(p => {
+    p.order?.items?.forEach((it: any) => {
+      const isRental = !!it.serviceId || it.product?.category?.name.toLowerCase().includes('aluguel') || it.product?.category?.name.toLowerCase().includes('campo') || it.product?.name.toLowerCase().includes('aluguel');
+      if (isRental && it.product?.name) {
+        if (!productFieldNames.includes(it.product.name)) productFieldNames.push(it.product.name);
+      }
+    });
+  });
+
+  const allFieldNames = Array.from(new Set([...rentalFieldNames, ...productFieldNames])).sort();
   
   const fieldDailyMap: Record<string, Record<string, number>> = {};
-  // Init: todos os campos em todos os dias = 0
+  const fieldCountMap: Record<string, Record<string, number>> = {};
+
+  // Inicializar mapas para os últimos 30 dias
   for (let i = 29; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const st = d.toISOString().split('T')[0];
     fieldDailyMap[st] = {};
-    fieldNames.forEach(name => { fieldDailyMap[st][name] = 0; });
+    fieldCountMap[st] = {};
+    allFieldNames.forEach(name => { 
+      fieldDailyMap[st][name] = 0; 
+      fieldCountMap[st][name] = 0;
+    });
   }
 
+  // 2. Processar Agendamentos (Rentals)
   rentals.forEach(r => {
-    if (r.status === 'PAID') {
-        const day = r.startTime.toISOString().split('T')[0];
-        if (fieldDailyMap[day]) {
-          if (!fieldDailyMap[day][r.resource]) fieldDailyMap[day][r.resource] = 0;
-          fieldDailyMap[day][r.resource] += r.totalAmount;
-        }
+    const day = r.startTime.toISOString().split('T')[0];
+    if (fieldDailyMap[day]) {
+      if (r.status === 'PAID') {
+        fieldDailyMap[day][r.resource] = (fieldDailyMap[day][r.resource] || 0) + r.totalAmount;
+      }
+      fieldCountMap[day][r.resource] = (fieldCountMap[day][r.resource] || 0) + 1;
     }
   });
 
-  // Mensalidades: só contam como aluguel genérico (sem campo específico identificado)
-  // subPayments não têm resource, então somamos como "Mensalistas"
+  // 3. Processar Itens de Pedido (Produtos que são aluguel)
+  payments.forEach(p => {
+    const day = p.date.toISOString().split('T')[0];
+    if (fieldDailyMap[day]) {
+      p.order?.items?.forEach((it: any) => {
+        const isRental = !!it.serviceId || it.product?.category?.name.toLowerCase().includes('aluguel') || it.product?.category?.name.toLowerCase().includes('campo') || it.product?.name.toLowerCase().includes('aluguel');
+        if (isRental && it.product?.name) {
+          // Volume financeiro proporcional (se houver mais itens na comanda)
+          const totalOrder = p.order.items.reduce((sum: number, i: any) => sum + i.subtotal, 0);
+          const ratio = totalOrder > 0 ? it.subtotal / totalOrder : 1;
+          
+          fieldDailyMap[day][it.product.name] = (fieldDailyMap[day][it.product.name] || 0) + (p.amount * ratio);
+          fieldCountMap[day][it.product.name] = (fieldCountMap[day][it.product.name] || 0) + it.quantity;
+        }
+      });
+    }
+  });
+
+  // Mensalidades: Categoria Genérica
   const subFieldName = 'Mensalistas';
   if (subPayments.length > 0) {
-    fieldNames.push(subFieldName);
     Object.keys(fieldDailyMap).forEach(day => { fieldDailyMap[day][subFieldName] = 0; });
     subPayments.forEach(p => {
       const day = p.paymentDate.toISOString().split('T')[0];
-      if (fieldDailyMap[day]) fieldDailyMap[day][subFieldName] += p.amount;
+      if (fieldDailyMap[day]) {
+        fieldDailyMap[day][subFieldName] = (fieldDailyMap[day][subFieldName] || 0) + p.amount;
+      }
     });
   }
 
@@ -186,27 +225,6 @@ export default async function FinanceiroRoute() {
       )
     }));
 
-  // --- CONTAGEM UNITÁRIA DE LOCAÇÕES POR CAMPO ---
-  // Apenas rentals avulsos (sem mensalistas, pois eles não têm resource)
-  const countFieldNames = Array.from(new Set(rentals.map(r => r.resource))).sort();
-
-  const fieldCountMap: Record<string, Record<string, number>> = {};
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const st = d.toISOString().split('T')[0];
-    fieldCountMap[st] = {};
-    countFieldNames.forEach(name => { fieldCountMap[st][name] = 0; });
-  }
-
-  rentals.forEach(r => {
-    const day = r.startTime.toISOString().split('T')[0];
-    if (fieldCountMap[day]) {
-      if (!fieldCountMap[day][r.resource]) fieldCountMap[day][r.resource] = 0;
-      fieldCountMap[day][r.resource] += 1; // contagem unitária
-    }
-  });
-
   const fieldCountChart = Object.keys(fieldCountMap)
     .sort()
     .map(date => ({
@@ -217,6 +235,8 @@ export default async function FinanceiroRoute() {
       )
     }));
 
+  const finalFieldNames = Array.from(new Set([...allFieldNames, subPayments.length > 0 ? subFieldName : ''])).filter(Boolean).sort();
+
   const payload = {
       totalRevenue,
       totalPendingPayable,
@@ -224,9 +244,9 @@ export default async function FinanceiroRoute() {
       dailyChart,
       methodChart,
       fieldChart,
-      fieldNames: [...fieldNames],
+      fieldNames: finalFieldNames,
       fieldCountChart,
-      fieldCountNames: countFieldNames,
+      fieldCountNames: allFieldNames,
       cashRegisters,
       financialEntries
   };
