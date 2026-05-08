@@ -1,14 +1,27 @@
 import { prisma } from "../../../lib/prisma";
 import FinanceiroClient from "./FinanceiroClient";
 
-export default async function FinanceiroRoute() {
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+export default async function FinanceiroRoute({ searchParams }: { searchParams: { from?: string; to?: string } }) {
+  const p = await searchParams;
+  const from = p.from;
+  const to = p.to;
+
+  const endDate = to ? new Date(to + 'T23:59:59') : new Date();
+  const startDate = from ? new Date(from + 'T00:00:00') : new Date();
+  
+  if (!from) {
+    startDate.setDate(endDate.getDate() - 30);
+  }
+
+  // Diferença de dias para inicializar o mapa
+  const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+  const rangeLimit = diffDays > 366 ? 366 : diffDays; // Limite de 1 ano para evitar crash de memória
 
   // Execute all heavy queries in parallel
   const [payments, subPayments, rentals, cashRegisters, financialEntries] = await Promise.all([
     prisma.payment.findMany({
-      where: { date: { gte: thirtyDaysAgo } },
+      where: { date: { gte: startDate, lte: endDate } },
       include: { 
         order: {
           include: {
@@ -20,13 +33,13 @@ export default async function FinanceiroRoute() {
       }
     }),
     prisma.subscriptionPayment.findMany({
-      where: { paymentDate: { gte: thirtyDaysAgo } }
+      where: { paymentDate: { gte: startDate, lte: endDate } }
     }),
     prisma.rental.findMany({
-      where: { startTime: { gte: thirtyDaysAgo } }
+      where: { startTime: { gte: startDate, lte: endDate } }
     }),
     prisma.cashRegister.findMany({
-      where: { openedAt: { gte: thirtyDaysAgo } },
+      where: { openedAt: { gte: startDate, lte: endDate } },
       orderBy: { openedAt: 'desc' },
       include: { 
         user: true,
@@ -53,9 +66,9 @@ export default async function FinanceiroRoute() {
 
   const dailyRevenueMap: Record<string, { total: number, produtos: number, aluguel: number }> = {};
 
-  // Init range (0 preenchido para dias vazios)
-  for (let i = 29; i >= 0; i--) {
-        const d = new Date();
+  // Init range dinâmico
+  for (let i = rangeLimit; i >= 0; i--) {
+        const d = new Date(endDate);
         d.setDate(d.getDate() - i);
         const st = d.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
         dailyRevenueMap[st] = { total: 0, produtos: 0, aluguel: 0 };
@@ -164,9 +177,9 @@ export default async function FinanceiroRoute() {
   const fieldDailyMap: Record<string, Record<string, number>> = {};
   const fieldCountMap: Record<string, Record<string, number>> = {};
 
-  // Inicializar mapas para os últimos 30 dias
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date();
+  // Inicializar mapas para o período selecionado
+  for (let i = rangeLimit; i >= 0; i--) {
+    const d = new Date(endDate);
     d.setDate(d.getDate() - i);
     const st = d.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
     fieldDailyMap[st] = {};

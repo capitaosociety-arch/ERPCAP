@@ -10,14 +10,19 @@ import {
     Plus, Calendar, CheckCircle, XCircle, Trash2, Filter, AlertCircle, TrendingUp, TrendingDown, 
     Eye, CreditCard, Banknote, ShoppingBag, RotateCcw, Landmark
 } from 'lucide-react';
-import { downloadExcel } from '../../../lib/excel-export';
+import { downloadExcel, downloadMultiSheetExcel } from '../../../lib/excel-export';
 import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry } from '../../actions/financeiro';
 import { getRegisterSummary, deleteCashSessionAction, getSessionsForDepositAction, recordCashDepositAction, recordGlobalCashDepositAction } from '../../actions/caixa';
 import { voidPaymentAction } from '../../actions/comandas';
 
+import { useRouter, useSearchParams } from 'next/navigation';
+
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#0ea5e9'];
 
 export default function FinanceiroClient({ payload }: any) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
   const { 
     totalRevenue, totalPendingPayable, totalPendingReceivable, 
     dailyChart, methodChart, fieldChart, fieldNames,
@@ -30,6 +35,30 @@ export default function FinanceiroClient({ payload }: any) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [filterType, setFilterType] = useState('ALL'); // ALL, PAYABLE, RECEIVABLE
   
+  // Filtros de Data
+  const [dateFrom, setDateFrom] = useState(searchParams.get('from') || '');
+  const [dateTo, setDateTo] = useState(searchParams.get('to') || '');
+
+  const handleApplyFilters = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (dateFrom) params.set('from', dateFrom);
+    else params.delete('from');
+    
+    if (dateTo) params.set('to', dateTo);
+    else params.delete('to');
+
+    startTransition(() => {
+        router.push(`/financeiro?${params.toString()}`);
+    });
+  };
+
+  const handleClearFilters = () => {
+    setDateFrom('');
+    setDateTo('');
+    startTransition(() => {
+        router.push('/financeiro');
+    });
+  };  
   // States para o novo lançamento
   const [newEntry, setNewEntry] = useState({
     description: '',
@@ -57,21 +86,60 @@ export default function FinanceiroClient({ payload }: any) {
 
   const todayVal = dailyChart[dailyChart.length - 1]?.total || 0;
   
-  const handleExportExcel = () => {
-      const exportData = cashRegisters.map((cash: any) => {
-          const shiftEntries = (cash.payments || []).reduce((acc:number, p:any) => acc + (p.amount || 0), 0) || 0;
-          return {
-              "Operador": cash.user?.name || "-",
-              "Status": cash.status === "OPEN" ? "Aberto" : "Fechado",
-              "Abertura": new Date(cash.openedAt).toLocaleString('pt-BR'),
-              "Fechamento": cash.closedAt ? new Date(cash.closedAt).toLocaleString('pt-BR') : "-",
-              "Fundo Troco Inicial (R$)": cash.openingBal || 0,
-              "Total Recebido Vendas (R$)": shiftEntries,
-              "Saldo Final Conferido (R$)": cash.closingBal || 0,
-              "Diferença / Quebra (R$)": cash.closingBal !== null ? cash.closingBal - (shiftEntries + cash.openingBal) : 0
-          };
-      });
-      downloadExcel(exportData, "Relatorio_Movimentacao_Caixas");
+  const exportAllData = () => {
+    const sheets = [
+        {
+            sheetName: 'Resumo Faturamento',
+            data: dailyChart.map((d: any) => ({
+                'Data': d.date,
+                'Aluguel (R$)': d.aluguel,
+                'Produtos (R$)': d.produtos,
+                'Total (R$)': d.total
+            }))
+        },
+        {
+            sheetName: 'Desempenho por Campo',
+            data: fieldChart.map((d: any) => {
+                const row: any = { 'Data': d.date };
+                fieldNames.forEach((f: string) => { row[f] = d[f] || 0; });
+                row['Total do Dia'] = d.total_geral;
+                return row;
+            })
+        },
+        {
+            sheetName: 'Ocupação (Quantidade)',
+            data: fieldCountChart.map((d: any) => {
+                const row: any = { 'Data': d.date };
+                fieldCountNames.forEach((f: string) => { row[f] = d[f] || 0; });
+                return row;
+            })
+        },
+        {
+            sheetName: 'Contas e Vencimentos',
+            data: financialEntries.map((e: any) => ({
+                'Descrição': e.description,
+                'Tipo': e.type === 'PAYABLE' ? 'A Pagar' : 'A Receber',
+                'Valor': e.amount,
+                'Vencimento': new Date(e.dueDate).toLocaleDateString('pt-BR'),
+                'Status': e.status === 'PAID' ? 'Pago' : 'Pendente',
+                'Categoria': e.category,
+                'Método': e.method
+            }))
+        },
+        {
+            sheetName: 'Sessões de Caixa',
+            data: cashRegisters.map((c: any) => ({
+                'ID': c.id,
+                'Operador': c.user?.name || 'N/A',
+                'Abertura': new Date(c.openedAt).toLocaleString('pt-BR'),
+                'Fechamento': c.closedAt ? new Date(c.closedAt).toLocaleString('pt-BR') : 'Aberto',
+                'Saldo Inicial': c.openingBalance,
+                'Saldo Final Esperado': c.closingBalance || 'N/A'
+            }))
+        }
+    ];
+
+    downloadMultiSheetExcel(sheets, `Financeiro_Capitao_${new Date().toLocaleDateString('sv-SE')}`);
   };
 
   const handleCreateEntry = async (e: React.FormEvent) => {
@@ -254,9 +322,59 @@ export default function FinanceiroClient({ payload }: any) {
 
       {activeTab === 'DASHBOARD' && (
           <>
+            {/* TOOLBAR: FILTROS E EXPORTAÇÃO */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-6 flex flex-wrap items-center gap-4">
+                <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Início</label>
+                    <div className="relative">
+                        <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                        <input 
+                            type="date" 
+                            value={dateFrom} 
+                            onChange={(e) => setDateFrom(e.target.value)}
+                            className="bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none w-40"
+                        />
+                    </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fim</label>
+                    <div className="relative">
+                        <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                        <input 
+                            type="date" 
+                            value={dateTo} 
+                            onChange={(e) => setDateTo(e.target.value)}
+                            className="bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none w-40"
+                        />
+                    </div>
+                </div>
+                <div className="flex items-end gap-2 h-full mt-5">
+                    <button 
+                        onClick={handleApplyFilters}
+                        disabled={isPending}
+                        className="bg-emerald-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95 transition disabled:opacity-50 flex items-center gap-2"
+                    >
+                        <Filter size={14}/> {isPending ? 'Filtrando...' : 'Aplicar Filtros'}
+                    </button>
+                    <button 
+                        onClick={handleClearFilters}
+                        className="bg-gray-100 text-gray-500 px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-gray-200 transition"
+                    >
+                        Limpar
+                    </button>
+                </div>
+                <div className="flex-1 min-w-[20px]"></div>
+                <button 
+                    onClick={exportAllData}
+                    className="mt-5 bg-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-slate-900/20 flex items-center gap-2 hover:scale-105 active:scale-95 transition border border-slate-700"
+                >
+                    <Sheet size={16} className="text-emerald-400"/> Exportar Relatório Completo (Excel)
+                </button>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-white border text-left border-gray-100 rounded-2xl p-5 shadow-sm relative overflow-hidden group">
-                    <p className="text-[10px] font-black text-gray-400 tracking-widest mb-1 relative z-10 flex items-center gap-2 uppercase">Receita (30d)</p>
+                    <p className="text-[10px] font-black text-gray-400 tracking-widest mb-1 relative z-10 flex items-center gap-2 uppercase">Receita Total</p>
                     <h2 className="text-2xl font-black text-slate-800 relative z-10">R$ {Number(totalRevenue || 0).toFixed(2).replace('.',',')}</h2>
                     <div className="absolute right-0 bottom-0 p-2 opacity-5">
                         <TrendingUp size={64} className="text-emerald-500"/>
@@ -290,7 +408,7 @@ export default function FinanceiroClient({ payload }: any) {
                 {/* EVOLUTION CHART */}
                 <div className="col-span-2 bg-white rounded-3xl shadow-sm border border-gray-100 p-6 flex flex-col items-start min-w-0">
                     <div className="flex justify-between items-center w-full mb-6">
-                        <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">Desempenho por Setor <span className="text-xs font-medium text-gray-400 font-mono">(30 Dias)</span></h3>
+                        <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">Desempenho por Setor</h3>
                         <div className="flex gap-4">
                             <div className="flex items-center gap-2">
                                 <div className="w-3 h-3 rounded-full bg-emerald-500"></div>
@@ -750,7 +868,7 @@ export default function FinanceiroClient({ payload }: any) {
                 </table>
                 </div>
                 <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end">
-                    <button onClick={handleExportExcel} className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl font-bold shadow-sm hover:bg-emerald-100 transition text-sm">
+                    <button onClick={exportAllData} className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl font-bold shadow-sm hover:bg-emerald-100 transition text-sm">
                         <Sheet size={16}/> Exportar Excel
                     </button>
                 </div>
