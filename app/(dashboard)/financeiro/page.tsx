@@ -57,7 +57,7 @@ export default async function FinanceiroRoute() {
   for (let i = 29; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const st = d.toLocaleDateString('sv-SE');
+        const st = d.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
         dailyRevenueMap[st] = { total: 0, produtos: 0, aluguel: 0 };
   }
 
@@ -67,7 +67,7 @@ export default async function FinanceiroRoute() {
       if (!methodTotals[p.method]) methodTotals[p.method] = 0;
       methodTotals[p.method] += p.amount;
       
-      const day = p.date.toLocaleDateString('sv-SE');
+      const day = p.date.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
       if (dailyRevenueMap[day]) {
           dailyRevenueMap[day].total += p.amount;
           
@@ -103,7 +103,7 @@ export default async function FinanceiroRoute() {
       totalRevenue += p.amount;
       methodTotals['SUBSCRIPTION'] += p.amount;
       
-      const day = p.paymentDate.toLocaleDateString('sv-SE');
+      const day = p.paymentDate.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
       if (dailyRevenueMap[day]) {
           dailyRevenueMap[day].total += p.amount;
           dailyRevenueMap[day].aluguel += p.amount;
@@ -114,7 +114,7 @@ export default async function FinanceiroRoute() {
   rentals.forEach(r => {
       if (r.status === 'PAID') {
           totalRevenue += r.totalAmount;
-          const day = r.startTime.toLocaleDateString('sv-SE');
+          const day = r.startTime.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
           if (dailyRevenueMap[day]) {
               dailyRevenueMap[day].total += r.totalAmount;
               dailyRevenueMap[day].aluguel += r.totalAmount;
@@ -168,7 +168,7 @@ export default async function FinanceiroRoute() {
   for (let i = 29; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const st = d.toLocaleDateString('sv-SE');
+    const st = d.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
     fieldDailyMap[st] = {};
     fieldCountMap[st] = {};
     allFieldNames.forEach(name => { 
@@ -179,7 +179,7 @@ export default async function FinanceiroRoute() {
 
   // 2. Processar Agendamentos (Rentals)
   rentals.forEach(r => {
-    const day = r.startTime.toLocaleDateString('sv-SE');
+    const day = r.startTime.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
     if (fieldDailyMap[day]) {
       if (r.status === 'PAID') {
         fieldDailyMap[day][r.resource] = (fieldDailyMap[day][r.resource] || 0) + r.totalAmount;
@@ -190,7 +190,7 @@ export default async function FinanceiroRoute() {
 
   // 3. Processar Itens de Pedido (Produtos que são aluguel)
   payments.forEach(p => {
-    const day = p.date.toLocaleDateString('sv-SE');
+    const day = p.date.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
     if (fieldDailyMap[day]) {
       p.order?.items?.forEach((it: any) => {
         const isRental = !!it.serviceId || it.product?.category?.name.toLowerCase().includes('aluguel') || it.product?.category?.name.toLowerCase().includes('campo') || it.product?.name.toLowerCase().includes('aluguel');
@@ -211,7 +211,7 @@ export default async function FinanceiroRoute() {
   if (subPayments.length > 0) {
     Object.keys(fieldDailyMap).forEach(day => { fieldDailyMap[day][subFieldName] = 0; });
     subPayments.forEach(p => {
-      const day = p.paymentDate.toLocaleDateString('sv-SE');
+      const day = p.paymentDate.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
       if (fieldDailyMap[day]) {
         fieldDailyMap[day][subFieldName] = (fieldDailyMap[day][subFieldName] || 0) + p.amount;
       }
