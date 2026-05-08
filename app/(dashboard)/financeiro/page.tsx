@@ -163,8 +163,17 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   const rentalFieldNames = Array.from(new Set(rentals.map(r => r.resource)));
   const productFieldNames: string[] = [];
   
+  // Usar um Map de Orders para evitar duplicidade por pagamentos
+  const uniqueOrdersMap = new Map();
   payments.forEach(p => {
-    p.order?.items?.forEach((it: any) => {
+    if (p.order && !uniqueOrdersMap.has(p.order.id)) {
+      uniqueOrdersMap.set(p.order.id, p.order);
+    }
+  });
+  const uniqueOrders = Array.from(uniqueOrdersMap.values());
+
+  uniqueOrders.forEach((order: any) => {
+    order.items?.forEach((it: any) => {
       const isRental = !!it.serviceId || it.product?.category?.name.toLowerCase().includes('aluguel') || it.product?.category?.name.toLowerCase().includes('campo') || it.product?.name.toLowerCase().includes('aluguel');
       if (isRental && it.product?.name) {
         if (!productFieldNames.includes(it.product.name)) productFieldNames.push(it.product.name);
@@ -190,40 +199,65 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
     });
   }
 
-  // 2. Processar Agendamentos (Rentals)
-  rentals.forEach(r => {
-    const day = r.startTime.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
-    if (fieldDailyMap[day]) {
-      if (r.status === 'PAID') {
-        fieldDailyMap[day][r.resource] = (fieldDailyMap[day][r.resource] || 0) + r.totalAmount;
-      }
-      fieldCountMap[day][r.resource] = (fieldCountMap[day][r.resource] || 0) + 1;
-    }
-  });
-
-  // 3. Processar Itens de Pedido (Produtos que são aluguel)
+  // 1. Processar Faturamento Real (Vindo dos Pagamentos)
   payments.forEach(p => {
     const day = p.date.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
     if (fieldDailyMap[day]) {
-      p.order?.items?.forEach((it: any) => {
+      const orderItems = p.order?.items || [];
+      const totalOrder = orderItems.reduce((sum: number, it: any) => sum + it.subtotal, 0);
+      
+      orderItems.forEach((it: any) => {
         const isRental = !!it.serviceId || it.product?.category?.name.toLowerCase().includes('aluguel') || it.product?.category?.name.toLowerCase().includes('campo') || it.product?.name.toLowerCase().includes('aluguel');
         if (isRental && it.product?.name) {
-          const totalOrder = p.order.items.reduce((sum: number, i: any) => sum + i.subtotal, 0);
           const ratio = totalOrder > 0 ? it.subtotal / totalOrder : 1;
-          
           fieldDailyMap[day][it.product.name] = (fieldDailyMap[day][it.product.name] || 0) + (p.amount * ratio);
-          // Só contamos como um novo jogo se não houver um rental correspondente (para evitar bitagem)
-          // Mas na dúvida, somamos it.quantity que geralmente é 1 por jogo
-          fieldCountMap[day][it.product.name] = (fieldCountMap[day][it.product.name] || 0) + it.quantity;
         }
       });
     }
   });
 
-  // Mensalidades: Categoria Genérica
+  // 2. Processar Quantidade (Deduplicada)
+  // Primeiro: Contamos todos os agendamentos (Rentals)
+  rentals.forEach(r => {
+    const day = r.startTime.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
+    if (fieldCountMap[day]) {
+      fieldCountMap[day][r.resource] = (fieldCountMap[day][r.resource] || 0) + 1;
+    }
+  });
+
+  // Segundo: Contamos vendas de balcão (Orders) que NÃO foram originadas de um agendamento
+  // Como não há link direto, vamos contar apenas se o total de vendas for maior que o de agendamentos no dia para aquele recurso
+  // Ou melhor: para este ERP, vamos considerar que Rentals são a fonte primária de 'Quantidade' e Orders a de 'Receita'.
+  // Se o usuário lança direto no PDV sem agendar, precisamos capturar.
+  // Ajuste: Vamos contar agendamentos, e do PDV apenas o que exceder a quantidade de agendamentos (heurística de proteção)
+  const posCountBuffer: Record<string, Record<string, number>> = {};
+  uniqueOrders.forEach((order: any) => {
+    const day = (order.closedAt || order.openedAt).toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
+    if (fieldCountMap[day]) {
+      order.items?.forEach((it: any) => {
+        const isRental = !!it.serviceId || it.product?.category?.name.toLowerCase().includes('aluguel') || it.product?.category?.name.toLowerCase().includes('campo') || it.product?.name.toLowerCase().includes('aluguel');
+        if (isRental && it.product?.name) {
+          if (!posCountBuffer[day]) posCountBuffer[day] = {};
+          posCountBuffer[day][it.product.name] = (posCountBuffer[day][it.product.name] || 0) + it.quantity;
+        }
+      });
+    }
+  });
+
+  // Mesclar: se a venda no PDV for maior que os agendamentos, usamos a venda (evita bitagem)
+  Object.keys(fieldCountMap).forEach(day => {
+    allFieldNames.forEach(name => {
+      const rentalCount = fieldCountMap[day][name] || 0;
+      const posCount = posCountBuffer[day]?.[name] || 0;
+      // Heurística: o maior valor entre agendamento e venda balcão representa a realidade
+      fieldCountMap[day][name] = Math.max(rentalCount, posCount);
+    });
+  });
+
+  // Mensalidades: Categoria Genérica (Apenas Receita)
   const subFieldName = 'Mensalistas';
   if (subPayments.length > 0) {
-    Object.keys(fieldDailyMap).forEach(day => { fieldDailyMap[day][subFieldName] = 0; });
+    Object.keys(fieldDailyMap).forEach(day => { if (fieldDailyMap[day]) fieldDailyMap[day][subFieldName] = 0; });
     subPayments.forEach(p => {
       const day = p.paymentDate.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
       if (fieldDailyMap[day]) {
