@@ -21,8 +21,8 @@ interface CardapioPrintProps {
 export default function CardapioPrint({ products, onClose }: CardapioPrintProps) {
   const printRef = useRef<HTMLDivElement>(null);
 
-  // Payload oficial extraído da imagem do cliente para o PIX Copia e Cola
-  const PIX_PAYLOAD = "00020126360014br.gov.bcb.pix0114422616910001275204000053039865802BR5915CAPITAO SOCIETY6009Cuiaba62070503***6304D892";
+  // Payload oficial fornecido pelo cliente para o PIX Copia e Cola
+  const PIX_PAYLOAD = "00020126360014br.gov.bcb.pix0114422616910001275204000053039865802BR5915CAPITAO SOCIETY6009Sao Paulo610901227-20062230519daqr34077869834053663049AF4";
 
   // Filtrar produtos ativos e remover aluguéis/churrasqueiras para otimizar espaço
   const activeProducts = products.filter(p => {
@@ -219,7 +219,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
                     <div className="w-4 h-4 bg-[#0f172a] rounded-md flex items-center justify-center text-[7px] text-white font-black border border-white/20">C</div>
                   </div>
                </div>
-               <div className="w-12 h-12 bg-[#0ea5e9] rounded-2xl flex items-center justify-center text-[#0f172a] font-black text-3xl italic relative z-10 shrink-0">C</div>
+               <div className="w-12 h-20 bg-[#0ea5e9] rounded-full flex items-center justify-center text-slate-950 font-black text-4xl italic relative z-10 shrink-0 shadow-lg">C</div>
             </div>
           </div>
         </div>
