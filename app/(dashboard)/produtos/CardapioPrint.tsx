@@ -55,13 +55,15 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
 
   const getSubGroup = (name: string) => {
     const n = name.toLowerCase();
+    // Prioridade total para Energéticos e Isotônicos
+    if (n.includes('energético') || n.includes('monster') || n.includes('red bull') || n.includes('gatorade') || n.includes('powerade')) return 'ISOTÔNICOS E ENERG.';
+    
     if (n.includes('600') || n.includes('garrafa')) return 'GARRAFAS';
     if (n.includes('long') || n.includes('neck')) return 'LONGNECKS';
     if (n.includes('lata') || n.includes('269') || n.includes('350')) return 'LATAS';
     if (n.includes('água') || n.includes('agua')) return 'ÁGUAS';
     if (n.includes('refrigerante') || n.includes('coca') || n.includes('guaraná') || n.includes('sprite') || n.includes('fanta') || n.includes('schweppes')) return 'REFRIGERANTES';
     if (n.includes('suco')) return 'SUCOS';
-    if (n.includes('energético') || n.includes('monster') || n.includes('red bull') || n.includes('gatorade') || n.includes('powerade')) return 'ISOTÔNICOS E ENERG.';
     return 'ISOTÔNICOS E ENERG.';
   };
 
