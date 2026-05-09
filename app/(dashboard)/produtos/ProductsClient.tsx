@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { Plus, Edit3, X, DollarSign, ToggleLeft, ToggleRight, Sheet, Upload, CheckCircle2, RefreshCw, Trash2, Search } from 'lucide-react';
+import { Plus, Edit3, X, DollarSign, ToggleLeft, ToggleRight, Sheet, Upload, CheckCircle2, RefreshCw, Trash2, Search, Printer } from 'lucide-react';
 import { updateProductPrice, upsertProduct, toggleProductStatus, deleteProduct } from '../../actions/products';
 import { processProductsWithAI, saveBatchProducts } from '../../actions/import-actions';
 import { downloadExcel } from '../../../lib/excel-export';
 import * as XLSX from 'xlsx';
+import CardapioPrint from './CardapioPrint';
 
 export default function ProductsClient({ initialProducts, categories = [] }: any) {
   const [products, setProducts] = useState(initialProducts);
@@ -27,6 +28,8 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
   const [isImportModalOpen, setImportModalOpen] = useState(false);
   const [importPreview, setImportPreview] = useState<any[]>([]);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
+  // Cardápio Modal
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   
   const [isPending, startTransition] = useTransition();
 
@@ -220,6 +223,10 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
             {isProcessingAI ? 'Processando...' : 'Importar Planilha (IA)'}
             <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={handleExcelUpload} />
           </label>
+
+          <button onClick={() => setIsMenuOpen(true)} className="bg-white border border-gray-200 text-slate-800 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm flex items-center gap-2 hover:bg-gray-50 hover:-translate-y-0.5 transition-all">
+            <Printer size={18} className="text-[#0ea5e9]" /> Emitir Cardápio
+          </button>
 
           <button onClick={() => openFormModal()} className="bg-mrts-blue text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-blue-500/20 flex items-center gap-2 hover:bg-mrts-hover hover:-translate-y-0.5 transition-all">
             <Plus size={18} /> Novo Produto
@@ -515,6 +522,13 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                 </div>
             </div>
         </div>
+      )}
+      {/* CARDÁPIO PRINT PREVIEW */}
+      {isMenuOpen && (
+        <CardapioPrint 
+          products={products} 
+          onClose={() => setIsMenuOpen(false)} 
+        />
       )}
 
     </div>
