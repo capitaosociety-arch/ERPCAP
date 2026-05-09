@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { X, Printer, Instagram, Facebook, Phone } from 'lucide-react';
+import { X, Printer, Phone, Globe } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -145,16 +145,16 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
                
                <div className="flex gap-4">
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 bg-gradient-to-tr from-yellow-500 via-red-500 to-purple-500 rounded-lg flex items-center justify-center text-white">
-                      <Instagram size={14} />
+                    <div className="w-6 h-6 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500">
+                      <Globe size={14} />
                     </div>
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight">@capitaosociety</span>
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight">Instagram: @capitaosociety</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center text-white">
-                      <Facebook size={14} fill="white" />
+                    <div className="w-6 h-6 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500">
+                      <Globe size={14} />
                     </div>
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight">@capitaosociety</span>
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight">Facebook: @capitaosociety</span>
                   </div>
                </div>
             </div>
