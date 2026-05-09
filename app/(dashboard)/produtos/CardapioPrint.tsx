@@ -31,7 +31,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
     const name = p.name.toLowerCase();
     // Remover itens de locação que não fazem sentido no cardápio de consumo
     if (cat.includes('campo') || cat.includes('quadra') || cat.includes('churrasqueira')) return false;
-    if (name.includes('aluguel') || name.includes('locação')) return false;
+    if (name.includes('aluguel') || name.includes('locação') || name.includes('churrasqueira')) return false;
     return true;
   });
 
