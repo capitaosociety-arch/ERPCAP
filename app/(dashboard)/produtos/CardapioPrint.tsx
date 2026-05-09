@@ -35,10 +35,18 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
     return true;
   });
 
-  // Mapear categorias e renomear "Geral" para "SALGADINHOS"
+  // Mapear categorias e renomear "Geral" para "SALGADINHOS", e forçar Energéticos para sua própria categoria
   const rawCategories = Array.from(new Set(activeProducts.map(p => {
-    const name = p.category?.name || 'SALGADINHOS';
-    return name === 'Geral' ? 'SALGADINHOS' : name;
+    const name = p.name.toLowerCase();
+    const cat = (p.category?.name || '').toLowerCase();
+    
+    // Forçar energéticos e isotônicos para uma categoria principal única
+    if (name.includes('monster') || name.includes('red bull') || name.includes('energético') || name.includes('gatorade')) {
+      return 'ISOTÔNICOS E ENERG.';
+    }
+
+    const catDisplayName = p.category?.name || 'SALGADINHOS';
+    return catDisplayName === 'Geral' ? 'SALGADINHOS' : catDisplayName;
   }))).sort();
 
   const handlePrint = () => {
