@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { X, Printer, Phone, Globe, Info } from 'lucide-react';
+import { X, Printer, Phone, Globe, Info, Zap } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -21,11 +21,25 @@ interface CardapioPrintProps {
 export default function CardapioPrint({ products, onClose }: CardapioPrintProps) {
   const printRef = useRef<HTMLDivElement>(null);
 
-  // Filtrar apenas produtos ativos
-  const activeProducts = products.filter(p => p.isActive);
+  // Payload oficial extraído da imagem do cliente para o PIX Copia e Cola
+  const PIX_PAYLOAD = "00020126360014br.gov.bcb.pix0114422616910001275204000053039865802BR5915CAPITAO SOCIETY6009Cuiaba62070503***6304D892";
 
-  // Agrupamento lógico baseado no modelo da foto
-  const categories = Array.from(new Set(activeProducts.map(p => p.category?.name || 'Geral'))).sort();
+  // Filtrar produtos ativos e remover aluguéis/churrasqueiras para otimizar espaço
+  const activeProducts = products.filter(p => {
+    if (!p.isActive) return false;
+    const cat = (p.category?.name || '').toLowerCase();
+    const name = p.name.toLowerCase();
+    // Remover itens de locação que não fazem sentido no cardápio de consumo
+    if (cat.includes('campo') || cat.includes('quadra') || cat.includes('churrasqueira')) return false;
+    if (name.includes('aluguel') || name.includes('locação')) return false;
+    return true;
+  });
+
+  // Mapear categorias e renomear "Geral" para "SALGADINHOS"
+  const rawCategories = Array.from(new Set(activeProducts.map(p => {
+    const name = p.category?.name || 'SALGADINHOS';
+    return name === 'Geral' ? 'SALGADINHOS' : name;
+  }))).sort();
 
   const handlePrint = () => {
     window.print();
@@ -44,65 +58,80 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-900/90 backdrop-blur-md overflow-y-auto print-area">
+    <div className="fixed inset-0 z-[100] bg-slate-950/95 backdrop-blur-xl overflow-y-auto print-area">
       
-      {/* Toolbar Fixa no Topo - Oculta na impressão */}
-      <div className="fixed top-0 left-0 right-0 z-[110] flex justify-between items-center p-4 bg-slate-950 border-b border-white/10 text-white print-hidden">
+      {/* Toolbar Moderna */}
+      <div className="fixed top-0 left-0 right-0 z-[110] flex justify-between items-center p-5 bg-slate-900/50 border-b border-white/5 backdrop-blur-md text-white print-hidden">
         <div className="flex items-center gap-4">
-          <div className="bg-emerald-500/20 p-2 rounded-lg text-emerald-400 font-bold">
-            <Printer size={18} />
+          <div className="w-10 h-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
+            <Printer size={20} />
           </div>
           <div>
-            <h2 className="font-bold text-xs uppercase tracking-widest">Prévia do Cardápio A4</h2>
+            <h2 className="font-black text-sm tracking-tighter uppercase">Cardápio Inteligente</h2>
+            <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1">
+              <Zap size={10} /> Otimizado para A4
+            </p>
           </div>
         </div>
         
         <div className="flex items-center gap-4">
-          <div className="hidden lg:flex items-center gap-2 text-blue-400 bg-blue-400/10 px-3 py-1.5 rounded-full border border-blue-400/20">
-            <Info size={14} />
-            <span className="text-[10px] font-bold uppercase tracking-tight">Otimizado para folha única (Frente)</span>
-          </div>
-          
           <div className="flex gap-2">
             <button 
               onClick={handlePrint}
-              className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all active:scale-95 text-xs"
+              className="bg-white text-slate-900 hover:bg-emerald-500 hover:text-white px-8 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-xl"
             >
-              <Printer size={16} /> Imprimir A4
+              Imprimir Cardápio
             </button>
             <button 
               onClick={onClose}
-              className="bg-white/10 hover:bg-white/20 p-2 rounded-xl transition-all"
+              className="bg-white/5 hover:bg-white/10 p-2.5 rounded-xl border border-white/10 transition-all"
             >
-              <X size={18} />
+              <X size={20} />
             </button>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-col items-center pt-24 pb-20 px-4 print:p-0 print:pt-0">
-        {/* ÁREA DE IMPRESSÃO (Folha A4 exata) */}
+      <div className="flex flex-col items-center pt-28 pb-20 px-4 print:p-0 print:pt-0">
+        
+        {/* Dica Flutuante */}
+        <div className="mb-8 bg-blue-500/10 border border-blue-500/20 p-4 rounded-2xl max-w-[850px] w-full flex items-center gap-4 print-hidden">
+          <Info className="text-blue-400 shrink-0" size={24} />
+          <p className="text-xs text-blue-100 font-medium leading-relaxed">
+            <span className="font-black text-blue-400 uppercase mr-1">Dica Premium:</span> 
+            O "Aluguel de Campo" e "Churrasqueira" foram removidos automaticamente para otimizar o espaço. 
+            Você pode clicar em qualquer texto abaixo para editar nomes ou preços manualmente antes de imprimir!
+          </p>
+        </div>
+
+        {/* ÁREA DE IMPRESSÃO (Folha A4) */}
         <div 
           ref={printRef} 
-          className="bg-white w-[210mm] min-h-[297mm] shadow-[0_0_50px_rgba(0,0,0,0.3)] p-10 print:p-0 font-sans text-slate-800 flex flex-col relative overflow-hidden print:shadow-none print:w-full print:min-h-0"
+          className="bg-white w-[210mm] min-h-[297mm] shadow-[0_0_80px_rgba(0,0,0,0.5)] p-12 print:p-0 font-sans text-slate-900 flex flex-col relative overflow-hidden print:shadow-none print:w-full print:min-h-0"
         >
           
-          {/* Header Compacto */}
-          <div className="flex flex-col items-center mb-6">
-            <div className="bg-[#0ea5e9] w-full max-w-[420px] py-3 flex flex-col items-center border-2 border-[#0ea5e9]">
-               <div className="border-t border-b border-white/30 py-0.5 px-6 w-full flex justify-center">
-                  <h1 className="text-3xl font-black text-white tracking-[0.15em] italic outline-none" contentEditable suppressContentEditableWarning>CAPITÃO SOCIETY</h1>
-               </div>
+          {/* Header Moderno */}
+          <div className="flex flex-col items-center mb-10">
+            <div className="relative">
+              <div className="absolute inset-0 bg-[#0ea5e9] blur-2xl opacity-10 rounded-full"></div>
+              <div className="bg-[#0f172a] px-12 py-5 rounded-none border-t-4 border-b-4 border-[#0ea5e9] relative">
+                <h1 className="text-4xl font-black text-white tracking-[0.25em] italic outline-none uppercase" contentEditable suppressContentEditableWarning>CAPITÃO SOCIETY</h1>
+                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-[#0ea5e9] text-white text-[9px] px-4 py-0.5 font-black uppercase tracking-[0.4em] rounded-full">Desde 2019</div>
+              </div>
             </div>
-            <span className="text-[9px] font-bold text-[#0ea5e9] mt-1.5 tracking-[0.3em] uppercase outline-none" contentEditable suppressContentEditableWarning>Desde 2019</span>
           </div>
 
-          {/* Categorias e Produtos em Layout Compacto */}
-          <div className="flex-1 space-y-6">
-            {categories.map(catName => {
-              const catProducts = activeProducts.filter(p => p.category?.name === catName);
+          {/* Grid Principal de Conteúdo */}
+          <div className="flex-1 space-y-8">
+            {rawCategories.map(catName => {
+              const catProducts = activeProducts.filter(p => {
+                const pCat = p.category?.name || 'SALGADINHOS';
+                const displayName = pCat === 'Geral' ? 'SALGADINHOS' : pCat;
+                return displayName === catName;
+              });
               
-              // Agrupar por subgrupo
+              if (catProducts.length === 0) return null;
+
               const groups: Record<string, Product[]> = {};
               catProducts.forEach(p => {
                 const group = getSubGroup(p.name);
@@ -112,34 +141,37 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
 
               return (
                 <div key={catName} className="flex flex-col">
-                  <h2 className="text-[#0ea5e9] font-black text-base border-b border-[#0ea5e9] mb-3 pb-0.5 uppercase italic tracking-widest outline-none" contentEditable suppressContentEditableWarning>
-                    {catName}
-                  </h2>
+                  <div className="flex items-center gap-4 mb-4">
+                    <h2 className="text-[#0f172a] font-black text-lg uppercase italic tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>
+                      {catName}
+                    </h2>
+                    <div className="flex-1 h-[2px] bg-[#0ea5e9]/20"></div>
+                  </div>
                   
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     {Object.entries(groups).map(([groupName, items]) => (
-                      <div key={groupName} className="flex gap-4">
-                        {/* Sidebar do grupo */}
-                        <div className="w-8 flex items-center justify-center border-r border-slate-100">
-                           <span className="[writing-mode:vertical-lr] rotate-180 text-[10px] font-black text-slate-300 uppercase tracking-widest whitespace-nowrap py-1 outline-none" contentEditable suppressContentEditableWarning>
+                      <div key={groupName} className="flex gap-6">
+                        {/* Sidebar do grupo (Minimalista) */}
+                        <div className="w-10 flex items-center justify-center border-r-2 border-slate-100">
+                           <span className="[writing-mode:vertical-lr] rotate-180 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] whitespace-nowrap py-2 outline-none" contentEditable suppressContentEditableWarning>
                              {groupName}
                            </span>
                         </div>
                         
-                        {/* Lista de itens - Grid de 2 colunas se houver muitos itens */}
-                        <div className={`flex-1 grid gap-x-8 gap-y-1 ${items.length > 4 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                        {/* Lista de itens (Grid Dinâmico) */}
+                        <div className={`flex-1 grid gap-x-12 gap-y-2 ${items.length > 3 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                           {items.map(item => (
-                            <div key={item.id} className="flex items-end gap-2 group">
+                            <div key={item.id} className="flex items-end gap-2 group relative">
                               <span 
-                                className="font-bold text-[13px] text-slate-700 whitespace-nowrap outline-none focus:bg-blue-50 px-0.5 rounded" 
+                                className="font-bold text-[14px] text-slate-800 whitespace-nowrap outline-none focus:ring-2 focus:ring-blue-100 rounded px-1 transition-all" 
                                 contentEditable 
                                 suppressContentEditableWarning
                               >
                                 {item.name}
                               </span>
-                              <div className="flex-1 border-b border-dotted border-slate-200 mb-1 opacity-50"></div>
+                              <div className="flex-1 border-b-[1.5px] border-slate-100 mb-1.5 transition-colors group-hover:border-[#0ea5e9]/30"></div>
                               <span 
-                                className="font-black text-sm text-slate-900 whitespace-nowrap outline-none focus:bg-blue-50 px-0.5 rounded"
+                                className="font-black text-[15px] text-[#0ea5e9] whitespace-nowrap outline-none focus:ring-2 focus:ring-blue-100 rounded px-1 transition-all"
                                 contentEditable 
                                 suppressContentEditableWarning
                               >
@@ -156,47 +188,48 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
             })}
           </div>
 
-          {/* Footer Compacto */}
-          <div className="mt-8 pt-4 border-t border-slate-100 flex justify-between items-end">
-            <div className="space-y-4">
-               <div>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Contato (Agenda):</p>
-                  <div className="flex items-center gap-2 text-slate-700">
-                    <div className="w-7 h-7 bg-green-500 rounded-full flex items-center justify-center text-white">
-                      <Phone size={14} fill="white" />
-                    </div>
-                    <span className="font-black text-sm outline-none" contentEditable suppressContentEditableWarning>(65) 9 9984 9146</span>
+          {/* Footer de Alta Performance */}
+          <div className="mt-12 pt-8 border-t-4 border-[#0f172a] flex justify-between items-center">
+            <div className="space-y-5">
+               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center gap-4">
+                  <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-green-500/20">
+                    <Phone size={20} fill="white" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Reservas / Agenda:</p>
+                    <span className="font-black text-lg text-slate-900 outline-none" contentEditable suppressContentEditableWarning>(65) 9 9984 9146</span>
                   </div>
                </div>
                
-               <div className="flex gap-4">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-5 h-5 bg-slate-100 rounded-md flex items-center justify-center text-slate-500">
-                      <Globe size={11} />
+               <div className="flex gap-4 px-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-[#0f172a] rounded-lg flex items-center justify-center text-white">
+                      <Globe size={12} />
                     </div>
-                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter outline-none" contentEditable suppressContentEditableWarning>Insta: @capitaosociety</span>
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest outline-none" contentEditable suppressContentEditableWarning>Instagram: @capitaosociety</span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-5 h-5 bg-slate-100 rounded-md flex items-center justify-center text-slate-500">
-                      <Globe size={11} />
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-[#0f172a] rounded-lg flex items-center justify-center text-white">
+                      <Globe size={12} />
                     </div>
-                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter outline-none" contentEditable suppressContentEditableWarning>Face: @capitaosociety</span>
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest outline-none" contentEditable suppressContentEditableWarning>Facebook: @capitaosociety</span>
                   </div>
                </div>
             </div>
 
-            <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-3xl border border-slate-100">
-               <div className="text-right">
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">PIX CNPJ:</p>
-                  <p className="font-black text-slate-800 text-xs italic outline-none" contentEditable suppressContentEditableWarning>42.261.691/0001-27</p>
+            <div className="flex items-center gap-6 bg-[#0f172a] p-6 rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
+               <div className="absolute top-0 right-0 w-20 h-20 bg-[#0ea5e9]/10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
+               <div className="text-right relative z-10">
+                  <p className="text-[10px] font-black text-[#0ea5e9] uppercase tracking-[0.2em] mb-1">Pagamento PIX CNPJ:</p>
+                  <p className="font-black text-white text-sm italic outline-none tracking-wider" contentEditable suppressContentEditableWarning>42.261.691/0001-27</p>
                </div>
-               <div className="w-16 h-16 bg-white p-1 border border-slate-200 rounded-xl flex items-center justify-center relative">
-                  <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=42261691000127" alt="PIX QR" className="w-full h-full" />
+               <div className="w-24 h-24 bg-white p-2 rounded-2xl flex items-center justify-center relative shadow-inner z-10">
+                  <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(PIX_PAYLOAD)}`} alt="PIX QR" className="w-full h-full" />
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-3 h-3 bg-[#0ea5e9] rounded-sm flex items-center justify-center text-[5px] text-white font-bold">C</div>
+                    <div className="w-6 h-6 bg-[#0f172a] rounded-lg flex items-center justify-center text-[9px] text-white font-black shadow-xl border border-white/20">C</div>
                   </div>
                </div>
-               <div className="w-10 h-10 bg-gradient-to-br from-[#0ea5e9] to-[#22c55e] rounded-xl flex items-center justify-center text-white font-black text-xl italic">C</div>
+               <div className="w-16 h-16 bg-[#0ea5e9] rounded-3xl flex items-center justify-center text-[#0f172a] font-black text-4xl italic shadow-lg relative z-10">C</div>
             </div>
           </div>
         </div>
@@ -234,16 +267,18 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
           }
         }
         /* Personalização da barra de rolagem */
-        .print-area::-webkit-scrollbar {
-          width: 10px;
+        ::-webkit-scrollbar {
+          width: 8px;
         }
-        .print-area::-webkit-scrollbar-track {
-          background: #0f172a;
+        ::-webkit-scrollbar-track {
+          background: #020617;
         }
-        .print-area::-webkit-scrollbar-thumb {
-          background: #334155;
+        ::-webkit-scrollbar-thumb {
+          background: #1e293b;
           border-radius: 10px;
-          border: 3px solid #0f172a;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: #334155;
         }
       `}} />
     </div>
