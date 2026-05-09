@@ -110,15 +110,14 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
           className="bg-white w-[210mm] min-h-[297mm] shadow-[0_0_80px_rgba(0,0,0,0.5)] p-12 print:p-0 font-sans text-slate-900 flex flex-col relative overflow-hidden print:shadow-none print:w-full print:min-h-0"
         >
           
-          {/* Header Moderno */}
-          <div className="flex flex-col items-center mb-10">
-            <div className="relative">
-              <div className="absolute inset-0 bg-[#0ea5e9] blur-2xl opacity-10 rounded-full"></div>
-              <div className="bg-[#0f172a] px-12 py-5 rounded-none border-t-4 border-b-4 border-[#0ea5e9] relative">
-                <h1 className="text-4xl font-black text-white tracking-[0.25em] italic outline-none uppercase" contentEditable suppressContentEditableWarning>CAPITÃO SOCIETY</h1>
-                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-[#0ea5e9] text-white text-[9px] px-4 py-0.5 font-black uppercase tracking-[0.4em] rounded-full">Desde 2019</div>
-              </div>
+          {/* Header Original */}
+          <div className="flex flex-col items-center mb-8">
+            <div className="bg-[#0ea5e9] w-full max-w-[480px] py-4 flex flex-col items-center border-2 border-[#0ea5e9] shadow-sm">
+               <div className="border-t-2 border-b-2 border-white/30 py-1 px-8 w-full flex justify-center">
+                  <h1 className="text-4xl font-black text-white tracking-[0.2em] italic outline-none uppercase" contentEditable suppressContentEditableWarning>CAPITÃO SOCIETY</h1>
+               </div>
             </div>
+            <span className="text-[10px] font-bold text-[#0ea5e9] mt-2 tracking-[0.4em] uppercase outline-none" contentEditable suppressContentEditableWarning>Desde 2019</span>
           </div>
 
           {/* Grid Principal de Conteúdo */}
@@ -142,18 +141,18 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
               return (
                 <div key={catName} className="flex flex-col">
                   <div className="flex items-center gap-4 mb-4">
-                    <h2 className="text-[#0f172a] font-black text-lg uppercase italic tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>
+                    <h2 className="text-[#0ea5e9] font-black text-lg uppercase italic tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>
                       {catName}
                     </h2>
-                    <div className="flex-1 h-[2px] bg-[#0ea5e9]/20"></div>
+                    <div className="flex-1 h-[1.5px] bg-[#0ea5e9]/20"></div>
                   </div>
                   
                   <div className="space-y-6">
                     {Object.entries(groups).map(([groupName, items]) => (
                       <div key={groupName} className="flex gap-6">
-                        {/* Sidebar do grupo (Minimalista) */}
+                        {/* Sidebar do grupo */}
                         <div className="w-10 flex items-center justify-center border-r-2 border-slate-100">
-                           <span className="[writing-mode:vertical-lr] rotate-180 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] whitespace-nowrap py-2 outline-none" contentEditable suppressContentEditableWarning>
+                           <span className="[writing-mode:vertical-lr] rotate-180 text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] whitespace-nowrap py-2 outline-none" contentEditable suppressContentEditableWarning>
                              {groupName}
                            </span>
                         </div>
@@ -167,7 +166,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
                                 contentEditable 
                                 suppressContentEditableWarning
                               >
-                                {item.name}
+                                {item.name.replace(/Energético/gi, '').trim()}
                               </span>
                               <div className="flex-1 border-b-[1.5px] border-slate-100 mb-1.5 transition-colors group-hover:border-[#0ea5e9]/30"></div>
                               <span 
