@@ -107,7 +107,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
         {/* ÁREA DE IMPRESSÃO (Folha A4) */}
         <div 
           ref={printRef} 
-          className="bg-white w-[210mm] min-h-[297mm] shadow-[0_0_80px_rgba(0,0,0,0.5)] p-10 print:p-0 font-sans text-slate-900 flex flex-col relative overflow-hidden print:shadow-none print:w-full print:min-h-0"
+          className="bg-white w-[210mm] min-h-[297mm] shadow-[0_0_80px_rgba(0,0,0,0.5)] p-[1.5cm] print:p-0 font-sans text-slate-900 flex flex-col relative overflow-hidden print:overflow-visible print:shadow-none print:w-full print:min-h-0"
         >
           
           {/* Header Original */}
@@ -238,7 +238,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
       <style dangerouslySetInnerHTML={{ __html: `
         @page {
           size: A4;
-          margin: 0;
+          margin: 1.5cm;
         }
         @media print {
           body {
@@ -251,9 +251,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
             visibility: visible !important;
           }
           .print-area {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+            position: relative !important;
             width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
@@ -261,6 +259,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
             background: white !important;
             height: auto !important;
             overflow: visible !important;
+            box-sizing: border-box !important;
           }
           .print-hidden {
             display: none !important;
