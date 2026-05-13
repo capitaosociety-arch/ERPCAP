@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition, useMemo } from 'react';
-import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search } from 'lucide-react';
+import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search, Upload } from 'lucide-react';
 import { registerStockMovement, updateMinStock, registerBatchStockMovement } from '../../actions/stock';
 import { parseInvoiceImage } from '../../actions/invoice-ai';
 import { quickCreateProductFromInvoice } from '../../actions/products';
@@ -678,22 +678,41 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                                         <h3 className="font-bold text-slate-800 text-xl mb-2">Tirar Foto ou Upload</h3>
                                         <p className="text-sm text-gray-500 mb-8 max-w-sm">Tire uma foto clara do romaneio ou nota fiscal de entrega para lançar o estoque automatizado.</p>
                                         
-                                        <input 
-                                            type="file" 
-                                            accept="image/*,.pdf" 
-                                            onChange={handleNfUpload}
-                                            capture="environment" 
-                                            id="file-upload" 
-                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer object-cover z-10"
-                                        />
-                                        
-                                        <label htmlFor="file-upload" className="bg-slate-900 text-white font-bold py-3.5 px-8 rounded-xl pointer-events-none flex items-center gap-2 group-hover:shadow-lg transition mb-4">
-                                            <span>✨</span> Ler Nota com IA
-                                        </label>
+                                        <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md relative z-20">
+                                            <label className="flex-1 flex flex-col items-center justify-center bg-slate-900 text-white font-bold py-6 px-4 rounded-2xl cursor-pointer hover:bg-slate-800 transition shadow-xl group border-4 border-transparent hover:border-mrts-blue/30">
+                                                <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition">
+                                                    <Camera size={28} />
+                                                </div>
+                                                <span className="text-sm">Tirar Foto</span>
+                                                <input 
+                                                    type="file" 
+                                                    accept="image/*" 
+                                                    capture="environment" 
+                                                    onChange={handleNfUpload}
+                                                    className="hidden"
+                                                />
+                                            </label>
 
-                                        <button onClick={(e) => { e.stopPropagation(); handleManualEntry(); }} className="relative z-20 bg-white border-2 border-gray-200 text-slate-700 font-bold py-2.5 px-6 rounded-xl hover:border-slate-300 hover:bg-gray-50 transition shadow-sm pointer-events-auto">
-                                            Ou Digitar Manualmente
-                                        </button>
+                                            <label className="flex-1 flex flex-col items-center justify-center bg-white border-2 border-slate-200 text-slate-700 font-bold py-6 px-4 rounded-2xl cursor-pointer hover:border-mrts-blue hover:bg-blue-50 transition shadow-sm group">
+                                                <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition text-mrts-blue">
+                                                    <Upload size={28} />
+                                                </div>
+                                                <span className="text-sm text-slate-600 font-bold uppercase tracking-tight">Anexar Arquivo</span>
+                                                <p className="text-[10px] text-gray-400 font-medium mt-1">Imagem ou PDF</p>
+                                                <input 
+                                                    type="file" 
+                                                    accept="image/*,.pdf" 
+                                                    onChange={handleNfUpload}
+                                                    className="hidden"
+                                                />
+                                            </label>
+                                        </div>
+
+                                        <div className="mt-8">
+                                            <button onClick={(e) => { e.stopPropagation(); handleManualEntry(); }} className="relative z-20 bg-white border-2 border-gray-200 text-slate-700 font-bold py-2.5 px-6 rounded-xl hover:border-slate-300 hover:bg-gray-50 transition shadow-sm pointer-events-auto text-sm">
+                                                Ou Digitar Manualmente
+                                            </button>
+                                        </div>
                                     </>
                                 )}
                             </div>
@@ -763,7 +782,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
 
                                 <div className="bg-white border text-sm border-gray-200 rounded-2xl overflow-hidden shadow-sm">
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-left border-collapse min-w-[700px]">
+                                        <table className="w-full text-left border-collapse min-w-[850px]">
                                             <thead>
                                                 <tr className="bg-slate-50 border-b border-gray-200 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                                                     <th className="p-4 w-12 text-center">Status</th>

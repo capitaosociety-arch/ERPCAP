@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react';
-import { Search, Warehouse, ArrowRightLeft, PackagePlus, AlertTriangle, X, Check, Box, Clock, ShieldCheck, ThumbsDown, Camera, Edit, RefreshCw, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, AlertCircle } from 'lucide-react';
+import { Search, Warehouse, ArrowRightLeft, PackagePlus, AlertTriangle, X, Check, Box, Clock, ShieldCheck, ThumbsDown, Camera, Edit, RefreshCw, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, AlertCircle, Upload } from 'lucide-react';
 import { addDepotStock, requestTransfer, authorizeTransfer, rejectTransfer, adjustDepotStockLoss, directTransfer, updateDepotMinStock, registerBatchDepotStockMovement } from '../../actions/depot';
 import { quickCreateProductFromInvoice } from '../../actions/products';
 
@@ -500,8 +500,24 @@ export default function DepotClient({
                                                 <div className="w-20 h-20 bg-blue-50 text-mrts-blue rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition"><Camera size={40}/></div>
                                                 <h3 className="text-xl font-black text-slate-800 mb-2">Bipar Romaneio ou Nota</h3>
                                                 <p className="text-sm text-gray-500 mb-8 max-w-xs">Use a câmera do celular para extrair os itens da entrega automaticamente.</p>
-                                                <input type="file" accept="image/*" capture="environment" onChange={handleNfUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"/>
-                                                <button className="bg-slate-900 text-white font-black py-4 px-10 rounded-2xl shadow-xl">CLIQUE PARA FOTOGRAFAR</button>
+                                                <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md relative z-20">
+                                                    <label className="flex-1 flex flex-col items-center justify-center bg-slate-900 text-white font-black py-6 px-4 rounded-3xl cursor-pointer hover:bg-slate-800 transition shadow-xl group border-4 border-transparent hover:border-mrts-blue/30">
+                                                        <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition">
+                                                            <Camera size={28} />
+                                                        </div>
+                                                        <span className="text-sm">TIRAR FOTO</span>
+                                                        <input type="file" accept="image/*" capture="environment" onChange={handleNfUpload} className="hidden"/>
+                                                    </label>
+
+                                                    <label className="flex-1 flex flex-col items-center justify-center bg-white border-2 border-slate-200 text-slate-700 font-black py-6 px-4 rounded-3xl cursor-pointer hover:border-mrts-blue hover:bg-blue-50 transition shadow-sm group">
+                                                        <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition text-mrts-blue">
+                                                            <Upload size={28} />
+                                                        </div>
+                                                        <span className="text-sm">ANEXAR ARQUIVO</span>
+                                                        <p className="text-[10px] text-gray-400 font-bold mt-1 uppercase">Imagem ou PDF</p>
+                                                        <input type="file" accept="image/*,.pdf" onChange={handleNfUpload} className="hidden"/>
+                                                    </label>
+                                                </div>
                                             </>
                                         )}
                                     </div>
@@ -518,8 +534,8 @@ export default function DepotClient({
                                             </div>
                                         </div>
 
-                                        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-md">
-                                            <table className="w-full text-left text-sm whitespace-nowrap">
+                                        <div className="bg-white rounded-2xl border border-gray-200 overflow-x-auto shadow-md">
+                                            <table className="w-full text-left text-sm whitespace-nowrap min-w-[850px]">
                                                 <thead className="bg-slate-50 border-b border-gray-100 text-[10px] text-slate-400 font-black uppercase tracking-widest">
                                                     <tr><th className="p-4 w-12 text-center">OK</th><th className="p-4">Item na Nota</th><th className="p-4">Produto Correspondente</th><th className="p-4 text-center">Qtd.</th><th className="p-4 text-right">Custo</th></tr>
                                                 </thead>
