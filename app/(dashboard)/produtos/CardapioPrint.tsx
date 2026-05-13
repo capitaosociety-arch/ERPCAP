@@ -217,19 +217,21 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
             </div>
 
             {/* PIX CONTAINER - REDIMENSIONADO */}
-            <div className="flex items-center gap-4 bg-[#0f172a] p-4 rounded-[2rem] shadow-xl relative overflow-hidden group min-w-[340px]">
-               <div className="absolute top-0 right-0 w-16 h-16 bg-[#0369a1]/20 rounded-full -mr-8 -mt-8 blur-xl"></div>
+            <div className="flex items-center gap-6 bg-[#0f172a] p-5 rounded-[2.5rem] shadow-xl relative overflow-hidden group min-w-[400px]">
+               <div className="absolute top-0 right-0 w-24 h-24 bg-[#0369a1]/20 rounded-full -mr-12 -mt-12 blur-2xl"></div>
                <div className="text-right relative z-10 flex-1">
-                  <p className="text-[9px] font-black text-[#0369a1] uppercase tracking-[0.2em] mb-0.5 leading-none">PIX CNPJ:</p>
-                  <p className="font-black text-white text-[13px] italic outline-none tracking-wider whitespace-nowrap leading-tight" contentEditable suppressContentEditableWarning>42.261.691/0001-27</p>
+                  <p className="text-[10px] font-black text-[#0369a1] uppercase tracking-[0.2em] mb-1 leading-none">PIX CNPJ:</p>
+                  <p className="font-black text-white text-[15px] italic outline-none tracking-wider whitespace-nowrap leading-tight" contentEditable suppressContentEditableWarning>42.261.691/0001-27</p>
                </div>
-               <div className="w-20 h-20 bg-white p-1.5 rounded-xl flex items-center justify-center relative shadow-inner z-10 shrink-0">
-                  <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(PIX_PAYLOAD)}`} alt="PIX QR" className="w-full h-full" />
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-4 h-4 bg-[#0f172a] rounded-md flex items-center justify-center text-[7px] text-white font-black border border-white/20">C</div>
-                  </div>
+               <div className="w-32 h-32 bg-white p-2 rounded-2xl flex items-center justify-center relative shadow-inner z-10 shrink-0">
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(PIX_PAYLOAD)}&ecc=M`} 
+                    alt="PIX QR" 
+                    className="w-full h-full block" 
+                    onLoad={(e) => (e.currentTarget.style.opacity = '1')}
+                  />
                </div>
-               <div className="w-12 h-20 bg-[#0369a1] rounded-full flex items-center justify-center text-slate-950 font-black text-4xl italic relative z-10 shrink-0 shadow-lg">C</div>
+               <div className="w-14 h-32 bg-[#0369a1] rounded-full flex items-center justify-center text-slate-950 font-black text-5xl italic relative z-10 shrink-0 shadow-lg">C</div>
             </div>
           </div>
         </div>
