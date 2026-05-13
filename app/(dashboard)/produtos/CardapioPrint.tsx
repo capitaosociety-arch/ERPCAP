@@ -111,17 +111,17 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
         >
           
           {/* Header Original */}
-          <div className="flex flex-col items-center mb-4">
-            <div className="bg-[#0369a1] w-full max-w-[600px] py-2.5 flex flex-col items-center border-2 border-[#0369a1] shadow-sm">
-               <div className="border-t-2 border-b-2 border-white/30 py-1 px-8 w-full flex justify-center">
-                  <h1 className="text-4xl font-black text-white tracking-[0.2em] italic outline-none uppercase whitespace-nowrap" contentEditable suppressContentEditableWarning>CAPITÃO SOCIETY</h1>
+          <div className="flex flex-col items-center mb-2">
+            <div className="bg-[#0369a1] w-full max-w-[450px] py-1.5 flex flex-col items-center border-2 border-[#0369a1] shadow-sm">
+               <div className="border-t-2 border-b-2 border-white/30 py-0.5 px-6 w-full flex justify-center">
+                  <h1 className="text-2xl font-black text-white tracking-[0.2em] italic outline-none uppercase whitespace-nowrap" contentEditable suppressContentEditableWarning>CAPITÃO SOCIETY</h1>
                </div>
             </div>
-            <span className="text-[10px] font-bold text-[#0369a1] mt-1 tracking-[0.4em] uppercase outline-none" contentEditable suppressContentEditableWarning>Desde 2019</span>
+            <span className="text-[9px] font-bold text-[#0369a1] mt-0.5 tracking-[0.4em] uppercase outline-none" contentEditable suppressContentEditableWarning>Desde 2019</span>
           </div>
 
           {/* Grid Principal de Conteúdo */}
-          <div className="flex-1 space-y-5">
+          <div className="flex-1 space-y-3">
             {rawCategories.map(catName => {
               const catProducts = activeProducts.filter(p => {
                 const pCat = p.category?.name || 'SALGADINHOS';
@@ -140,14 +140,14 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
 
               return (
                 <div key={catName} className="flex flex-col">
-                  <div className="flex items-center gap-4 mb-2">
+                  <div className="flex items-center gap-4 mb-1">
                     <h2 className="text-[#0369a1] font-black text-base uppercase italic tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>
                       {catName}
                     </h2>
                     <div className="flex-1 h-[1.5px] bg-[#0369a1]/30"></div>
                   </div>
                   
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     {Object.entries(groups).map(([groupName, items]) => (
                       <div key={groupName} className="flex gap-4">
                         {/* Sidebar do grupo */}
@@ -158,7 +158,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
                         </div>
                         
                         {/* Lista de itens (Grid Dinâmico) */}
-                        <div className={`flex-1 grid gap-x-10 gap-y-1 ${items.length > 3 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                        <div className={`flex-1 grid gap-x-10 gap-y-0.5 ${items.length > 3 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                           {items.map(item => (
                             <div key={item.id} className="flex items-end gap-2 group relative">
                               <span 
