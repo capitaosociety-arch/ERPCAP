@@ -111,17 +111,17 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
         >
           
           {/* Header Original */}
-          <div className="flex flex-col items-center mb-6">
-            <div className="bg-[#0369a1] w-full max-w-[600px] py-3.5 flex flex-col items-center border-2 border-[#0369a1] shadow-sm">
+          <div className="flex flex-col items-center mb-4">
+            <div className="bg-[#0369a1] w-full max-w-[600px] py-2 flex flex-col items-center border-2 border-[#0369a1] shadow-sm">
                <div className="border-t-2 border-b-2 border-white/30 py-1 px-8 w-full flex justify-center">
                   <h1 className="text-4xl font-black text-white tracking-[0.2em] italic outline-none uppercase whitespace-nowrap" contentEditable suppressContentEditableWarning>CAPITÃO SOCIETY</h1>
                </div>
             </div>
-            <span className="text-[10px] font-bold text-[#0369a1] mt-2 tracking-[0.4em] uppercase outline-none" contentEditable suppressContentEditableWarning>Desde 2019</span>
+            <span className="text-[10px] font-bold text-[#0369a1] mt-1 tracking-[0.4em] uppercase outline-none" contentEditable suppressContentEditableWarning>Desde 2019</span>
           </div>
 
           {/* Grid Principal de Conteúdo */}
-          <div className="flex-1 space-y-6">
+          <div className="flex-1 space-y-4">
             {rawCategories.map(catName => {
               const catProducts = activeProducts.filter(p => {
                 const pCat = p.category?.name || 'SALGADINHOS';
@@ -140,14 +140,14 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
 
               return (
                 <div key={catName} className="flex flex-col">
-                  <div className="flex items-center gap-4 mb-3">
+                  <div className="flex items-center gap-4 mb-2">
                     <h2 className="text-[#0369a1] font-black text-base uppercase italic tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>
                       {catName}
                     </h2>
                     <div className="flex-1 h-[1.5px] bg-[#0369a1]/30"></div>
                   </div>
                   
-                  <div className="space-y-4">
+                  <div className="space-y-2">
                     {Object.entries(groups).map(([groupName, items]) => (
                       <div key={groupName} className="flex gap-4">
                         {/* Sidebar do grupo */}
@@ -188,9 +188,9 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
           </div>
 
           {/* Footer de Alta Performance - REESTRUTURADO PARA CABER TUDO */}
-          <div className="mt-6 pt-4 border-t-4 border-[#0369a1] flex justify-between items-center gap-4">
-            <div className="flex-1 space-y-4">
-               <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 flex items-center gap-3">
+          <div className="mt-4 pt-3 border-t-4 border-[#0369a1] flex justify-between items-center gap-4">
+            <div className="flex-1 space-y-3">
+               <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 flex items-center gap-3">
                   <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center text-white shadow-md">
                     <Phone size={16} fill="white" />
                   </div>
@@ -217,19 +217,19 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
             </div>
 
             {/* PIX CONTAINER - REDIMENSIONADO */}
-            <div className="flex items-center gap-4 bg-[#0f172a] p-4 rounded-[2rem] shadow-xl relative overflow-hidden group min-w-[340px]">
+            <div className="flex items-center gap-4 bg-[#0f172a] p-3 rounded-[2rem] shadow-xl relative overflow-hidden group min-w-[340px]">
                <div className="absolute top-0 right-0 w-16 h-16 bg-[#0369a1]/20 rounded-full -mr-8 -mt-8 blur-xl"></div>
                <div className="text-right relative z-10 flex-1">
                   <p className="text-[9px] font-black text-[#0369a1] uppercase tracking-[0.2em] mb-0.5 leading-none">PIX CNPJ:</p>
-                  <p className="font-black text-white text-[13px] italic outline-none tracking-wider whitespace-nowrap leading-tight" contentEditable suppressContentEditableWarning>42.261.691/0001-27</p>
+                  <p className="font-black text-white text-[12px] italic outline-none tracking-wider whitespace-nowrap leading-tight" contentEditable suppressContentEditableWarning>42.261.691/0001-27</p>
                </div>
-               <div className="w-20 h-20 bg-white p-1.5 rounded-xl flex items-center justify-center relative shadow-inner z-10 shrink-0">
+               <div className="w-16 h-16 bg-white p-1 rounded-xl flex items-center justify-center relative shadow-inner z-10 shrink-0">
                   <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(PIX_PAYLOAD)}`} alt="PIX QR" className="w-full h-full" />
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-4 h-4 bg-[#0f172a] rounded-md flex items-center justify-center text-[7px] text-white font-black border border-white/20">C</div>
+                    <div className="w-3.5 h-3.5 bg-[#0f172a] rounded-md flex items-center justify-center text-[6px] text-white font-black border border-white/20">C</div>
                   </div>
                </div>
-               <div className="w-12 h-20 bg-[#0369a1] rounded-full flex items-center justify-center text-slate-950 font-black text-4xl italic relative z-10 shrink-0 shadow-lg">C</div>
+               <div className="w-10 h-16 bg-[#0369a1] rounded-full flex items-center justify-center text-slate-950 font-black text-3xl italic relative z-10 shrink-0 shadow-lg">C</div>
             </div>
           </div>
         </div>
