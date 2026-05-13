@@ -112,12 +112,12 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
           
           {/* Header Original */}
           <div className="flex flex-col items-center mb-6">
-            <div className="bg-[#0ea5e9] w-full max-w-[600px] py-3.5 flex flex-col items-center border-2 border-[#0ea5e9] shadow-sm">
+            <div className="bg-[#0369a1] w-full max-w-[600px] py-3.5 flex flex-col items-center border-2 border-[#0369a1] shadow-sm">
                <div className="border-t-2 border-b-2 border-white/30 py-1 px-8 w-full flex justify-center">
                   <h1 className="text-4xl font-black text-white tracking-[0.2em] italic outline-none uppercase whitespace-nowrap" contentEditable suppressContentEditableWarning>CAPITÃO SOCIETY</h1>
                </div>
             </div>
-            <span className="text-[10px] font-bold text-[#0ea5e9] mt-2 tracking-[0.4em] uppercase outline-none" contentEditable suppressContentEditableWarning>Desde 2019</span>
+            <span className="text-[10px] font-bold text-[#0369a1] mt-2 tracking-[0.4em] uppercase outline-none" contentEditable suppressContentEditableWarning>Desde 2019</span>
           </div>
 
           {/* Grid Principal de Conteúdo */}
@@ -141,18 +141,18 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
               return (
                 <div key={catName} className="flex flex-col">
                   <div className="flex items-center gap-4 mb-3">
-                    <h2 className="text-[#0ea5e9] font-black text-base uppercase italic tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>
+                    <h2 className="text-[#0369a1] font-black text-base uppercase italic tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>
                       {catName}
                     </h2>
-                    <div className="flex-1 h-[1.5px] bg-[#0ea5e9]/20"></div>
+                    <div className="flex-1 h-[1.5px] bg-[#0369a1]/30"></div>
                   </div>
                   
                   <div className="space-y-4">
                     {Object.entries(groups).map(([groupName, items]) => (
                       <div key={groupName} className="flex gap-4">
                         {/* Sidebar do grupo */}
-                        <div className="w-8 flex items-center justify-center border-r-2 border-slate-100">
-                           <span className="[writing-mode:vertical-lr] rotate-180 text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] whitespace-nowrap py-1.5 outline-none" contentEditable suppressContentEditableWarning>
+                        <div className="w-8 flex items-center justify-center border-r-2 border-slate-300">
+                           <span className="[writing-mode:vertical-lr] rotate-180 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] whitespace-nowrap py-1.5 outline-none" contentEditable suppressContentEditableWarning>
                              {groupName}
                            </span>
                         </div>
@@ -168,9 +168,9 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
                               >
                                 {item.name.replace(/Energético/gi, '').replace(/Salgadinhos/gi, '').replace(/Salgadinho/gi, '').trim()}
                               </span>
-                              <div className="flex-1 border-b-[1.5px] border-slate-100 mb-1 transition-colors group-hover:border-[#0ea5e9]/30"></div>
+                              <div className="flex-1 border-b-[1.5px] border-slate-300 mb-1 transition-colors group-hover:border-[#0369a1]/40"></div>
                               <span 
-                                className="font-black text-sm text-[#0ea5e9] whitespace-nowrap outline-none focus:ring-2 focus:ring-blue-100 rounded px-0.5 transition-all"
+                                className="font-black text-sm text-[#0369a1] whitespace-nowrap outline-none focus:ring-2 focus:ring-blue-100 rounded px-0.5 transition-all"
                                 contentEditable 
                                 suppressContentEditableWarning
                               >
@@ -188,39 +188,39 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
           </div>
 
           {/* Footer de Alta Performance - REESTRUTURADO PARA CABER TUDO */}
-          <div className="mt-6 pt-4 border-t-4 border-[#0ea5e9] flex justify-between items-center gap-4">
+          <div className="mt-6 pt-4 border-t-4 border-[#0369a1] flex justify-between items-center gap-4">
             <div className="flex-1 space-y-4">
-               <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex items-center gap-3">
-                  <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center text-white shadow-md">
+               <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 flex items-center gap-3">
+                  <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center text-white shadow-md">
                     <Phone size={16} fill="white" />
                   </div>
                   <div>
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5 leading-none">Reservas / Agenda:</p>
+                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5 leading-none">Reservas / Agenda:</p>
                     <span className="font-black text-sm text-slate-900 outline-none whitespace-nowrap leading-none" contentEditable suppressContentEditableWarning>(65) 9 9984 9146</span>
                   </div>
                </div>
                
                <div className="flex flex-col gap-1.5 px-1">
                   <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 bg-[#0ea5e9] rounded-md flex items-center justify-center text-white shrink-0">
+                    <div className="w-5 h-5 bg-[#0369a1] rounded-md flex items-center justify-center text-white shrink-0">
                       <Globe size={10} />
                     </div>
-                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>Instagram: @capitaosociety</span>
+                    <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>Instagram: @capitaosociety</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 bg-[#0ea5e9] rounded-md flex items-center justify-center text-white shrink-0">
+                    <div className="w-5 h-5 bg-[#0369a1] rounded-md flex items-center justify-center text-white shrink-0">
                       <Globe size={10} />
                     </div>
-                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>Facebook: @capitaosociety</span>
+                    <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>Facebook: @capitaosociety</span>
                   </div>
                </div>
             </div>
 
             {/* PIX CONTAINER - REDIMENSIONADO */}
             <div className="flex items-center gap-4 bg-[#0f172a] p-4 rounded-[2rem] shadow-xl relative overflow-hidden group min-w-[340px]">
-               <div className="absolute top-0 right-0 w-16 h-16 bg-[#0ea5e9]/10 rounded-full -mr-8 -mt-8 blur-xl"></div>
+               <div className="absolute top-0 right-0 w-16 h-16 bg-[#0369a1]/20 rounded-full -mr-8 -mt-8 blur-xl"></div>
                <div className="text-right relative z-10 flex-1">
-                  <p className="text-[9px] font-black text-[#0ea5e9] uppercase tracking-[0.2em] mb-0.5 leading-none">PIX CNPJ:</p>
+                  <p className="text-[9px] font-black text-[#0369a1] uppercase tracking-[0.2em] mb-0.5 leading-none">PIX CNPJ:</p>
                   <p className="font-black text-white text-[13px] italic outline-none tracking-wider whitespace-nowrap leading-tight" contentEditable suppressContentEditableWarning>42.261.691/0001-27</p>
                </div>
                <div className="w-20 h-20 bg-white p-1.5 rounded-xl flex items-center justify-center relative shadow-inner z-10 shrink-0">
@@ -229,7 +229,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
                     <div className="w-4 h-4 bg-[#0f172a] rounded-md flex items-center justify-center text-[7px] text-white font-black border border-white/20">C</div>
                   </div>
                </div>
-               <div className="w-12 h-20 bg-[#0ea5e9] rounded-full flex items-center justify-center text-slate-950 font-black text-4xl italic relative z-10 shrink-0 shadow-lg">C</div>
+               <div className="w-12 h-20 bg-[#0369a1] rounded-full flex items-center justify-center text-slate-950 font-black text-4xl italic relative z-10 shrink-0 shadow-lg">C</div>
             </div>
           </div>
         </div>
@@ -243,6 +243,8 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
         @media print {
           body {
             background: white !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
           body * {
             visibility: hidden !important;
@@ -251,7 +253,9 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
             visibility: visible !important;
           }
           .print-area {
-            position: relative !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
             width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
@@ -260,6 +264,8 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
             height: auto !important;
             overflow: visible !important;
             box-sizing: border-box !important;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
           }
           .print-hidden {
             display: none !important;
