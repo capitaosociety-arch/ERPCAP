@@ -127,6 +127,12 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
         <div className="flex items-center gap-4">
           <div className="flex gap-2">
             <button 
+              onClick={() => { setZoom(100); setSpacing(100); }}
+              className="bg-white/10 hover:bg-white/20 px-4 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all"
+            >
+              Resetar
+            </button>
+            <button 
               onClick={handlePrint}
               className="bg-emerald-500 text-white hover:bg-emerald-400 px-8 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-xl shadow-emerald-500/20"
             >
@@ -155,12 +161,12 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
           
           {/* Header Original */}
           <div className="flex flex-col items-center mb-2">
-            <div className="bg-[#0369a1] w-full max-w-[450px] py-1.5 flex flex-col items-center border-2 border-[#0369a1] shadow-sm">
+            <div className="bg-[#0369a1] w-full max-w-[400px] py-1.5 flex flex-col items-center border-2 border-[#0369a1] shadow-sm">
                <div className="border-t-2 border-b-2 border-white/30 py-0.5 px-6 w-full flex justify-center">
-                  <h1 className="text-2xl font-black text-white tracking-[0.2em] italic outline-none uppercase whitespace-nowrap" contentEditable suppressContentEditableWarning>CAPITÃO SOCIETY</h1>
+                  <h1 className="text-xl font-black text-white tracking-[0.2em] italic outline-none uppercase whitespace-nowrap" contentEditable suppressContentEditableWarning>CAPITÃO SOCIETY</h1>
                </div>
             </div>
-            <span className="text-[9px] font-bold text-[#0369a1] mt-0.5 tracking-[0.4em] uppercase outline-none" contentEditable suppressContentEditableWarning>Desde 2019</span>
+            <span className="text-[8px] font-bold text-[#0369a1] mt-0.5 tracking-[0.4em] uppercase outline-none" contentEditable suppressContentEditableWarning>Desde 2019</span>
           </div>
 
           {/* Grid Principal de Conteúdo */}
@@ -185,9 +191,9 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
               });
 
               return (
-                <div key={catName} className="flex flex-col" style={{ gap: `${(spacing / 100) * 0.5}rem` }}>
+                <div key={catName} className="flex flex-col" style={{ gap: `${(spacing / 100) * 0.4}rem` }}>
                   <div className="flex items-center gap-4 mb-1">
-                    <h2 className="text-[#0369a1] font-black text-base uppercase italic tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>
+                    <h2 className="text-[#0369a1] font-black text-[15px] uppercase italic tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>
                       {catName}
                     </h2>
                     <div className="flex-1 h-[1.5px] bg-[#0369a1]/30"></div>
@@ -208,15 +214,15 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
                           {items.map(item => (
                             <div key={item.id} className="flex items-end gap-2 group relative">
                               <span 
-                                className="font-bold text-[13px] text-slate-800 whitespace-nowrap outline-none focus:ring-2 focus:ring-blue-100 rounded px-0.5 transition-all" 
+                                className="font-bold text-[12.5px] text-slate-800 whitespace-nowrap outline-none focus:ring-2 focus:ring-blue-100 rounded px-0.5 transition-all" 
                                 contentEditable 
                                 suppressContentEditableWarning
                               >
                                 {item.name.replace(/Energético/gi, '').replace(/Salgadinhos/gi, '').replace(/Salgadinho/gi, '').trim()}
                               </span>
-                              <div className="flex-1 border-b-[1.5px] border-slate-200 mb-1 transition-colors group-hover:border-[#0369a1]/40"></div>
+                              <div className="flex-1 border-b-[1px] border-slate-200 mb-1 transition-colors group-hover:border-[#0369a1]/40"></div>
                               <span 
-                                className="font-black text-sm text-[#0369a1] whitespace-nowrap outline-none focus:ring-2 focus:ring-blue-100 rounded px-0.5 transition-all"
+                                className="font-black text-[13px] text-[#0369a1] whitespace-nowrap outline-none focus:ring-2 focus:ring-blue-100 rounded px-0.5 transition-all"
                                 contentEditable 
                                 suppressContentEditableWarning
                               >
@@ -246,7 +252,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
                   </div>
                </div>
                
-               <div className="flex flex-col gap-1.5 px-1">
+               <div className="flex gap-4 px-1">
                   <div className="flex items-center gap-2">
                     <div className="w-5 h-5 bg-[#0369a1] rounded-md flex items-center justify-center text-white shrink-0">
                       <Globe size={10} />
