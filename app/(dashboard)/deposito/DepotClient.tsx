@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react';
-import { Search, Warehouse, ArrowRightLeft, PackagePlus, AlertTriangle, X, Check, Box, Clock, ShieldCheck, ThumbsDown, Camera, Edit, RefreshCw, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, AlertCircle, Upload } from 'lucide-react';
+import { Search, Warehouse, ArrowRightLeft, PackagePlus, AlertTriangle, X, Check, Box, Clock, ShieldCheck, ThumbsDown, Camera, Edit, RefreshCw, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, AlertCircle, Upload, Plus } from 'lucide-react';
 import { addDepotStock, requestTransfer, authorizeTransfer, rejectTransfer, adjustDepotStockLoss, directTransfer, updateDepotMinStock, registerBatchDepotStockMovement } from '../../actions/depot';
 import { quickCreateProductFromInvoice } from '../../actions/products';
 
@@ -132,6 +132,23 @@ export default function DepotClient({
             } else { alert("Erro na IA: " + (res.error || "Tente novamente.")); }
         } catch (err: any) { alert("Erro ao processar a imagem: " + (err.message || "Erro de conexão")); }
         setParsingNf(false);
+    };
+
+    const handleQuickCreate = (idx: number, name: string, cost: number) => {
+        const finalName = prompt("Nome do novo produto:", name) || name;
+        if (!finalName) return;
+        startTransition(async () => {
+            try {
+                const res = await quickCreateProductFromInvoice(finalName, cost);
+                if (res.success && res.product) {
+                    const nm = {...mappedItems};
+                    nm[idx].productId = res.product.id;
+                    setMappedItems(nm);
+                }
+            } catch (e) {
+                alert("Erro ao criar produto.");
+            }
+        });
     };
 
     const handleBatchSaveNf = () => {
@@ -545,11 +562,33 @@ export default function DepotClient({
                                                             <td className="p-4 text-center"><button onClick={() => { const n = new Set(verifiedRows); if (n.has(idx)) n.delete(idx); else n.add(idx); setVerifiedRows(n); }} className={`w-8 h-8 rounded-lg flex items-center justify-center transition ${verifiedRows.has(idx) ? 'bg-emerald-500 text-white shadow-md' : 'bg-slate-100 text-slate-300'}`}><Check size={16} strokeWidth={3}/></button></td>
                                                             <td className="p-4"><p className="font-bold text-slate-800 text-xs line-clamp-1">{item.nome}</p></td>
                                                             <td className="p-4">
-                                                                <select value={mappedItems[idx]?.productId || ''} onChange={e => { const val = e.target.value; if (val === 'NEW') { const finalName = prompt("Nome do novo produto:", item.nome) || item.nome; startTransition(async () => { const res = await quickCreateProductFromInvoice(finalName, item.preco_unitario || 0); if (res.success) { const nm = {...mappedItems}; nm[idx].productId = res.product.id; setMappedItems(nm); } }); } else { const nm = {...mappedItems}; nm[idx].productId = val; setMappedItems(nm); } }} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-1 text-xs outline-none focus:border-mrts-blue">
-                                                                    <option value="">-- Selecionar --</option>
-                                                                    <option value="NEW" className="bg-blue-50 font-bold text-mrts-blue">+ CADASTRAR NOVO</option>
-                                                                    {initialInventory.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                                                </select>
+                                                                <div className="flex items-center gap-2">
+                                                                    <select 
+                                                                        value={mappedItems[idx]?.productId || ''} 
+                                                                        onChange={e => { 
+                                                                            const val = e.target.value; 
+                                                                            if (val === 'NEW') { 
+                                                                                handleQuickCreate(idx, item.nome, item.preco_unitario || 0);
+                                                                            } else { 
+                                                                                const nm = {...mappedItems}; 
+                                                                                nm[idx].productId = val; 
+                                                                                setMappedItems(nm); 
+                                                                            } 
+                                                                        }} 
+                                                                        className={`w-full bg-slate-50 border rounded-lg p-1 text-xs outline-none focus:border-mrts-blue transition-all ${mappedItems[idx]?.productId ? 'border-mrts-blue text-mrts-blue font-bold' : 'border-slate-200'}`}
+                                                                    >
+                                                                        <option value="">-- Selecionar --</option>
+                                                                        <option value="NEW" className="bg-blue-50 font-bold text-mrts-blue">+ CADASTRAR NOVO</option>
+                                                                        {initialInventory.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                                    </select>
+                                                                    <button 
+                                                                        onClick={() => handleQuickCreate(idx, item.nome, item.preco_unitario || 0)}
+                                                                        className="w-7 h-7 flex items-center justify-center bg-blue-50 text-mrts-blue rounded-lg border border-blue-100 hover:bg-mrts-blue hover:text-white transition shrink-0 shadow-sm"
+                                                                        title="Cadastrar Novo Produto"
+                                                                    >
+                                                                        <Plus size={14} strokeWidth={3} />
+                                                                    </button>
+                                                                </div>
                                                             </td>
                                                             <td className="p-4 text-center"><input type="number" step="0.01" value={mappedItems[idx]?.quantity || 0} onChange={e => { const nm = {...mappedItems}; nm[idx].quantity = e.target.value; setMappedItems(nm); }} className="w-16 text-center font-black bg-slate-50 rounded p-1"/></td>
                                                             <td className="p-4 text-right"><span className="text-xs text-gray-400 mr-1">R$</span><input type="number" step="0.01" value={mappedItems[idx]?.price || 0} onChange={e => { const nm = {...mappedItems}; nm[idx].price = e.target.value; setMappedItems(nm); }} className="w-20 text-right font-black bg-slate-50 rounded p-1"/></td>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition, useMemo } from 'react';
-import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search, Upload } from 'lucide-react';
+import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search, Upload, Plus } from 'lucide-react';
 import { registerStockMovement, updateMinStock, registerBatchStockMovement } from '../../actions/stock';
 import { parseInvoiceImage } from '../../actions/invoice-ai';
 import { quickCreateProductFromInvoice } from '../../actions/products';
@@ -825,26 +825,35 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                                                                 <ArrowRight size={16} />
                                                             </td>
                                                             <td className="p-4">
-                                                                <select 
-                                                                    value={mappedItems[idx]?.productId === 'NEW' ? 'NEW' : (mappedItems[idx]?.productId || '')} 
-                                                                    onChange={(e) => {
-                                                                        const val = e.target.value;
-                                                                        if (val === 'NEW') {
-                                                                            handleQuickCreate(idx, item.nome, item.preco_unitario || mappedItems[idx]?.price);
-                                                                        } else {
-                                                                            const newM = {...mappedItems};
-                                                                            newM[idx].productId = val;
-                                                                            setMappedItems(newM);
-                                                                        }
-                                                                    }}
-                                                                    className={`w-full max-w-[280px] truncate text-xs px-3 py-2.5 rounded-xl focus:ring-2 focus:ring-mrts-blue outline-none border transition-all ${mappedItems[idx]?.productId && mappedItems[idx]?.productId !== 'NEW' ? 'border-mrts-blue bg-blue-50/50 text-mrts-blue font-bold shadow-sm' : 'border-gray-200 font-bold text-slate-400 hover:border-gray-300 bg-white'}`}
-                                                                >
-                                                                    <option value="" disabled className="text-gray-400">--- Seleção no Sistema ---</option>
-                                                                    <option value="NEW" className="font-bold text-emerald-600 bg-emerald-50">✨ Criar Novo Produto</option>
-                                                                    {products.map((p) => (
-                                                                        <option key={p.id} value={p.id}>{p.iconUrl} {p.name}</option>
-                                                                    ))}
-                                                                </select>
+                                                                <div className="flex items-center gap-2">
+                                                                    <select 
+                                                                        value={mappedItems[idx]?.productId === 'NEW' ? 'NEW' : (mappedItems[idx]?.productId || '')} 
+                                                                        onChange={(e) => {
+                                                                            const val = e.target.value;
+                                                                            if (val === 'NEW') {
+                                                                                handleQuickCreate(idx, item.nome, item.preco_unitario || mappedItems[idx]?.price);
+                                                                            } else {
+                                                                                const newM = {...mappedItems};
+                                                                                newM[idx].productId = val;
+                                                                                setMappedItems(newM);
+                                                                            }
+                                                                        }}
+                                                                        className={`w-full max-w-[280px] truncate text-xs px-3 py-2.5 rounded-xl focus:ring-2 focus:ring-mrts-blue outline-none border transition-all ${mappedItems[idx]?.productId && mappedItems[idx]?.productId !== 'NEW' ? 'border-mrts-blue bg-blue-50/50 text-mrts-blue font-bold shadow-sm' : 'border-gray-200 font-bold text-slate-400 hover:border-gray-300 bg-white'}`}
+                                                                    >
+                                                                        <option value="" disabled className="text-gray-400">--- Seleção no Sistema ---</option>
+                                                                        <option value="NEW" className="font-bold text-emerald-600 bg-emerald-50">✨ Criar Novo Produto</option>
+                                                                        {products.map((p) => (
+                                                                            <option key={p.id} value={p.id}>{p.iconUrl} {p.name}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <button 
+                                                                        onClick={() => handleQuickCreate(idx, item.nome, item.preco_unitario || mappedItems[idx]?.price)}
+                                                                        className="w-9 h-9 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 hover:bg-emerald-500 hover:text-white transition shrink-0 shadow-sm"
+                                                                        title="Cadastrar Novo Produto"
+                                                                    >
+                                                                        <Plus size={18} strokeWidth={3} />
+                                                                    </button>
+                                                                </div>
                                                             </td>
                                                             <td className="p-4">
                                                                 <input 
