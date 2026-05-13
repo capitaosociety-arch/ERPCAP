@@ -361,16 +361,16 @@ export async function registerBatchDepotStockMovement(
             }
             return { success: true };
         }, {
-            timeout: 10000 
+            timeout: 30000 
         });
 
         await createAuditLog("Importação NF Matriz", `Importação de depósito via nota fiscal (${document}).`);
 
         revalidatePath("/deposito");
-        return result;
+        return { success: true };
     } catch (error: any) {
         console.error("ERRO NO REGISTER_BATCH_DEPOTSTOCK_MOVEMENT:", error);
-        throw new Error(error.message || "Erro interno ao processar lote no depósito.");
+        return { success: false, error: error.message || "Erro interno ao processar lote no depósito." };
     }
 }
 

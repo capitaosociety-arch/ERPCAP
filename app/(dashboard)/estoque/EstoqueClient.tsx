@@ -241,6 +241,8 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                   setNfImageUrl(null);
                   setVerifiedRows(new Set());
                   window.location.reload();
+              } else {
+                  alert("Erro ao salvar itens: " + res.error);
               }
           } catch(e: any) {
               console.error("Erro ao registrar NF:", e);

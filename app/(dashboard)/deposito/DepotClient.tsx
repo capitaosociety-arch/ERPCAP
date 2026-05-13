@@ -171,9 +171,15 @@ export default function DepotClient({
 
         startTransition(async () => {
             try {
-                await registerBatchDepotStockMovement(movementsToSave, parsedNfData?.numero_nf || '', nfImageUrl, "Entrada NF Matriz (IA)", nfDateStr);
-                window.location.reload();
-            } catch(e: any) { alert("Erro ao salvar itens: " + e.message); }
+                const res = await registerBatchDepotStockMovement(movementsToSave, parsedNfData?.numero_nf || '', nfImageUrl, "Entrada NF Matriz (IA)", nfDateStr);
+                if (res.success) {
+                    window.location.reload();
+                } else {
+                    alert("Erro ao salvar itens: " + res.error);
+                }
+            } catch(e: any) { 
+                alert("Erro técnico ao salvar: " + e.message); 
+            }
         });
     };
 
@@ -590,8 +596,8 @@ export default function DepotClient({
                                                                     </button>
                                                                 </div>
                                                             </td>
-                                                            <td className="p-4 text-center"><input type="number" step="0.01" value={mappedItems[idx]?.quantity || 0} onChange={e => { const nm = {...mappedItems}; nm[idx].quantity = e.target.value; setMappedItems(nm); }} className="w-16 text-center font-black bg-slate-50 rounded p-1"/></td>
-                                                            <td className="p-4 text-right"><span className="text-xs text-gray-400 mr-1">R$</span><input type="number" step="0.01" value={mappedItems[idx]?.price || 0} onChange={e => { const nm = {...mappedItems}; nm[idx].price = e.target.value; setMappedItems(nm); }} className="w-20 text-right font-black bg-slate-50 rounded p-1"/></td>
+                                                            <td className="p-4 text-center"><input type="text" value={mappedItems[idx]?.quantity || ''} onChange={e => { const nm = {...mappedItems}; nm[idx].quantity = e.target.value; setMappedItems(nm); }} className="w-16 text-center font-black bg-slate-50 rounded p-1"/></td>
+                                                            <td className="p-4 text-right"><span className="text-xs text-gray-400 mr-1">R$</span><input type="text" value={mappedItems[idx]?.price || ''} onChange={e => { const nm = {...mappedItems}; nm[idx].price = e.target.value; setMappedItems(nm); }} className="w-20 text-right font-black bg-slate-50 rounded p-1"/></td>
                                                         </tr>
                                                     ))}
                                                 </tbody>

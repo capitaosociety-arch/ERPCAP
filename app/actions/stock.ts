@@ -145,16 +145,15 @@ export async function registerBatchStockMovement(
             }
             return { success: true };
         }, {
-            timeout: 10000 // Aumentar timeout para transações maiores
+            timeout: 30000 // Aumentar timeout para transações maiores
         });
 
-        // Registrar Log de Auditoria
         await createAuditLog("Importação NF-e", `Importação de estoque via nota fiscal (${document}).`);
 
         revalidatePath("/estoque");
-        return result;
+        return { success: true };
     } catch (error: any) {
         console.error("ERRO NO REGISTER_BATCH_STOCK_MOVEMENT:", error);
-        throw new Error(error.message || "Erro interno ao processar lote de estoque.");
+        return { success: false, error: error.message || "Erro interno ao processar lote de estoque." };
     }
 }
