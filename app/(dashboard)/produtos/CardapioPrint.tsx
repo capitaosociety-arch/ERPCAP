@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useRef } from 'react';
-import { X, Printer, Phone, Globe, Info, Zap } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { X, Printer, Phone, Globe, Info, Zap, Settings, Minus, Plus } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -20,6 +20,9 @@ interface CardapioPrintProps {
 
 export default function CardapioPrint({ products, onClose }: CardapioPrintProps) {
   const printRef = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(100);
+  const [spacing, setSpacing] = useState(100);
+  const [showSettings, setShowSettings] = useState(false);
 
   // Payload oficial fornecido pelo cliente para o PIX Copia e Cola
   const PIX_PAYLOAD = "00020126360014br.gov.bcb.pix0114422616910001275204000053039865802BR5915CAPITAO SOCIETY6009Sao Paulo610901227-20062230519daqr34077869834053663049AF4";
@@ -71,16 +74,53 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
     <div className="fixed inset-0 z-[100] bg-slate-950/95 backdrop-blur-xl overflow-y-auto print-area">
       
       {/* Toolbar Moderna */}
-      <div className="fixed top-0 left-0 right-0 z-[110] flex justify-between items-center p-4 bg-slate-900/50 border-b border-white/5 backdrop-blur-md text-white print-hidden">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            <Printer size={20} />
+      <div className="fixed top-0 left-0 right-0 z-[110] flex justify-between items-center p-4 bg-slate-900/80 border-b border-white/5 backdrop-blur-md text-white print-hidden">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-emerald-500 text-white rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
+              <Printer size={20} />
+            </div>
+            <div>
+              <h2 className="font-black text-sm tracking-tighter uppercase">Cardápio A4</h2>
+              <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1">
+                <Zap size={10} /> Interativo
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-black text-sm tracking-tighter uppercase">Cardápio A4</h2>
-            <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1">
-              <Zap size={10} /> Otimizado
-            </p>
+
+          <div className="h-8 w-[1px] bg-white/10 hidden md:block"></div>
+
+          {/* Controles de Ajuste */}
+          <div className="hidden lg:flex items-center gap-8">
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between items-center px-1">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Escala: {zoom}%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setZoom(Math.max(50, zoom - 5))} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><Minus size={14} /></button>
+                <input 
+                  type="range" min="50" max="120" value={zoom} 
+                  onChange={(e) => setZoom(parseInt(e.target.value))}
+                  className="w-24 accent-emerald-500 h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer"
+                />
+                <button onClick={() => setZoom(Math.min(120, zoom + 5))} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><Plus size={14} /></button>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between items-center px-1">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Espaço: {spacing}%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setSpacing(Math.max(50, spacing - 5))} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><Minus size={14} /></button>
+                <input 
+                  type="range" min="50" max="150" value={spacing} 
+                  onChange={(e) => setSpacing(parseInt(e.target.value))}
+                  className="w-24 accent-emerald-500 h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer"
+                />
+                <button onClick={() => setSpacing(Math.min(150, spacing + 5))} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><Plus size={14} /></button>
+              </div>
+            </div>
           </div>
         </div>
         
@@ -88,7 +128,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
           <div className="flex gap-2">
             <button 
               onClick={handlePrint}
-              className="bg-white text-slate-900 hover:bg-emerald-500 hover:text-white px-8 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-xl"
+              className="bg-emerald-500 text-white hover:bg-emerald-400 px-8 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-xl shadow-emerald-500/20"
             >
               Imprimir
             </button>
@@ -107,6 +147,9 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
         {/* ÁREA DE IMPRESSÃO (Folha A4) */}
         <div 
           ref={printRef} 
+          style={{ 
+            fontSize: `${zoom}%`,
+          }}
           className="bg-white w-[210mm] min-h-[297mm] shadow-[0_0_80px_rgba(0,0,0,0.5)] p-[1cm] print:p-0 font-sans text-slate-900 flex flex-col relative overflow-hidden print:overflow-visible print:shadow-none print:w-full print:min-h-0"
         >
           
@@ -121,7 +164,10 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
           </div>
 
           {/* Grid Principal de Conteúdo */}
-          <div className="flex-1 space-y-3">
+          <div 
+            className="flex-1"
+            style={{ gap: `${(spacing / 100) * 1.25}rem`, display: 'flex', flexDirection: 'column' }}
+          >
             {rawCategories.map(catName => {
               const catProducts = activeProducts.filter(p => {
                 const pCat = p.category?.name || 'SALGADINHOS';
@@ -139,7 +185,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
               });
 
               return (
-                <div key={catName} className="flex flex-col">
+                <div key={catName} className="flex flex-col" style={{ gap: `${(spacing / 100) * 0.5}rem` }}>
                   <div className="flex items-center gap-4 mb-1">
                     <h2 className="text-[#0369a1] font-black text-base uppercase italic tracking-widest outline-none whitespace-nowrap" contentEditable suppressContentEditableWarning>
                       {catName}
@@ -147,7 +193,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
                     <div className="flex-1 h-[1.5px] bg-[#0369a1]/30"></div>
                   </div>
                   
-                  <div className="space-y-1">
+                  <div className="flex flex-col" style={{ gap: `${(spacing / 100) * 0.5}rem` }}>
                     {Object.entries(groups).map(([groupName, items]) => (
                       <div key={groupName} className="flex gap-4">
                         {/* Sidebar do grupo */}
@@ -217,21 +263,20 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
             </div>
 
             {/* PIX CONTAINER - REDIMENSIONADO */}
-            <div className="flex items-center gap-6 bg-[#0f172a] p-5 rounded-[2.5rem] shadow-xl relative overflow-hidden group min-w-[400px]">
-               <div className="absolute top-0 right-0 w-24 h-24 bg-[#0369a1]/20 rounded-full -mr-12 -mt-12 blur-2xl"></div>
+            <div className="flex items-center gap-4 bg-[#0f172a] p-3 rounded-[2rem] shadow-xl relative overflow-hidden group min-w-[340px]">
+               <div className="absolute top-0 right-0 w-16 h-16 bg-[#0369a1]/20 rounded-full -mr-8 -mt-8 blur-xl"></div>
                <div className="text-right relative z-10 flex-1">
-                  <p className="text-[10px] font-black text-[#0369a1] uppercase tracking-[0.2em] mb-1 leading-none">PIX CNPJ:</p>
-                  <p className="font-black text-white text-[15px] italic outline-none tracking-wider whitespace-nowrap leading-tight" contentEditable suppressContentEditableWarning>42.261.691/0001-27</p>
+                  <p className="text-[9px] font-black text-[#0369a1] uppercase tracking-[0.2em] mb-0.5 leading-none">PIX CNPJ:</p>
+                  <p className="font-black text-white text-[13px] italic outline-none tracking-wider whitespace-nowrap leading-tight" contentEditable suppressContentEditableWarning>42.261.691/0001-27</p>
                </div>
-               <div className="w-32 h-32 bg-white p-2 rounded-2xl flex items-center justify-center relative shadow-inner z-10 shrink-0">
+               <div className="w-24 h-24 bg-white p-1.5 rounded-xl flex items-center justify-center relative shadow-inner z-10 shrink-0">
                   <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(PIX_PAYLOAD)}&ecc=M`} 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(PIX_PAYLOAD)}&ecc=M`} 
                     alt="PIX QR" 
                     className="w-full h-full block" 
-                    onLoad={(e) => (e.currentTarget.style.opacity = '1')}
                   />
                </div>
-               <div className="w-14 h-32 bg-[#0369a1] rounded-full flex items-center justify-center text-slate-950 font-black text-5xl italic relative z-10 shrink-0 shadow-lg">C</div>
+               <div className="w-12 h-24 bg-[#0369a1] rounded-full flex items-center justify-center text-slate-950 font-black text-4xl italic relative z-10 shrink-0 shadow-lg">C</div>
             </div>
           </div>
         </div>
