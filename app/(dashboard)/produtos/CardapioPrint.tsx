@@ -107,12 +107,12 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
         {/* ÁREA DE IMPRESSÃO (Folha A4) */}
         <div 
           ref={printRef} 
-          className="bg-white w-[210mm] min-h-[297mm] shadow-[0_0_80px_rgba(0,0,0,0.5)] p-[1.5cm] print:p-0 font-sans text-slate-900 flex flex-col relative overflow-hidden print:overflow-visible print:shadow-none print:w-full print:min-h-0"
+          className="bg-white w-[210mm] min-h-[297mm] shadow-[0_0_80px_rgba(0,0,0,0.5)] p-[1cm] print:p-0 font-sans text-slate-900 flex flex-col relative overflow-hidden print:overflow-visible print:shadow-none print:w-full print:min-h-0"
         >
           
           {/* Header Original */}
           <div className="flex flex-col items-center mb-4">
-            <div className="bg-[#0369a1] w-full max-w-[600px] py-2 flex flex-col items-center border-2 border-[#0369a1] shadow-sm">
+            <div className="bg-[#0369a1] w-full max-w-[600px] py-2.5 flex flex-col items-center border-2 border-[#0369a1] shadow-sm">
                <div className="border-t-2 border-b-2 border-white/30 py-1 px-8 w-full flex justify-center">
                   <h1 className="text-4xl font-black text-white tracking-[0.2em] italic outline-none uppercase whitespace-nowrap" contentEditable suppressContentEditableWarning>CAPITÃO SOCIETY</h1>
                </div>
@@ -121,7 +121,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
           </div>
 
           {/* Grid Principal de Conteúdo */}
-          <div className="flex-1 space-y-4">
+          <div className="flex-1 space-y-5">
             {rawCategories.map(catName => {
               const catProducts = activeProducts.filter(p => {
                 const pCat = p.category?.name || 'SALGADINHOS';
@@ -168,7 +168,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
                               >
                                 {item.name.replace(/Energético/gi, '').replace(/Salgadinhos/gi, '').replace(/Salgadinho/gi, '').trim()}
                               </span>
-                              <div className="flex-1 border-b-[1.5px] border-slate-300 mb-1 transition-colors group-hover:border-[#0369a1]/40"></div>
+                              <div className="flex-1 border-b-[1.5px] border-slate-200 mb-1 transition-colors group-hover:border-[#0369a1]/40"></div>
                               <span 
                                 className="font-black text-sm text-[#0369a1] whitespace-nowrap outline-none focus:ring-2 focus:ring-blue-100 rounded px-0.5 transition-all"
                                 contentEditable 
@@ -188,14 +188,14 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
           </div>
 
           {/* Footer de Alta Performance - REESTRUTURADO PARA CABER TUDO */}
-          <div className="mt-4 pt-3 border-t-4 border-[#0369a1] flex justify-between items-center gap-4">
-            <div className="flex-1 space-y-3">
-               <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200 flex items-center gap-3">
+          <div className="mt-2 pt-2 border-t-2 border-[#0369a1] flex justify-between items-center gap-4">
+            <div className="flex-1 space-y-2">
+               <div className="bg-slate-50 p-2 rounded-xl border border-slate-200 flex items-center gap-3">
                   <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center text-white shadow-md">
                     <Phone size={16} fill="white" />
                   </div>
                   <div>
-                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5 leading-none">Reservas / Agenda:</p>
+                    <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-0.5 leading-none">Reservas / Agenda:</p>
                     <span className="font-black text-sm text-slate-900 outline-none whitespace-nowrap leading-none" contentEditable suppressContentEditableWarning>(65) 9 9984 9146</span>
                   </div>
                </div>
@@ -217,19 +217,19 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
             </div>
 
             {/* PIX CONTAINER - REDIMENSIONADO */}
-            <div className="flex items-center gap-4 bg-[#0f172a] p-3 rounded-[2rem] shadow-xl relative overflow-hidden group min-w-[340px]">
+            <div className="flex items-center gap-4 bg-[#0f172a] p-4 rounded-[2rem] shadow-xl relative overflow-hidden group min-w-[340px]">
                <div className="absolute top-0 right-0 w-16 h-16 bg-[#0369a1]/20 rounded-full -mr-8 -mt-8 blur-xl"></div>
                <div className="text-right relative z-10 flex-1">
                   <p className="text-[9px] font-black text-[#0369a1] uppercase tracking-[0.2em] mb-0.5 leading-none">PIX CNPJ:</p>
-                  <p className="font-black text-white text-[12px] italic outline-none tracking-wider whitespace-nowrap leading-tight" contentEditable suppressContentEditableWarning>42.261.691/0001-27</p>
+                  <p className="font-black text-white text-[13px] italic outline-none tracking-wider whitespace-nowrap leading-tight" contentEditable suppressContentEditableWarning>42.261.691/0001-27</p>
                </div>
-               <div className="w-16 h-16 bg-white p-1 rounded-xl flex items-center justify-center relative shadow-inner z-10 shrink-0">
+               <div className="w-20 h-20 bg-white p-1.5 rounded-xl flex items-center justify-center relative shadow-inner z-10 shrink-0">
                   <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(PIX_PAYLOAD)}`} alt="PIX QR" className="w-full h-full" />
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-3.5 h-3.5 bg-[#0f172a] rounded-md flex items-center justify-center text-[6px] text-white font-black border border-white/20">C</div>
+                    <div className="w-4 h-4 bg-[#0f172a] rounded-md flex items-center justify-center text-[7px] text-white font-black border border-white/20">C</div>
                   </div>
                </div>
-               <div className="w-10 h-16 bg-[#0369a1] rounded-full flex items-center justify-center text-slate-950 font-black text-3xl italic relative z-10 shrink-0 shadow-lg">C</div>
+               <div className="w-12 h-20 bg-[#0369a1] rounded-full flex items-center justify-center text-slate-950 font-black text-4xl italic relative z-10 shrink-0 shadow-lg">C</div>
             </div>
           </div>
         </div>
@@ -238,7 +238,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
       <style dangerouslySetInnerHTML={{ __html: `
         @page {
           size: A4;
-          margin: 1.5cm;
+          margin: 1.0cm;
         }
         @media print {
           body {
