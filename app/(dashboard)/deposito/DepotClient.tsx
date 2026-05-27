@@ -20,6 +20,8 @@ export default function DepotClient({
     const [filter, setFilter] = useState<'ALL' | 'LOW' | 'HISTORY'>('ALL');
     const [search, setSearch] = useState("");
     const [isPending, startTransition] = useTransition();
+    const [requests, setRequests] = useState<any[]>(initialRequests);
+    const [processingId, setProcessingId] = useState<string | null>(null);
 
     // Modals
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -64,8 +66,8 @@ export default function DepotClient({
         return matchSearch;
     });
 
-    const pendingRequests = initialRequests.filter(r => r.status === 'PENDING');
-    const processedRequests = initialRequests.filter(r => r.status !== 'PENDING');
+    const pendingRequests = requests.filter(r => r.status === 'PENDING');
+    const processedRequests = requests.filter(r => r.status !== 'PENDING');
     
     const safeSearch = (search || '').toLowerCase();
     const allMovements = initialMovements.filter(m => 
@@ -195,22 +197,26 @@ export default function DepotClient({
 
     const handleAuthorize = async (id: string) => {
         if (!confirm('Deseja autorizar esta transferência?')) return;
+        setProcessingId(id);
         startTransition(async () => {
             try {
                 await authorizeTransfer(id);
-                window.location.reload();
+                setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'APPROVED' } : r));
             } catch (e: any) { alert(e.message); }
+            finally { setProcessingId(null); }
         });
     }
 
     const handleReject = async (id: string) => {
         const reason = prompt('Motivo da rejeição:');
         if (reason === null) return;
+        setProcessingId(id);
         startTransition(async () => {
             try {
                 await rejectTransfer(id, reason);
-                window.location.reload();
+                setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'REJECTED', notes: reason } : r));
             } catch (e: any) { alert(e.message); }
+            finally { setProcessingId(null); }
         });
     }
 
@@ -440,14 +446,23 @@ export default function DepotClient({
                                             </td>
                                             <td className="p-4 text-center">
                                                 {canAuthorize ? (
-                                                    <div className="flex justify-center gap-2">
-                                                        <button disabled={isPending} onClick={() => handleAuthorize(req.id)} className="bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-black hover:bg-emerald-600 transition flex items-center gap-2">
-                                                            <Check size={16} strokeWidth={3}/> Autorizar
-                                                        </button>
-                                                        <button disabled={isPending} onClick={() => handleReject(req.id)} className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-red-100 transition flex items-center gap-2">
-                                                            <ThumbsDown size={14} /> Recusar
-                                                        </button>
-                                                    </div>
+                                                        <div className="flex justify-center gap-2">
+                                                            <button 
+                                                                disabled={isPending && processingId === req.id} 
+                                                                onClick={() => handleAuthorize(req.id)} 
+                                                                className="bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-black hover:bg-emerald-600 transition flex items-center gap-2 disabled:opacity-60"
+                                                            >
+                                                                {processingId === req.id ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={16} strokeWidth={3}/>}
+                                                                Autorizar
+                                                            </button>
+                                                            <button 
+                                                                disabled={isPending && processingId === req.id} 
+                                                                onClick={() => handleReject(req.id)} 
+                                                                className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-red-100 transition flex items-center gap-2 disabled:opacity-60"
+                                                            >
+                                                                <ThumbsDown size={14} /> Recusar
+                                                            </button>
+                                                        </div>
                                                 ) : (
                                                     <span className="px-3 py-1.5 rounded-full bg-amber-50 text-amber-600 font-bold text-[10px] uppercase">Aguardando Supervisão</span>
                                                 )}
