@@ -56,7 +56,7 @@ export async function closeGlobalCashRegister(registerId: string, closingBal: nu
     });
 
     const expectedCashInDrawer = (registerToClose.openingBal || 0) + (cashPayments._sum.amount || 0);
-    
+
     await prisma.cashRegister.update({
         where: { id: registerId },
         data: {
@@ -96,7 +96,7 @@ export async function getRegisterSummary(registerId: string) {
 
     const individualPaymentsRaw = await prisma.payment.findMany({
         where: { cashRegisterId: registerId },
-        include: { 
+        include: {
             order: {
                 include: {
                     items: {
@@ -106,7 +106,7 @@ export async function getRegisterSummary(registerId: string) {
                         }
                     }
                 }
-            } 
+            }
         },
         orderBy: { date: 'desc' }
     });
@@ -150,26 +150,26 @@ export async function getRegisterSummary(registerId: string) {
     });
 
     const productSummary: Record<string, any> = {};
-    
+
     orderItems.forEach(item => {
         const key = item.productId ? `p_${item.productId}` : (item.serviceId ? `s_${item.serviceId}` : item.id);
         const name = item.product?.name || item.service?.name || 'Item Avulso/Desconhecido';
-        
+
         if (!productSummary[key]) {
             productSummary[key] = { name, quantity: 0, total: 0, hasDiscount: false, totalDiscount: 0 };
         }
         productSummary[key].quantity += item.quantity;
         productSummary[key].total += item.subtotal;
-        
+
         if (item.order.discount > 0) {
             productSummary[key].hasDiscount = true;
-            productSummary[key].totalDiscount += item.order.discount; 
+            productSummary[key].totalDiscount += item.order.discount;
         }
     });
 
     const productsSold = Object.values(productSummary).sort((a: any, b: any) => b.quantity - a.quantity);
     const sumAllPayments = formattedPayments.reduce((acc: number, p) => acc + (p.amount || 0), 0);
-    
+
     const uniqueOrderIds = Array.from(new Set(orderItems.map(i => i.order.id)));
     const totalSessionDiscountsRaw = await prisma.order.aggregate({
         where: { id: { in: uniqueOrderIds } },
@@ -272,7 +272,7 @@ export async function deleteCashSessionAction(sessionId: string) {
             await tx.cashRegister.delete({
                 where: { id: sessionId }
             });
-            
+
             await createAuditLog(`Exclusão de Sessão de Caixa ID: ${sessionId}`, `Toda a sessão e ordens liquidadas foram removidas.`);
         });
 
@@ -292,7 +292,7 @@ export async function getSessionsForDepositAction() {
 
     const registers = await prisma.cashRegister.findMany({
         where: { status: 'CLOSED' },
-        include: { 
+        include: {
             user: { select: { name: true } },
             deposits: true,
             payments: {
@@ -306,13 +306,13 @@ export async function getSessionsForDepositAction() {
     const result = registers.map((reg: any) => {
         const declaredAmount = reg.closingBal || 0;
         const openingBal = reg.openingBal || 0;
-        
+
         // Montante a depositar = dinheiro na gaveta - troco inicial
         const amountForDeposit = Math.max(0, declaredAmount - openingBal);
-        
+
         // Quanto já foi depositado deste caixa específico
         const depositedAmount = reg.deposits?.reduce((acc: number, dep: any) => acc + dep.amount, 0) || 0;
-        
+
         return {
             id: reg.id,
             operatorName: reg.user?.name || 'Operador',
@@ -345,9 +345,9 @@ export async function recordCashDepositAction(registerId: string, amount: number
 
         const alreadyDeposited = register.deposits.reduce((acc, d) => acc + d.amount, 0);
         const declared = register.closingBal || 0;
-        
+
         if (amount <= 0) throw new Error('Valor inválido');
-        
+
         await prisma.cashDeposit.create({
             data: {
                 cashRegisterId: registerId,
@@ -390,12 +390,12 @@ export async function recordGlobalCashDepositAction(amountToDeposit: number, not
             const openingBal = reg.openingBal || 0;
             const amountForDeposit = Math.max(0, declaredAmount - openingBal);
             const alreadyDeposited = reg.deposits?.reduce((acc: number, d: any) => acc + d.amount, 0) || 0;
-            
+
             const pendingForSession = Math.max(0, amountForDeposit - alreadyDeposited);
 
             if (pendingForSession > 0) {
                 const depositForThisSession = Math.min(pendingForSession, remainingGlobalDeposit);
-                
+
                 await prisma.cashDeposit.create({
                     data: {
                         cashRegisterId: reg.id,

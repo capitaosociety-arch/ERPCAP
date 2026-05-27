@@ -286,3 +286,41 @@ export async function voidPaymentAction(paymentId: string) {
         return { success: false, error: error.message };
     }
 }
+
+export async function editPaymentAction(paymentId: string, newMethod: string, newAmount: number) {
+    try {
+        const session = await getServerSession(authOptions) as any;
+        if (!session || session.user?.role !== 'ADMIN') {
+            throw new Error("Apenas administradores podem editar pagamentos.");
+        }
+
+        const payment = await prisma.payment.findUnique({
+            where: { id: paymentId }
+        });
+
+        if (!payment) throw new Error("Pagamento não encontrado.");
+
+        await prisma.payment.update({
+            where: { id: paymentId },
+            data: { 
+                method: newMethod,
+                amount: newAmount
+            }
+        });
+
+        await createAuditLog(
+            "Edição de Pagamento", 
+            `Alterou pagamento [${paymentId.slice(-6)}] para ${newMethod} (R$ ${newAmount}).`
+        );
+
+        revalidatePath("/financeiro");
+        revalidatePath("/mesas");
+        revalidatePath("/pdv");
+        revalidatePath("/dashboard");
+
+        return { success: true };
+    } catch (error: any) {
+        console.error("ERRO_EDITAR_PAGAMENTO:", error);
+        return { success: false, error: error.message };
+    }
+}
