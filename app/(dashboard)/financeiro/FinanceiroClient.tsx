@@ -699,12 +699,15 @@ export default function FinanceiroClient({ payload }: any) {
                                                 </div>
                                             </td>
                                             <td className="p-4">
-                                                <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
-                                                    <Calendar size={14} className="text-gray-400" />
-                                                    {new Date(e.dueDate).toLocaleDateString('pt-BR')}
-                                                    {e.status === 'PENDING' && new Date(e.dueDate) < new Date() && (
-                                                        <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-black italic animate-pulse">ATRASADO</span>
-                                                    )}
+                                                <div className="flex flex-col gap-0.5">
+                                                    <div className="flex items-center gap-2 text-sm font-black text-slate-700">
+                                                        <Calendar size={14} className="text-gray-400" />
+                                                        {new Date(e.dueDate).toLocaleDateString('pt-BR')}
+                                                        {e.status === 'PENDING' && new Date(e.dueDate) < new Date() && (
+                                                            <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-black italic animate-pulse">ATRASADO</span>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[10px] text-gray-400 font-medium pl-5">Lançamento: {new Date(e.createdAt).toLocaleDateString('pt-BR')}</span>
                                                 </div>
                                             </td>
                                             <td className="p-4">

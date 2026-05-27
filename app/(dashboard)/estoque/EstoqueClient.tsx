@@ -37,7 +37,8 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
   const [type, setType] = useState('IN'); // IN, OUT_MANUAL, LOSS
   const [quantity, setQuantity] = useState('');
   const [document, setDocument] = useState('');
-  const [dateStr, setDateStr] = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }));
+  const [dueDateStr, setDueDateStr] = useState('');
+  const [unitCost, setUnitCost] = useState('');
   const [notes, setNotes] = useState('');
 
   // Form states - Min Stock
@@ -50,7 +51,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
   const [parsedNfData, setParsedNfData] = useState<any>(null);
   const [nfImageUrl, setNfImageUrl] = useState<string | null>(null);
   const [mappedItems, setMappedItems] = useState<Record<number, any>>({});
-  const [nfDateStr, setNfDateStr] = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }));
+  const [nfDueDateStr, setNfDueDateStr] = useState("");
 
   // NEW: DE-PARA Verification & Zoom State
   const [verifiedRows, setVerifiedRows] = useState<Set<number>>(new Set());
@@ -92,7 +93,8 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
       setQuantity('');
       setDocument('');
       setNotes('');
-      setDateStr(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }));
+      setDueDateStr('');
+      setUnitCost(product.cost ? product.cost.toString() : '');
       setMovementModalOpen(true);
   };
 
@@ -109,7 +111,8 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                   parseFloat(quantity.replace(',','.')),
                   notes,
                   document,
-                  dateStr
+                  dueDateStr || undefined,
+                  unitCost ? parseFloat(unitCost.replace(',','.')) : undefined
               );
               alert("Movimentação registrada com sucesso!");
               setMovementModalOpen(false);
@@ -160,7 +163,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
               
               // Sincronizar data da nota se extraída pela IA
               if (res.data.data && /^\d{4}-\d{2}-\d{2}$/.test(res.data.data)) {
-                  setNfDateStr(res.data.data);
+                  setNfDueDateStr(res.data.data);
               }
               setVerifiedRows(new Set()); // Reset verification for new NF
               setImgZoom(1); // Reset zoom
@@ -231,7 +234,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                   parsedNfData?.numero_nf || '',
                   nfImageUrl,
                   "Entrada NF-e IA",
-                  nfDateStr
+                  nfDueDateStr || undefined
               );
 
               if (res.success) {
@@ -530,16 +533,28 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                             <label className="block text-sm font-bold text-slate-700 mb-2">Quantidade ({selectedProduct.unit})</label>
                             <input type="number" step="0.01" value={quantity} onChange={e => setQuantity(e.target.value)} className="w-full bg-white border border-mrts-blue/30 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue focus:ring-1 focus:ring-mrts-blue font-bold text-mrts-blue text-lg"/>
                         </div>
-                        <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-2">Data</label>
-                            <input type="date" value={dateStr} onChange={e => setDateStr(e.target.value)} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue focus:ring-1 focus:ring-mrts-blue font-medium text-slate-800"/>
-                        </div>
+                        {type === 'IN' ? (
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Custo Unitário (R$)</label>
+                                <input type="number" step="0.01" value={unitCost} onChange={e => setUnitCost(e.target.value)} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue focus:ring-1 focus:ring-mrts-blue font-medium text-slate-800" placeholder="0.00"/>
+                            </div>
+                        ) : (
+                            <div className="flex items-end text-sm text-gray-400 font-medium pb-3 leading-normal">
+                                Saídas/Perdas são registradas sempre na data atual do sistema.
+                            </div>
+                        )}
                     </div>
 
                     {type === 'IN' && (
-                        <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-2">Nº do Documento / Nota Fiscal</label>
-                            <input type="text" placeholder="Adicione para rastreio" value={document} onChange={e => setDocument(e.target.value)} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue focus:ring-1 focus:ring-mrts-blue font-medium text-slate-800"/>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Nº do Documento / Nota Fiscal</label>
+                                <input type="text" placeholder="Adicione para rastreio" value={document} onChange={e => setDocument(e.target.value)} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue focus:ring-1 focus:ring-mrts-blue font-medium text-slate-800"/>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Vencimento (Contas a Pagar)</label>
+                                <input type="date" value={dueDateStr} onChange={e => setDueDateStr(e.target.value)} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue focus:ring-1 focus:ring-mrts-blue font-medium text-slate-800"/>
+                            </div>
                         </div>
                     )}
 
@@ -750,11 +765,11 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                                             />
                                         </div>
                                         <div className="text-right">
-                                            <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1 block">Data de Ref.</label>
+                                            <label className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1 block">Vencimento (Contas a Pagar)</label>
                                             <input 
                                                 type="date"
-                                                value={nfDateStr}
-                                                onChange={e => setNfDateStr(e.target.value)}
+                                                value={nfDueDateStr}
+                                                onChange={e => setNfDueDateStr(e.target.value)}
                                                 className="px-3 py-2.5 border-2 border-gray-200 rounded-xl text-sm font-bold text-slate-800 bg-white w-full sm:w-40 focus:border-mrts-blue outline-none"
                                             />
                                         </div>

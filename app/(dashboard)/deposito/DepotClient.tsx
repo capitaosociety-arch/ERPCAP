@@ -36,11 +36,16 @@ export default function DepotClient({
     const [parsedNfData, setParsedNfData] = useState<any>(null);
     const [nfImageUrl, setNfImageUrl] = useState<string | null>(null);
     const [mappedItems, setMappedItems] = useState<Record<number, any>>({});
-    const [nfDateStr, setNfDateStr] = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }));
+    const [nfDueDateStr, setNfDueDateStr] = useState("");
     const [verifiedRows, setVerifiedRows] = useState<Set<number>>(new Set());
     const [imgZoom, setImgZoom] = useState(1);
     const [imgPos, setImgPos] = useState({ x: 0, y: 0 });
     const [mobileTab, setMobileTab] = useState<'data' | 'photo'>('data');
+    
+    // Manual movement additional states
+    const [actionDoc, setActionDoc] = useState('');
+    const [dueDateStr, setDueDateStr] = useState('');
+    const [unitCost, setUnitCost] = useState('');
 
     const [selectedProduct, setSelectedProduct] = useState<any>(null);
     const [actionQty, setActionQty] = useState('');
@@ -76,7 +81,15 @@ export default function DepotClient({
     );
 
     // Handlers
-    const openAddModal = (p: any) => { setSelectedProduct(p); setActionQty(''); setActionNotes(''); setIsAddModalOpen(true); }
+    const openAddModal = (p: any) => { 
+        setSelectedProduct(p); 
+        setActionQty(''); 
+        setActionNotes(''); 
+        setActionDoc('');
+        setDueDateStr('');
+        setUnitCost(p.cost ? p.cost.toString() : '');
+        setIsAddModalOpen(true); 
+    }
     const openRequestModal = (p: any) => { setSelectedProduct(p); setActionQty(''); setActionNotes(''); setIsRequestModalOpen(true); }
     const openLossModal = (p: any) => { setSelectedProduct(p); setActionQty(''); setActionNotes(''); setIsLossModalOpen(true); }
     const openDirectModal = (p: any) => { setSelectedProduct(p); setActionQty(''); setActionNotes(''); setIsDirectModalOpen(true); }
@@ -86,7 +99,14 @@ export default function DepotClient({
         if (!actionQty || Number(actionQty) <= 0) return alert('Quantidade inválida.');
         startTransition(async () => {
             try {
-                await addDepotStock(selectedProduct.id, Number(actionQty), undefined, actionNotes);
+                await addDepotStock(
+                    selectedProduct.id, 
+                    Number(actionQty), 
+                    actionDoc || undefined, 
+                    actionNotes || undefined,
+                    dueDateStr || undefined,
+                    unitCost ? Number(unitCost.replace(',','.')) : undefined
+                );
                 window.location.reload();
             } catch (e: any) { alert(e.message); }
         });
@@ -114,7 +134,7 @@ export default function DepotClient({
             const res = await apiRes.json();
             if (res.success && res.data) {
                 setParsedNfData(res.data);
-                if (res.data.data && /^\d{4}-\d{2}-\d{2}$/.test(res.data.data)) setNfDateStr(res.data.data);
+                if (res.data.data && /^\d{4}-\d{2}-\d{2}$/.test(res.data.data)) setNfDueDateStr(res.data.data);
                 setVerifiedRows(new Set());
                 setImgZoom(1);
                 setImgPos({ x: 0, y: 0 });
@@ -173,7 +193,7 @@ export default function DepotClient({
 
         startTransition(async () => {
             try {
-                const res = await registerBatchDepotStockMovement(movementsToSave, parsedNfData?.numero_nf || '', nfImageUrl, "Entrada NF Matriz (IA)", nfDateStr);
+                const res = await registerBatchDepotStockMovement(movementsToSave, parsedNfData?.numero_nf || '', nfImageUrl, "Entrada NF Matriz (IA)", nfDueDateStr || undefined);
                 if (res.success) {
                     window.location.reload();
                 } else {
@@ -568,7 +588,7 @@ export default function DepotClient({
                                             </div>
                                             <div className="flex gap-4">
                                                 <div><label className="text-[9px] text-gray-400 font-black uppercase">Nº do Documento</label><input type="text" value={parsedNfData.numero_nf || ''} onChange={e => setParsedNfData({...parsedNfData, numero_nf: e.target.value})} className="block font-black text-mrts-blue border-b-2 border-slate-100 outline-none focus:border-mrts-blue"/></div>
-                                                <div><label className="text-[9px] text-gray-400 font-black uppercase">Data de Entrada</label><input type="date" value={nfDateStr} onChange={e => setNfDateStr(e.target.value)} className="block font-bold text-slate-700 text-xs border-b-2 border-slate-100 outline-none"/></div>
+                                                <div><label className="text-[9px] text-gray-400 font-black uppercase">Vencimento (Contas a Pagar)</label><input type="date" value={nfDueDateStr} onChange={e => setNfDueDateStr(e.target.value)} className="block font-bold text-slate-700 text-xs border-b-2 border-slate-100 outline-none"/></div>
                                             </div>
                                         </div>
 
@@ -634,19 +654,39 @@ export default function DepotClient({
             {/* MODAIS DE MOVIMENTAÇÃO MANUAL */}
             {isAddModalOpen && selectedProduct && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto border border-gray-100">
                         <div className="flex items-center justify-between mb-4 pb-4 border-b">
                             <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800"><PackagePlus className="text-emerald-500"/> Entrada Matriz</h2>
-                            <button onClick={() => setIsAddModalOpen(false)} className="bg-slate-100 text-slate-500 w-8 h-8 rounded-full flex items-center justify-center"><X size={16}/></button>
+                            <button onClick={() => setIsAddModalOpen(false)} className="bg-slate-100 text-slate-500 w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-200"><X size={16}/></button>
                         </div>
                         <div className="mb-4 bg-slate-50 p-3 rounded-xl">
                             <p className="text-[10px] text-gray-400 font-bold uppercase">Produto</p>
                             <p className="font-bold text-slate-800">{selectedProduct.name}</p>
                         </div>
-                        <label className="block text-sm font-bold text-slate-700 mb-2">Quantidade ({selectedProduct.unit})</label>
-                        <input type="number" step="0.01" value={actionQty} onChange={e => setActionQty(e.target.value)} className="w-full bg-white border-2 border-slate-100 rounded-xl py-3 px-4 text-xl font-black text-slate-800 focus:border-mrts-blue outline-none transition"/>
                         
-                        <label className="block text-sm font-bold text-slate-700 mt-4 mb-2">Observações</label>
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1.5">Quantidade ({selectedProduct.unit})</label>
+                                <input type="number" step="0.01" value={actionQty} onChange={e => setActionQty(e.target.value)} className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-lg font-black text-slate-800 focus:border-mrts-blue outline-none transition"/>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1.5">Custo Unitário (R$)</label>
+                                <input type="number" step="0.01" value={unitCost} onChange={e => setUnitCost(e.target.value)} className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-lg font-black text-slate-800 focus:border-mrts-blue outline-none transition" placeholder="0.00"/>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1.5">Documento / NF</label>
+                                <input type="text" value={actionDoc} onChange={e => setActionDoc(e.target.value)} className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 focus:border-mrts-blue outline-none transition" placeholder="Nº NF"/>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 mb-1.5">Vencimento (Contas a Pagar)</label>
+                                <input type="date" value={dueDateStr} onChange={e => setDueDateStr(e.target.value)} className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-3 text-xs font-bold text-slate-800 focus:border-mrts-blue outline-none transition"/>
+                            </div>
+                        </div>
+                        
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Observações</label>
                         <textarea value={actionNotes} onChange={e => setActionNotes(e.target.value)} className="w-full bg-white border-2 border-slate-100 rounded-xl py-2 px-4 text-sm font-medium text-slate-800 focus:border-mrts-blue outline-none transition h-20 resize-none" placeholder="Ex: Carga extra..."></textarea>
                         
                         <button disabled={isPending} onClick={handleAddSubmit} className="w-full mt-6 bg-emerald-500 text-white font-black py-4 rounded-xl hover:bg-emerald-600 transition shadow-lg disabled:opacity-50">Efetivar Entrada</button>

@@ -38,7 +38,14 @@ export async function getDepotInventory() {
 }
 
 // 2. Adicionar Fundo de Depósito (Abastecer)
-export async function addDepotStock(productId: string, quantity: number, document?: string, notes?: string) {
+export async function addDepotStock(
+    productId: string, 
+    quantity: number, 
+    document?: string, 
+    notes?: string,
+    dueDateString?: string,
+    unitCost?: number
+) {
     if (quantity <= 0) throw new Error('A quantidade deve ser maior que zero.');
     await verifyAuth();
 
@@ -50,18 +57,59 @@ export async function addDepotStock(productId: string, quantity: number, documen
             create: { productId, quantity }
         });
 
-        // Registrar o Histórico no Depósito
+        const date = new Date();
+
+        // Registrar o Histórico no Depósito (sempre data do sistema)
         await tx.depotMovement.create({
             data: {
                 productId,
                 type: 'IN',
                 quantity,
                 document,
-                notes: notes || 'Entrada manual em Depósito'
+                notes: notes || 'Entrada manual em Depósito',
+                date
             }
         });
 
         const product = await tx.product.findUnique({ where: { id: productId } });
+
+        if (unitCost && unitCost > 0) {
+            await tx.product.update({
+                where: { id: productId },
+                data: { cost: unitCost }
+            });
+            
+            await tx.priceHistory.create({
+                data: {
+                    productId,
+                    price: 0,
+                    cost: unitCost,
+                    invoice: document || null,
+                    date
+                }
+            });
+        }
+
+        if (dueDateString) {
+            const cost = unitCost || product?.cost || 0;
+            const totalCost = quantity * cost;
+            
+            if (totalCost > 0) {
+                await tx.financialEntry.create({
+                    data: {
+                        description: `Compra - ${product?.name || 'Insumo'} (Qtd: ${quantity}) - Matriz`,
+                        type: 'PAYABLE',
+                        amount: totalCost,
+                        dueDate: new Date(dueDateString),
+                        category: 'Fornecedor',
+                        notes: notes || `Entrada manual de depósito para ${product?.name || 'Insumo'}`,
+                        status: 'PENDING',
+                        reference: `${new Date().getMonth() + 1}/${new Date().getFullYear()}`
+                    }
+                });
+            }
+        }
+
         await createAuditLog("Entrada em Depósito", `Adicionou ${quantity} unidades de ${product?.name} ao depósito geral. Documento/NF: ${document || 'N/A'}`);
     });
 
@@ -289,7 +337,7 @@ export async function registerBatchDepotStockMovement(
     document: string,
     imageUrl: string | null,
     notes: string,
-    dateString: string
+    dueDateString?: string
 ) {
     const user = await verifyAuth();
     if (user.role !== 'ADMIN' && user.role !== 'MANAGER') throw new Error("Acesso negado");
@@ -300,12 +348,11 @@ export async function registerBatchDepotStockMovement(
     }
 
     try {
-        let date = new Date();
-        if (dateString) {
-            const parsedDate = new Date(dateString);
-            if (!isNaN(parsedDate.getTime())) {
-                date = parsedDate;
-            }
+        const date = new Date(); // A data de lançamento é sempre hoje
+
+        let totalCost = 0;
+        for (const mov of movements) {
+            totalCost += (Number(mov.quantity) || 0) * (Number(mov.price) || 0);
         }
 
         const result = await prisma.$transaction(async (tx) => {
@@ -359,6 +406,23 @@ export async function registerBatchDepotStockMovement(
                     });
                 }
             }
+
+            // Opcional: Criar lançamento de Conta a Pagar se dueDate for informado
+            if (dueDateString && totalCost > 0) {
+                await tx.financialEntry.create({
+                    data: {
+                        description: `NF ${document || 'S/N'} - Depósito Matriz`,
+                        type: 'PAYABLE',
+                        amount: totalCost,
+                        dueDate: new Date(dueDateString),
+                        category: 'Fornecedor',
+                        notes: notes || 'Gerado automaticamente via importação de NF no Depósito',
+                        status: 'PENDING',
+                        reference: `${new Date().getMonth() + 1}/${new Date().getFullYear()}`
+                    }
+                });
+            }
+
             return { success: true };
         }, {
             timeout: 30000 
