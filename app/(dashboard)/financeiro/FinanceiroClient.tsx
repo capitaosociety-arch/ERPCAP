@@ -1215,10 +1215,36 @@ export default function FinanceiroClient({ payload }: any) {
                                                     )}
                                                 </div>
                                             </div>
-                                            <div className="mt-8 bg-slate-900 text-white rounded-xl p-5 border border-slate-700 shadow-inner ring-4 ring-slate-900/5">
-                                                <p className="text-[11px] font-bold text-green-400 mb-1 uppercase tracking-wider">Dinheiro Em Gaveta Declarado</p>
-                                                <p className="text-3xl font-black flex items-center gap-2"><Banknote size={28} /> R$ {Number(selectedCashRegister.expectedCashInDrawer || 0).toFixed(2).replace('.', ',')}</p>
+                                            <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div className="bg-slate-800 text-white rounded-xl p-4 border border-slate-700 shadow-inner">
+                                                    <p className="text-[10px] font-bold text-slate-300 mb-1 uppercase tracking-wider">Dinheiro em Gaveta Esperado (Sistema)</p>
+                                                    <p className="text-xl font-black flex items-center gap-2"><Banknote size={20} className="text-slate-400" /> R$ {Number(selectedCashRegister.expectedCashInDrawer || 0).toFixed(2).replace('.', ',')}</p>
+                                                </div>
+                                                <div className="bg-slate-900 text-white rounded-xl p-4 border border-slate-700 shadow-inner">
+                                                    <p className="text-[10px] font-bold text-green-400 mb-1 uppercase tracking-wider">Dinheiro em Gaveta Declarado (Físico)</p>
+                                                    <p className="text-xl font-black flex items-center gap-2"><Banknote size={20} className="text-green-500" /> {selectedCashRegister.closingBal !== null ? `R$ ${Number(selectedCashRegister.closingBal).toFixed(2).replace('.', ',')}` : 'Caixa Aberto'}</p>
+                                                </div>
                                             </div>
+
+                                            {selectedCashRegister.closingBal !== null && (
+                                                <div className={`mt-4 rounded-xl p-4 border text-center ${
+                                                    Math.abs(selectedCashRegister.closingBal - selectedCashRegister.expectedCashInDrawer) < 0.01 
+                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                                                        : (selectedCashRegister.closingBal - selectedCashRegister.expectedCashInDrawer) < 0 
+                                                            ? 'bg-red-50 text-red-700 border-red-100' 
+                                                            : 'bg-blue-50 text-blue-700 border-blue-100'
+                                                }`}>
+                                                    <p className="text-[10px] font-black uppercase tracking-widest mb-1">Diferença de Caixa (Divergência Física)</p>
+                                                    <p className="text-lg font-black">
+                                                        {Math.abs(selectedCashRegister.closingBal - selectedCashRegister.expectedCashInDrawer) < 0.01 
+                                                            ? 'CONFERIDO E SEGURO (SEM DIVERGÊNCIA)' 
+                                                            : (selectedCashRegister.closingBal - selectedCashRegister.expectedCashInDrawer) < 0 
+                                                                ? `FALTA: - R$ ${Math.abs(selectedCashRegister.closingBal - selectedCashRegister.expectedCashInDrawer).toFixed(2).replace('.', ',')}` 
+                                                                : `SOBRA: + R$ ${Math.abs(selectedCashRegister.closingBal - selectedCashRegister.expectedCashInDrawer).toFixed(2).replace('.', ',')}`
+                                                        }
+                                                    </p>
+                                                </div>
+                                            )}
                                             {selectedCashRegister.totalSessionDiscounts > 0 && (
                                                 <div className="mt-4 bg-red-50 text-red-600 rounded-xl p-4 border border-red-100">
                                                     <p className="text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-2">

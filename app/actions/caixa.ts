@@ -225,6 +225,7 @@ export async function getRegisterSummary(registerId: string) {
     return JSON.parse(JSON.stringify({
         openOrdersCount,
         openingBal: registerToClose.openingBal,
+        closingBal: registerToClose.closingBal,
         expectedCashInDrawer,
         sumAllPayments,
         totalGrossSold,
