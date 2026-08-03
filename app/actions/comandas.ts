@@ -139,8 +139,63 @@ export async function processPayment(orderId: string, amount: number, method: st
     revalidatePath("/mesas");
     revalidatePath("/dashboard");
 }
-export async function removeItemFromOrder(orderItemId: string) {
+export async function updateOrderItemQuantity(orderItemId: string, newQuantity: number) {
+    if (newQuantity <= 0) throw new Error("A quantidade deve ser maior que zero.");
+
     await prisma.$transaction(async (tx) => {
+        const item = await tx.orderItem.findUnique({
+            where: { id: orderItemId },
+            include: { order: true }
+        });
+
+        if (!item) throw new Error("Item não encontrado");
+        if (item.order.status !== "OPEN") throw new Error("Apenas itens de comandas em aberto podem ser alterados");
+
+        const delta = newQuantity - item.quantity;
+        if (delta === 0) return;
+
+        // Verifica e ajusta o estoque caso seja produto (não serviço)
+        if (item.productId) {
+            const stock = await tx.stock.findUnique({ where: { productId: item.productId } });
+            if (stock) {
+                if (delta > 0 && stock.quantity < delta) {
+                    throw new Error(`Estoque insuficiente! Disponível: ${stock.quantity}`);
+                }
+                await tx.stock.update({
+                    where: { id: stock.id },
+                    data: { quantity: { decrement: delta } }
+                });
+
+                await tx.stockMovement.create({
+                    data: {
+                        productId: item.productId,
+                        type: delta > 0 ? "OUT_SALE" : "IN",
+                        quantity: Math.abs(delta),
+                        notes: `Ajuste de quantidade na comanda (${item.quantity} -> ${newQuantity})`
+                    }
+                });
+            }
+        }
+
+        // Atualiza o item e o total da ordem
+        const newSubtotal = newQuantity * item.unitPrice;
+        await tx.orderItem.update({
+            where: { id: orderItemId },
+            data: { quantity: newQuantity, subtotal: newSubtotal }
+        });
+
+        await tx.order.update({
+            where: { id: item.orderId },
+            data: { total: { increment: newSubtotal - item.subtotal } }
+        });
+    });
+
+    revalidatePath("/mesas");
+    revalidatePath("/dashboard");
+    revalidatePath("/pdv");
+}
+
+export async function removeItemFromOrder(orderItemId: string) {    await prisma.$transaction(async (tx) => {
         const item = await tx.orderItem.findUnique({
             where: { id: orderItemId },
             include: { order: true }

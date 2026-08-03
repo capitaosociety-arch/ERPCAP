@@ -68,7 +68,15 @@ export async function processCheckoutAction(cart: any[]) {
 export async function getOrderWithPayments(orderId: string) {
     return await prisma.order.findUnique({
         where: { id: orderId },
-        include: { payments: { orderBy: { date: 'desc' }} }
+        include: {
+            payments: { orderBy: { date: 'desc' } },
+            items: {
+                include: {
+                    product: true,
+                    service: true
+                }
+            }
+        }
     });
 }
 

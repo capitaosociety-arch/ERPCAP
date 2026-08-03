@@ -51,7 +51,8 @@ export async function upsertProduct(data: {
     price: number,
     cost: number,
     iconUrl: string,
-    unit: string
+    unit: string,
+    allowFractional?: boolean
 }) {
     if (!data.name || !data.categoryId || data.price < 0) {
         throw new Error("Campos obrigatórios inválidos");
@@ -68,7 +69,8 @@ export async function upsertProduct(data: {
                 price: data.price,
                 cost: data.cost,
                 iconUrl: data.iconUrl,
-                unit: data.unit
+                unit: data.unit,
+                allowFractional: data.allowFractional ?? false
             }
         });
 
@@ -77,7 +79,8 @@ export async function upsertProduct(data: {
             price: "Preço",
             cost: "Custo",
             unit: "Unidade",
-            categoryId: "Categoria"
+            categoryId: "Categoria",
+            allowFractional: "Permite quantidade quebrada"
         }) : `Editou informações do produto ${data.name}.`;
 
         await createAuditLog("Edição de Produto", details);
@@ -90,6 +93,7 @@ export async function upsertProduct(data: {
                 cost: data.cost,
                 iconUrl: data.iconUrl,
                 unit: data.unit,
+                allowFractional: data.allowFractional ?? false,
                 isActive: true
             }
         });

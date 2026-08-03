@@ -1,8 +1,15 @@
 node_modules
+.vercel
 .next
 .env
+.env.local
+.env.*.local
+.npm-cache
+.tmp-pg
 *.db
 *.db-journal
+dev.log
 dist
 build
 .DS_Store
+supabase/.temp

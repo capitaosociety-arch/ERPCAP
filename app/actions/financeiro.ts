@@ -85,6 +85,34 @@ export async function updateFinancialStatus(id: string, status: 'PAID' | 'PENDIN
     return entry;
 }
 
+export async function updateFinancialEntry(id: string, data: {
+    description: string;
+    type: 'PAYABLE' | 'RECEIVABLE';
+    amount: number;
+    dueDate: string;
+    category: string;
+    notes?: string;
+    method?: string;
+    reference?: string;
+}) {
+    const entry = await prisma.financialEntry.update({
+        where: { id },
+        data: {
+            description: data.description,
+            type: data.type,
+            amount: data.amount,
+            dueDate: new Date(data.dueDate),
+            category: data.category,
+            notes: data.notes || null,
+            method: data.method || null,
+            reference: data.reference || null
+        }
+    });
+
+    revalidatePath('/financeiro');
+    return { success: true, entry };
+}
+
 export async function deleteFinancialEntry(id: string) {
     await prisma.financialEntry.delete({
         where: { id }

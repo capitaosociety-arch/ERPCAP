@@ -8,10 +8,10 @@ import {
 import { 
     DollarSign, Wallet, Activity, Database, Users, Lock, Unlock, ArrowRight, Sheet, 
     Plus, Calendar, CheckCircle, XCircle, Trash2, Filter, AlertCircle, TrendingUp, TrendingDown, 
-    Eye, CreditCard, Banknote, ShoppingBag, RotateCcw, Landmark, Edit2
+    Eye, CreditCard, Banknote, ShoppingBag, RotateCcw, Landmark, Edit2, Search
 } from 'lucide-react';
 import { downloadExcel, downloadMultiSheetExcel } from '../../../lib/excel-export';
-import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry } from '../../actions/financeiro';
+import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry, updateFinancialEntry } from '../../actions/financeiro';
 import { getRegisterSummary, deleteCashSessionAction, getSessionsForDepositAction, recordCashDepositAction, recordGlobalCashDepositAction } from '../../actions/caixa';
 import { voidPaymentAction, editPaymentAction } from '../../actions/comandas';
 
@@ -27,13 +27,18 @@ export default function FinanceiroClient({ payload }: any) {
         totalRevenue, totalPendingPayable, totalPendingReceivable,
         dailyChart, methodChart, fieldChart, fieldNames,
         fieldCountChart, fieldCountNames,
-        cashRegisters, financialEntries
+        cashRegisters, financialEntries, dreMonths
     } = payload;
 
-    const [activeTab, setActiveTab] = useState('DASHBOARD'); // DASHBOARD, CASHIER, BILLING
+    const [activeTab, setActiveTab] = useState('DASHBOARD'); // DASHBOARD, CASHIER, BILLING, DRE
+    const [dreMonth, setDreMonth] = useState('');
     const [isPending, startTransition] = useTransition();
     const [showAddModal, setShowAddModal] = useState(false);
     const [filterType, setFilterType] = useState('ALL'); // ALL, PAYABLE, RECEIVABLE
+    const [searchTerm, setSearchTerm] = useState('');
+    const [billFrom, setBillFrom] = useState('');
+    const [billTo, setBillTo] = useState('');
+    const [editingEntry, setEditingEntry] = useState<any>(null);
 
     // Filtros de Data
     const [dateFrom, setDateFrom] = useState(searchParams.get('from') || '');
@@ -175,6 +180,31 @@ export default function FinanceiroClient({ payload }: any) {
         });
     };
 
+    const handleUpdateEntry = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingEntry) return;
+        if (!editingEntry.description || !editingEntry.amount || !editingEntry.dueDate) return;
+
+        startTransition(async () => {
+            try {
+                await updateFinancialEntry(editingEntry.id, {
+                    description: editingEntry.description,
+                    type: editingEntry.type,
+                    amount: parseFloat(String(editingEntry.amount).replace(',', '.')),
+                    dueDate: editingEntry.dueDate,
+                    category: editingEntry.category,
+                    notes: editingEntry.notes,
+                    method: editingEntry.method,
+                    reference: editingEntry.reference
+                });
+                setEditingEntry(null);
+                router.refresh();
+            } catch (err: any) {
+                alert("Erro ao editar lançamento: " + (err.message || "Tente novamente."));
+            }
+        });
+    };
+
     const handleDelete = async (id: string) => {
         if (!confirm('Tem certeza que deseja excluir este lançamento?')) return;
         startTransition(async () => {
@@ -214,8 +244,26 @@ export default function FinanceiroClient({ payload }: any) {
     };
 
     const filteredEntries = financialEntries.filter((e: any) => {
-        if (filterType === 'ALL') return true;
-        return e.type === filterType;
+        if (filterType !== 'ALL' && e.type !== filterType) return false;
+
+        const due = new Date(e.dueDate);
+        if (billFrom) {
+            const from = new Date(billFrom + 'T00:00:00');
+            if (due < from) return false;
+        }
+        if (billTo) {
+            const to = new Date(billTo + 'T23:59:59');
+            if (due > to) return false;
+        }
+        return true;
+    });
+
+    const searchedEntries = filteredEntries.filter((e: any) => {
+        const term = searchTerm.trim().toLowerCase();
+        if (!term) return true;
+        return [e.description, e.category, e.reference, e.method, e.notes, e.status]
+            .filter(Boolean)
+            .some((field: any) => String(field).toLowerCase().includes(term));
     });
 
     const handleVoidPayment = async (paymentId: string) => {
@@ -331,6 +379,9 @@ export default function FinanceiroClient({ payload }: any) {
                         </button>
                         <button onClick={() => setActiveTab('BILLING')} className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${activeTab === 'BILLING' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
                             <Calendar size={14} /> Contas Pagar/Receber
+                        </button>
+                        <button onClick={() => setActiveTab('DRE')} className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${activeTab === 'DRE' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                            <TrendingUp size={14} /> DRE Gerencial
                         </button>
                         <button onClick={() => setActiveTab('CASHIER')} className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${activeTab === 'CASHIER' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
                             <Wallet size={14} /> Sessões de Caixa
@@ -665,14 +716,58 @@ export default function FinanceiroClient({ payload }: any) {
 
             {activeTab === 'BILLING' && (
                 <div className="space-y-4">
-                    <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="flex flex-wrap justify-between items-center gap-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                         <div className="flex gap-2">
                             <button onClick={() => setFilterType('ALL')} className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${filterType === 'ALL' ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>Todos</button>
                             <button onClick={() => setFilterType('PAYABLE')} className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${filterType === 'PAYABLE' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>Contas a Pagar</button>
                             <button onClick={() => setFilterType('RECEIVABLE')} className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${filterType === 'RECEIVABLE' ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>Contas a Receber</button>
                         </div>
+                        <div className="flex items-center gap-2">
+                            <div className="relative">
+                                <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="date"
+                                    value={billFrom}
+                                    onChange={(e) => setBillFrom(e.target.value)}
+                                    title="Vencimento de"
+                                    className="bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none w-40"
+                                />
+                            </div>
+                            <span className="text-[10px] font-black text-gray-400 uppercase">até</span>
+                            <div className="relative">
+                                <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="date"
+                                    value={billTo}
+                                    onChange={(e) => setBillTo(e.target.value)}
+                                    title="Vencimento até"
+                                    className="bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none w-40"
+                                />
+                            </div>
+                            {(billFrom || billTo) && (
+                                <button
+                                    onClick={() => { setBillFrom(''); setBillTo(''); }}
+                                    className="text-[10px] font-bold text-red-500 hover:text-red-600 px-2 py-2 rounded-lg hover:bg-red-50 transition"
+                                    title="Limpar datas"
+                                >
+                                    Limpar datas
+                                </button>
+                            )}
+                        </div>
+                        <div className="flex flex-1 min-w-[200px] max-w-sm items-center gap-2">
+                            <div className="relative flex-1">
+                                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="text"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    placeholder="Buscar lançamento (descrição, categoria, ref., método...)"
+                                    className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none"
+                                />
+                            </div>
+                        </div>
                         <div className="text-gray-400 text-xs font-medium flex items-center gap-2">
-                            <Filter size={14} /> {filteredEntries.length} lançamentos encontrados
+                            <Filter size={14} /> {searchedEntries.length} lançamentos encontrados
                         </div>
                     </div>
 
@@ -690,7 +785,7 @@ export default function FinanceiroClient({ payload }: any) {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
-                                    {filteredEntries.map((e: any) => (
+                                    {searchedEntries.map((e: any) => (
                                         <tr key={e.id} className="hover:bg-slate-50/50 transition">
                                             <td className="p-4">
                                                 <div className="flex flex-col">
@@ -738,6 +833,22 @@ export default function FinanceiroClient({ payload }: any) {
                                             </td>
                                             <td className="p-4 px-6 text-right">
                                                 <div className="flex justify-end gap-2">
+                                                    <button
+                                                        onClick={() => setEditingEntry({
+                                                            id: e.id,
+                                                            description: e.description,
+                                                            type: e.type,
+                                                            amount: String(e.amount),
+                                                            dueDate: new Date(e.dueDate).toLocaleDateString('sv-SE'),
+                                                            category: e.category,
+                                                            notes: e.notes || '',
+                                                            method: e.method || 'PIX',
+                                                            reference: e.reference || ''
+                                                        })}
+                                                        className="p-2 bg-slate-50 text-slate-500 hover:bg-slate-700 hover:text-white rounded-lg transition" title="Editar lançamento"
+                                                    >
+                                                        <Edit2 size={18} />
+                                                    </button>
                                                     {e.status === 'PENDING' && (
                                                         <button
                                                             onClick={() => handleUpdateStatus(e.id, 'PAID')}
@@ -758,7 +869,7 @@ export default function FinanceiroClient({ payload }: any) {
                                             </td>
                                         </tr>
                                     ))}
-                                    {filteredEntries.length === 0 && (
+                                    {searchedEntries.length === 0 && (
                                         <tr><td colSpan={6} className="p-10 text-center text-gray-400 text-sm font-medium">Nenhum lançamento encontrado para os filtros selecionados.</td></tr>
                                     )}
                                 </tbody>
@@ -767,6 +878,228 @@ export default function FinanceiroClient({ payload }: any) {
                     </div>
                 </div>
             )}
+
+            {activeTab === 'DRE' && (() => {
+                const months = dreMonths || [];
+                const selected = dreMonth || (months.length > 0 ? months[months.length - 1].key : '');
+                const monthData = months.find((m: any) => m.key === selected);
+
+                // Categorias de despesas do mês selecionado
+                const expenseCats = monthData ? Object.entries(monthData.despesas || {}) : [];
+
+                // Total de despesas operacionais + financeiras + impostos
+                const totalExpenses = monthData ? (monthData.totalDespesasOp + monthData.despesasFinanceiras + monthData.impostos) : 0;
+
+                return (
+                    <div className="space-y-6">
+                        {/* TOOLBAR */}
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-center gap-4">
+                            <div className="flex items-center gap-2">
+                                <Calendar size={16} className="text-gray-400" />
+                                <select
+                                    value={selected}
+                                    onChange={(e) => setDreMonth(e.target.value)}
+                                    className="bg-gray-50 border border-gray-200 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none"
+                                >
+                                    {months.map((m: any) => {
+                                        const [mm, yyyy] = m.key.split('/');
+                                        const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+                                        return <option key={m.key} value={m.key}>{monthNames[parseInt(mm)-1]}/{yyyy}</option>;
+                                    })}
+                                </select>
+                            </div>
+                            <div className="text-xs text-gray-400 font-medium">
+                                Regime de caixa — receitas recebidas e despesas pagas no período.
+                            </div>
+                            <div className="flex-1"></div>
+                            {monthData && (
+                                <button
+                                    onClick={() => {
+                                        const sheet = [
+                                            {
+                                                sheetName: 'DRE Gerencial',
+                                                data: [
+                                                    { 'Conta': 'Receita de Vendas (PDV/Comandas)', 'Valor': monthData.receitasVendas, 'Percentual': '' },
+                                                    { 'Conta': 'Receita de Mensalidades', 'Valor': monthData.receitasMensalidades, 'Percentual': '' },
+                                                    { 'Conta': 'Outras Receitas', 'Valor': monthData.receitasOutras, 'Percentual': '' },
+                                                    { 'Conta': 'Receita Bruta Total', 'Valor': monthData.totalReceitas, 'Percentual': '100%' },
+                                                    { 'Conta': '(-) CMV (Custo das Mercadorias Vendidas)', 'Valor': -monthData.cmv, 'Percentual': `${monthData.totalReceitas > 0 ? ((monthData.cmv / monthData.totalReceitas) * 100).toFixed(1) : 0}%` },
+                                                    { 'Conta': 'Lucro Bruto', 'Valor': monthData.lucroBruto, 'Percentual': `${monthData.margemBruta}%` },
+                                                    ...expenseCats.map(([k, v]: any) => ({ 'Conta': `(-) ${k}`, 'Valor': -v, 'Percentual': `${monthData.totalReceitas > 0 ? ((v / monthData.totalReceitas) * 100).toFixed(1) : 0}%` })),
+                                                    { 'Conta': '(-) Despesas Financeiras', 'Valor': -monthData.despesasFinanceiras, 'Percentual': '' },
+                                                    { 'Conta': '(-) Impostos', 'Valor': -monthData.impostos, 'Percentual': '' },
+                                                    { 'Conta': 'EBITDA', 'Valor': monthData.ebitda, 'Percentual': `${monthData.margemEbitda}%` },
+                                                    { 'Conta': 'Resultado Líquido', 'Valor': monthData.resultadoLiquido, 'Percentual': `${monthData.margemLiquida}%` }
+                                                ]
+                                            }
+                                        ];
+                                        downloadMultiSheetExcel(sheet, `DRE_Gerencial_${selected.replace('/','_')}`);
+                                    }}
+                                    className="bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-slate-900/20 flex items-center gap-2 hover:scale-105 active:scale-95 transition"
+                                >
+                                    <Sheet size={16} className="text-emerald-400" /> Exportar Excel
+                                </button>
+                            )}
+                        </div>
+
+                        {/* CARDS RESUMO */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm relative overflow-hidden">
+                                <p className="text-[10px] font-black text-gray-400 tracking-widest mb-1 uppercase flex items-center gap-2"><TrendingUp size={14} className="text-emerald-500" /> Receita Bruta</p>
+                                <h2 className="text-2xl font-black text-slate-800">R$ {Number(monthData?.totalReceitas || 0).toFixed(2).replace('.', ',')}</h2>
+                                <div className="absolute right-0 bottom-0 p-2 opacity-5"><TrendingUp size={64} className="text-emerald-500" /></div>
+                            </div>
+                            <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm relative overflow-hidden">
+                                <p className="text-[10px] font-black text-gray-400 tracking-widest mb-1 uppercase flex items-center gap-2"><Activity size={14} className="text-blue-500" /> Lucro Bruto</p>
+                                <h2 className="text-2xl font-black text-slate-800">R$ {Number(monthData?.lucroBruto || 0).toFixed(2).replace('.', ',')}</h2>
+                                <p className="text-[10px] font-bold text-gray-400 mt-1">{monthData?.margemBruta || 0}% de margem</p>
+                            </div>
+                            <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm relative overflow-hidden">
+                                <p className="text-[10px] font-black text-gray-400 tracking-widest mb-1 uppercase flex items-center gap-2"><Landmark size={14} className="text-indigo-500" /> EBITDA</p>
+                                <h2 className={`text-2xl font-black ${(monthData?.ebitda || 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>R$ {Number(monthData?.ebitda || 0).toFixed(2).replace('.', ',')}</h2>
+                                <p className="text-[10px] font-bold text-gray-400 mt-1">{monthData?.margemEbitda || 0}% de margem</p>
+                            </div>
+                            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl relative overflow-hidden">
+                                <p className="text-[10px] font-black text-slate-400 tracking-widest mb-1 uppercase flex items-center gap-2"><DollarSign size={14} className="text-white" /> Resultado Líquido</p>
+                                <h2 className={`text-2xl font-black ${(monthData?.resultadoLiquido || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>R$ {Number(monthData?.resultadoLiquido || 0).toFixed(2).replace('.', ',')}</h2>
+                                <p className="text-[10px] font-bold text-slate-400 mt-1">{monthData?.margemLiquida || 0}% de margem</p>
+                            </div>
+                        </div>
+
+                        {/* DEMONSTRATIVO DRE */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div className="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                                <div className="p-5 bg-slate-50 border-b border-gray-100 flex justify-between items-center">
+                                    <div>
+                                        <h3 className="font-black text-slate-800 text-sm">Demonstrativo de Resultados (DRE)</h3>
+                                        <p className="text-[11px] text-gray-400 font-medium mt-0.5">{selected}</p>
+                                    </div>
+                                </div>
+
+                                {!monthData || monthData.totalReceitas === 0 && totalExpenses === 0 ? (
+                                    <div className="p-12 text-center text-gray-400 font-medium">Sem movimentação financeira neste mês.</div>
+                                ) : (
+                                    <div className="divide-y divide-gray-50">
+                                        {/* RECEITAS */}
+                                        <div className="bg-emerald-50/40 px-6 py-2">
+                                            <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">1. Receitas</span>
+                                        </div>
+                                        <div className="px-6 py-3 flex justify-between items-center">
+                                            <span className="text-sm font-medium text-slate-600 pl-4">Vendas (PDV / Comandas)</span>
+                                            <span className="text-sm font-bold text-emerald-600">R$ {Number(monthData.receitasVendas).toFixed(2).replace('.', ',')}</span>
+                                        </div>
+                                        <div className="px-6 py-3 flex justify-between items-center">
+                                            <span className="text-sm font-medium text-slate-600 pl-4">Mensalidades</span>
+                                            <span className="text-sm font-bold text-emerald-600">R$ {Number(monthData.receitasMensalidades).toFixed(2).replace('.', ',')}</span>
+                                        </div>
+                                        <div className="px-6 py-3 flex justify-between items-center">
+                                            <span className="text-sm font-medium text-slate-600 pl-4">Outras Receitas (contas a receber pagas)</span>
+                                            <span className="text-sm font-bold text-emerald-600">R$ {Number(monthData.receitasOutras).toFixed(2).replace('.', ',')}</span>
+                                        </div>
+                                        <div className="px-6 py-3 flex justify-between items-center bg-emerald-50/40">
+                                            <span className="text-sm font-black text-slate-800">Receita Bruta Total</span>
+                                            <span className="text-base font-black text-emerald-600">R$ {Number(monthData.totalReceitas).toFixed(2).replace('.', ',')}</span>
+                                        </div>
+
+                                        {/* CMV */}
+                                        <div className="px-6 py-3 flex justify-between items-center">
+                                            <span className="text-sm font-medium text-slate-600 pl-4">(-) CMV — Custo das Mercadorias Vendidas</span>
+                                            <span className="text-sm font-bold text-red-500">- R$ {Number(monthData.cmv).toFixed(2).replace('.', ',')}</span>
+                                        </div>
+                                        <div className="px-6 py-3 flex justify-between items-center bg-slate-50">
+                                            <span className="text-sm font-black text-slate-800">= Lucro Bruto</span>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-[10px] font-black text-gray-400">{monthData.margemBruta}%</span>
+                                                <span className="text-base font-black text-blue-600">R$ {Number(monthData.lucroBruto).toFixed(2).replace('.', ',')}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* DESPESAS */}
+                                        <div className="bg-red-50/40 px-6 py-2">
+                                            <span className="text-[10px] font-black text-red-600 uppercase tracking-widest">2. Despesas Operacionais</span>
+                                        </div>
+                                        {expenseCats.length === 0 ? (
+                                            <div className="px-6 py-3 text-sm text-gray-400 pl-8">Nenhuma despesa operacional lançada neste mês.</div>
+                                        ) : expenseCats.map(([cat, val]: any) => (
+                                            <div key={cat} className="px-6 py-3 flex justify-between items-center">
+                                                <span className="text-sm font-medium text-slate-600 pl-4">{cat}</span>
+                                                <span className="text-sm font-bold text-red-500">- R$ {Number(val).toFixed(2).replace('.', ',')}</span>
+                                            </div>
+                                        ))}
+                                        {monthData.despesasFinanceiras > 0 && (
+                                            <div className="px-6 py-3 flex justify-between items-center">
+                                                <span className="text-sm font-medium text-slate-600 pl-4">Despesas Financeiras (juros/tarifas)</span>
+                                                <span className="text-sm font-bold text-red-500">- R$ {Number(monthData.despesasFinanceiras).toFixed(2).replace('.', ',')}</span>
+                                            </div>
+                                        )}
+                                        {monthData.impostos > 0 && (
+                                            <div className="px-6 py-3 flex justify-between items-center">
+                                                <span className="text-sm font-medium text-slate-600 pl-4">Impostos e Taxas</span>
+                                                <span className="text-sm font-bold text-red-500">- R$ {Number(monthData.impostos).toFixed(2).replace('.', ',')}</span>
+                                            </div>
+                                        )}
+                                        <div className="px-6 py-3 flex justify-between items-center bg-slate-50">
+                                            <span className="text-sm font-black text-slate-800">Total de Despesas</span>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-[10px] font-black text-gray-400">{monthData.totalReceitas > 0 ? ((totalExpenses / monthData.totalReceitas) * 100).toFixed(1) : 0}%</span>
+                                                <span className="text-base font-black text-red-500">- R$ {Number(totalExpenses).toFixed(2).replace('.', ',')}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* EBITDA */}
+                                        <div className="px-6 py-3 flex justify-between items-center bg-indigo-50/50">
+                                            <span className="text-sm font-black text-indigo-700">= EBITDA (Resultado Operacional)</span>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-[10px] font-black text-indigo-400">{monthData.margemEbitda}%</span>
+                                                <span className={`text-base font-black ${monthData.ebitda >= 0 ? 'text-indigo-600' : 'text-red-500'}`}>R$ {Number(monthData.ebitda).toFixed(2).replace('.', ',')}</span>
+                                            </div>
+                                        </div>
+
+                                        {/* RESULTADO LÍQUIDO */}
+                                        <div className="px-6 py-4 flex justify-between items-center bg-slate-900">
+                                            <span className="text-sm font-black text-white">= Resultado Líquido do Período</span>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-[10px] font-black text-slate-400">{monthData.margemLiquida}%</span>
+                                                <span className={`text-lg font-black ${monthData.resultadoLiquido >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>R$ {Number(monthData.resultadoLiquido).toFixed(2).replace('.', ',')}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* COMPARATIVO MENSAL */}
+                            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 flex flex-col min-w-0">
+                                <h3 className="font-bold text-sm text-slate-800 mb-6">Evolução Mensal</h3>
+                                {months.length === 0 ? (
+                                    <div className="flex items-center justify-center h-full text-sm text-gray-400 font-medium">Sem dados.</div>
+                                ) : (
+                                    <div className="w-full h-72">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={months.map((m: any) => ({
+                                                name: m.key,
+                                                'Receitas': m.totalReceitas,
+                                                'Resultado': m.resultadoLiquido
+                                            }))} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 9 }} axisLine={false} tickLine={false} />
+                                                <YAxis tick={{ fill: '#94a3b8', fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(val) => `R$ ${val}`} />
+                                                <RTooltip
+                                                    formatter={(value: any, name: any) => [`R$ ${Number(value || 0).toFixed(2).replace('.', ',')}`, name]}
+                                                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }}
+                                                    cursor={{ fill: '#f8fafc' }}
+                                                />
+                                                <Bar dataKey="Receitas" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={24} />
+                                                <Bar dataKey="Resultado" fill="#1e293b" radius={[4, 4, 0, 0]} maxBarSize={24} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                )}
+                                <p className="text-[10px] text-gray-400 font-medium mt-4 text-center">Comparativo de receitas e resultado líquido por mês no período filtrado.</p>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {activeTab === 'CASHIER' && (
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1066,6 +1399,149 @@ export default function FinanceiroClient({ payload }: any) {
                                     className="flex-[2] bg-slate-900 text-white font-black py-3 rounded-xl hover:bg-slate-800 shadow-xl shadow-slate-900/20 active:scale-95 transition flex items-center justify-center gap-2"
                                 >
                                     {isPending ? <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div> : (newEntry.installments > 1 ? `Gerar ${newEntry.installments} Parcelas` : 'Confirmar Lançamento')}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {editingEntry && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl w-full max-w-xl shadow-2xl animate-in zoom-in-95 overflow-hidden border border-gray-100">
+                        <form onSubmit={handleUpdateEntry}>
+                            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-slate-50">
+                                <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><Edit2 className="text-mrts-blue" /> Editar Lançamento</h2>
+                                <button type="button" onClick={() => setEditingEntry(null)} className="text-gray-400 hover:text-gray-600 bg-white p-2 rounded-full shadow-sm">
+                                    <XCircle size={20} />
+                                </button>
+                            </div>
+
+                            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Tipo de Registro</label>
+                                        <select
+                                            value={editingEntry.type}
+                                            onChange={(e) => setEditingEntry({ ...editingEntry, type: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-mrts-blue font-bold text-slate-700 transition"
+                                        >
+                                            <option value="PAYABLE">Conta a Pagar (Saída)</option>
+                                            <option value="RECEIVABLE">Conta a Receber (Entrada)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Categoria</label>
+                                        <input
+                                            type="text"
+                                            list="entryCategories"
+                                            value={editingEntry.category}
+                                            onChange={(e) => setEditingEntry({ ...editingEntry, category: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-mrts-blue font-bold text-slate-700 transition"
+                                        />
+                                        <datalist id="entryCategories">
+                                            <option value="Diversos" />
+                                            <option value="Fornecedor" />
+                                            <option value="Aluguel" />
+                                            <option value="Energia / Água" />
+                                            <option value="Internet / Software" />
+                                            <option value="Salário / Comissões" />
+                                            <option value="Marketing / Tráfego" />
+                                            <option value="Manutenção" />
+                                            <option value="Impostos / Taxas" />
+                                            <option value="Equipamentos / Móveis" />
+                                            <option value="Limpeza / Higiene" />
+                                            <option value="Pró-labore" />
+                                        </datalist>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Descrição Curta</label>
+                                    <input
+                                        type="text"
+                                        value={editingEntry.description}
+                                        onChange={(e) => setEditingEntry({ ...editingEntry, description: e.target.value })}
+                                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-mrts-blue font-bold text-slate-700 transition"
+                                        required
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Valor (R$)</label>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            value={editingEntry.amount}
+                                            onChange={(e) => setEditingEntry({ ...editingEntry, amount: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-mrts-blue font-black text-slate-900 transition text-lg"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Vencimento</label>
+                                        <input
+                                            type="date"
+                                            value={editingEntry.dueDate}
+                                            onChange={(e) => setEditingEntry({ ...editingEntry, dueDate: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-mrts-blue font-bold text-slate-700 transition"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Forma de Pagamento</label>
+                                        <select
+                                            value={editingEntry.method}
+                                            onChange={(e) => setEditingEntry({ ...editingEntry, method: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-mrts-blue font-bold text-slate-700 transition"
+                                        >
+                                            <option value="PIX">Pix</option>
+                                            <option value="DINHEIRO">Dinheiro</option>
+                                            <option value="BOLETO">Boleto</option>
+                                            <option value="CARTÃO">Cartão (Crédito/Débito)</option>
+                                            <option value="TRANSFERÊNCIA">Transferência / TED</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Mês de Referência (Competência)</label>
+                                        <input
+                                            type="text"
+                                            placeholder="MM/AAAA"
+                                            value={editingEntry.reference}
+                                            onChange={(e) => setEditingEntry({ ...editingEntry, reference: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-mrts-blue font-bold text-slate-700 transition"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Observações (Opcional)</label>
+                                    <textarea
+                                        value={editingEntry.notes}
+                                        onChange={(e) => setEditingEntry({ ...editingEntry, notes: e.target.value })}
+                                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-2 outline-none focus:border-mrts-blue font-medium text-slate-600 transition h-20 resize-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="p-6 bg-slate-50 border-t border-gray-100 flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingEntry(null)}
+                                    className="flex-1 bg-white text-gray-500 font-bold py-3 rounded-xl border border-gray-200 hover:bg-gray-50 transition"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isPending}
+                                    className="flex-[2] bg-slate-900 text-white font-black py-3 rounded-xl hover:bg-slate-800 shadow-xl shadow-slate-900/20 active:scale-95 transition flex items-center justify-center gap-2"
+                                >
+                                    {isPending ? <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div> : 'Salvar Alterações'}
                                 </button>
                             </div>
                         </form>

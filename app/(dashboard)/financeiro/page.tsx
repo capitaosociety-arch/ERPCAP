@@ -24,7 +24,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   const rangeLimit = diffDays > 366 ? 366 : diffDays; // Limite de 1 ano para evitar crash de memória
 
   // Execute all heavy queries in parallel
-  const [payments, subPayments, rentals, cashRegisters, financialEntries] = await Promise.all([
+  const [payments, subPayments, rentals, cashRegisters, financialEntries, stockMovements] = await Promise.all([
     prisma.payment.findMany({
       where: { date: { gte: startDate, lte: endDate } },
       include: { 
@@ -53,6 +53,10 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
     }),
     prisma.financialEntry.findMany({
       orderBy: { dueDate: 'asc' }
+    }),
+    prisma.stockMovement.findMany({
+      where: { type: 'OUT_SALE', date: { gte: startDate, lte: endDate } },
+      include: { product: true }
     })
   ]);
 
@@ -144,6 +148,104 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
           if (entry.type === 'RECEIVABLE') totalPendingReceivable += entry.amount;
       }
   });
+
+  // --- DRE GERENCIAL (Demonstrativo de Resultados) ---
+  // Regime de caixa, agrupado por mês/ano. Receitas realizadas = pagamentos recebidos
+  // no período. Despesas = contas pagas (paymentDate) no período.
+  type DreBucket = {
+      key: string; // MM/YYYY
+      receitasVendas: number;
+      receitasMensalidades: number;
+      receitasOutras: number; // contas a receber pagas
+      cmv: number; // custo das mercadorias vendidas (estoque OUT_SALE)
+      despesas: Record<string, number>; // por categoria de conta paga
+      despesasFinanceiras: number; // juros/multas etc (categoria específica, opcional)
+      impostos: number;
+  };
+
+  const dreMap = new Map<string, DreBucket>();
+  const getBucket = (key: string): DreBucket => {
+      if (!dreMap.has(key)) {
+          dreMap.set(key, { key, receitasVendas: 0, receitasMensalidades: 0, receitasOutras: 0, cmv: 0, despesas: {}, despesasFinanceiras: 0, impostos: 0 });
+      }
+      return dreMap.get(key)!;
+  };
+  const monthKey = (d: Date) => {
+      const f = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit' });
+      const parts = f.formatToParts(d);
+      const y = parts.find(p => p.type === 'year')!.value;
+      const m = parts.find(p => p.type === 'month')!.value;
+      return `${m}/${y}`;
+  };
+
+  // Receitas de vendas (payments de comandas/PDV)
+  payments.forEach(p => {
+      const b = getBucket(monthKey(p.date));
+      b.receitasVendas += p.amount;
+  });
+
+  // Mensalidades
+  subPayments.forEach(p => {
+      const b = getBucket(monthKey(p.paymentDate));
+      b.receitasMensalidades += p.amount;
+  });
+
+  // CMV: custo dos produtos vendidos no período (movimentos de saída de venda)
+  stockMovements.forEach(m => {
+      if (m.type === 'OUT_SALE') {
+          const b = getBucket(monthKey(m.date));
+          b.cmv += (m.quantity * (m.product?.cost || 0));
+      }
+  });
+
+  // Contas a pagar/receber pagas no período (regime de caixa)
+  financialEntries.forEach(entry => {
+      if (entry.status !== 'PAID') return;
+      const paidAt = entry.paymentDate || entry.dueDate;
+      const b = getBucket(monthKey(paidAt));
+
+      if (entry.type === 'RECEIVABLE') {
+          // Receitas extras realizadas (não contabilizadas em vendas)
+          b.receitasOutras += entry.amount;
+      } else {
+          const cat = (entry.category || 'Diversos').toLowerCase();
+          if (cat.includes('imposto') || cat.includes('taxa') || cat.includes('darf') || cat.includes('simples')) {
+              b.impostos += entry.amount;
+          } else if (cat.includes('juros') || cat.includes('multa') || cat.includes('financeiro') || cat.includes('tarifa')) {
+              b.despesasFinanceiras += entry.amount;
+          } else {
+              const catName = entry.category || 'Diversos';
+              b.despesas[catName] = (b.despesas[catName] || 0) + entry.amount;
+            }
+      }
+  });
+
+  // Se não houver nada no range, garante que o mês atual aparece
+  const dreMonths = Array.from(dreMap.entries()).map(([key, b]) => {
+      const totalReceitas = b.receitasVendas + b.receitasMensalidades + b.receitasOutras;
+      const totalDespesasOp = Object.values(b.despesas).reduce((a, v) => a + v, 0);
+      const lucroBruto = totalReceitas - b.cmv;
+      const ebitda = lucroBruto - totalDespesasOp;
+      const resultadoLiquido = ebitda - b.impostos - b.despesasFinanceiras;
+      return {
+          key,
+          receitasVendas: Number(b.receitasVendas.toFixed(2)),
+          receitasMensalidades: Number(b.receitasMensalidades.toFixed(2)),
+          receitasOutras: Number(b.receitasOutras.toFixed(2)),
+          totalReceitas: Number(totalReceitas.toFixed(2)),
+          cmv: Number(b.cmv.toFixed(2)),
+          lucroBruto: Number(lucroBruto.toFixed(2)),
+          despesas: b.despesas,
+          totalDespesasOp: Number(totalDespesasOp.toFixed(2)),
+          despesasFinanceiras: Number(b.despesasFinanceiras.toFixed(2)),
+          impostos: Number(b.impostos.toFixed(2)),
+          ebitda: Number(ebitda.toFixed(2)),
+          resultadoLiquido: Number(resultadoLiquido.toFixed(2)),
+          margemBruta: totalReceitas > 0 ? Number((lucroBruto / totalReceitas * 100).toFixed(1)) : 0,
+          margemEbitda: totalReceitas > 0 ? Number((ebitda / totalReceitas * 100).toFixed(1)) : 0,
+          margemLiquida: totalReceitas > 0 ? Number((resultadoLiquido / totalReceitas * 100).toFixed(1)) : 0
+      };
+  }).sort((a, b) => a.key.localeCompare(b.key));
 
   // Formatar Arrays do Recharts
   const dailyChart = Object.keys(dailyRevenueMap).map(date => ({
@@ -309,7 +411,8 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       fieldCountChart,
       fieldCountNames: allFieldNames,
       cashRegisters,
-      financialEntries
+      financialEntries,
+      dreMonths
   };
 
   return <FinanceiroClient payload={payload} />;

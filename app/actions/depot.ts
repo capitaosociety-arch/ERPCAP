@@ -337,7 +337,9 @@ export async function registerBatchDepotStockMovement(
     document: string,
     imageUrl: string | null,
     notes: string,
-    dueDateString?: string
+    dueDateString?: string,
+    issueDateString?: string,
+    receivedDateString?: string
 ) {
     const user = await verifyAuth();
     if (user.role !== 'ADMIN' && user.role !== 'MANAGER') throw new Error("Acesso negado");
@@ -384,6 +386,8 @@ export async function registerBatchDepotStockMovement(
                         notes: notes || "Entrada via NF (IA) no Depósito",
                         document: document || null,
                         imageUrl: imageUrl || null,
+                        issueDate: issueDateString ? new Date(issueDateString) : null,
+                        receivedDate: receivedDateString ? new Date(receivedDateString) : null,
                         date
                     }
                 });

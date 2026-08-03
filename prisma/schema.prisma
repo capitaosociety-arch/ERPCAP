@@ -104,7 +104,7 @@ model OrderItem {
   orderId     String
   productId   String?
   serviceId   String?
-  quantity    Int      @default(1)
+  quantity    Float    @default(1)
   unitPrice   Float
   subtotal    Float
   notes       String?
@@ -130,6 +130,7 @@ model Product {
   unit        String   @default("UN")
   isActive    Boolean  @default(true)
   allowAddons Boolean  @default(false)
+  allowFractional Boolean @default(false)
   
   category    ProductCategory @relation(fields: [categoryId], references: [id])
   
@@ -358,16 +359,18 @@ model DepotStock {
 }
 
 model DepotMovement {
-  id          String   @id @default(cuid())
-  productId   String
-  type        String   // IN, OUT_TRANSFER, LOSS, ADJUSTMENT
-  quantity    Float
-  notes       String?
-  document    String?  // Number of NF ou Recibo
-  imageUrl    String?  // Link para imagem da nota
-  date        DateTime @default(now())
+  id           String    @id @default(cuid())
+  productId    String
+  type         String    // IN, OUT_TRANSFER, LOSS, ADJUSTMENT
+  quantity     Float
+  notes        String?
+  document     String?   // Number of NF ou Recibo
+  imageUrl     String?   // Link para imagem da nota
+  issueDate    DateTime? // Data de emissão da NF
+  receivedDate DateTime? // Data de recebimento dos produtos
+  date         DateTime  @default(now())
 
-  product     Product  @relation(fields: [productId], references: [id])
+  product      Product   @relation(fields: [productId], references: [id])
 
   @@index([productId])
   @@index([date])

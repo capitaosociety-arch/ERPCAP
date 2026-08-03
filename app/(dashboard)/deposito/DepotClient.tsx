@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react';
-import { Search, Warehouse, ArrowRightLeft, PackagePlus, AlertTriangle, X, Check, Box, Clock, ShieldCheck, ThumbsDown, Camera, Edit, RefreshCw, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, AlertCircle, Upload, Plus } from 'lucide-react';
+import { Search, Warehouse, ArrowRightLeft, PackagePlus, AlertTriangle, X, Check, Box, Clock, ShieldCheck, ThumbsDown, Camera, Edit, RefreshCw, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, AlertCircle, Upload, Plus, CalendarRange } from 'lucide-react';
 import { addDepotStock, requestTransfer, authorizeTransfer, rejectTransfer, adjustDepotStockLoss, directTransfer, updateDepotMinStock, registerBatchDepotStockMovement } from '../../actions/depot';
 import { quickCreateProductFromInvoice } from '../../actions/products';
 
@@ -19,6 +19,8 @@ export default function DepotClient({
     const [activeTab, setActiveTab] = useState<'inventory' | 'requests'>('inventory');
     const [filter, setFilter] = useState<'ALL' | 'LOW' | 'HISTORY'>('ALL');
     const [search, setSearch] = useState("");
+    const [movFrom, setMovFrom] = useState("");
+    const [movTo, setMovTo] = useState("");
     const [isPending, startTransition] = useTransition();
     const [requests, setRequests] = useState<any[]>(initialRequests);
     const [processingId, setProcessingId] = useState<string | null>(null);
@@ -36,6 +38,8 @@ export default function DepotClient({
     const [parsedNfData, setParsedNfData] = useState<any>(null);
     const [nfImageUrl, setNfImageUrl] = useState<string | null>(null);
     const [mappedItems, setMappedItems] = useState<Record<number, any>>({});
+    const [nfIssueDateStr, setNfIssueDateStr] = useState("");
+    const [nfReceivedDateStr, setNfReceivedDateStr] = useState("");
     const [nfDueDateStr, setNfDueDateStr] = useState("");
     const [verifiedRows, setVerifiedRows] = useState<Set<number>>(new Set());
     const [imgZoom, setImgZoom] = useState(1);
@@ -78,7 +82,18 @@ export default function DepotClient({
     const allMovements = initialMovements.filter(m => 
         (m.product?.name || '').toLowerCase().includes(safeSearch) ||
         (m.document && m.document.toLowerCase().includes(safeSearch))
-    );
+    ).filter(m => {
+        const d = new Date(m.date);
+        if (movFrom) {
+            const from = new Date(movFrom + 'T00:00:00');
+            if (d < from) return false;
+        }
+        if (movTo) {
+            const to = new Date(movTo + 'T23:59:59');
+            if (d > to) return false;
+        }
+        return true;
+    });
 
     // Handlers
     const openAddModal = (p: any) => { 
@@ -134,7 +149,10 @@ export default function DepotClient({
             const res = await apiRes.json();
             if (res.success && res.data) {
                 setParsedNfData(res.data);
-                if (res.data.data && /^\d{4}-\d{2}-\d{2}$/.test(res.data.data)) setNfDueDateStr(res.data.data);
+                // Data de emissão vem da IA; recebimento e vencimento ficam em branco para preenchimento manual
+                setNfIssueDateStr(res.data.data && /^\d{4}-\d{2}-\d{2}$/.test(res.data.data) ? res.data.data : '');
+                setNfReceivedDateStr('');
+                setNfDueDateStr('');
                 setVerifiedRows(new Set());
                 setImgZoom(1);
                 setImgPos({ x: 0, y: 0 });
@@ -193,7 +211,7 @@ export default function DepotClient({
 
         startTransition(async () => {
             try {
-                const res = await registerBatchDepotStockMovement(movementsToSave, parsedNfData?.numero_nf || '', nfImageUrl, "Entrada NF Matriz (IA)", nfDueDateStr || undefined);
+                const res = await registerBatchDepotStockMovement(movementsToSave, parsedNfData?.numero_nf || '', nfImageUrl, "Entrada NF Matriz (IA)", nfDueDateStr || undefined, nfIssueDateStr || undefined, nfReceivedDateStr || undefined);
                 if (res.success) {
                     window.location.reload();
                 } else {
@@ -306,6 +324,35 @@ export default function DepotClient({
                         </div>
                     </div>
 
+                    {filter === 'HISTORY' && (
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-4 bg-white border border-gray-100 rounded-xl p-3 shadow-sm">
+                            <div className="flex items-center gap-2 flex-1 flex-wrap">
+                                <CalendarRange size={16} className="text-gray-400" />
+                                <input
+                                    type="date"
+                                    value={movFrom}
+                                    onChange={e => setMovFrom(e.target.value)}
+                                    className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-mrts-blue"
+                                />
+                                <span className="text-gray-400 text-sm">até</span>
+                                <input
+                                    type="date"
+                                    value={movTo}
+                                    onChange={e => setMovTo(e.target.value)}
+                                    className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-mrts-blue"
+                                />
+                                {(movFrom || movTo) && (
+                                    <button onClick={() => { setMovFrom(""); setMovTo(""); }} className="text-xs font-bold text-red-500 hover:text-red-600 transition flex items-center gap-1 px-2 py-1">
+                                        <X size={13}/> Limpar datas
+                                    </button>
+                                )}
+                            </div>
+                            <span className="text-xs text-gray-400 font-medium shrink-0">
+                                {allMovements.length} lançamento(s)
+                            </span>
+                        </div>
+                    )}
+
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                         {filter !== 'HISTORY' ? (
                             <div className="overflow-x-auto">
@@ -395,6 +442,8 @@ export default function DepotClient({
                                             <th className="p-4">Produto</th>
                                             <th className="p-4">Tipo</th>
                                             <th className="p-4 text-center">Documento / NF</th>
+                                            <th className="p-4 text-center">Emissão</th>
+                                            <th className="p-4 text-center">Recebimento</th>
                                             <th className="p-4 text-right">Qtd</th>
                                             <th className="p-4">Anexo</th>
                                         </tr>
@@ -416,6 +465,12 @@ export default function DepotClient({
                                                 <td className="p-4 text-center">
                                                     <span className="text-xs font-medium text-slate-500">{mov.document || '-'}</span>
                                                 </td>
+                                                <td className="p-4 text-center">
+                                                    <span className="text-xs font-medium text-slate-500">{mov.issueDate ? new Date(mov.issueDate).toLocaleDateString('pt-BR') : '-'}</span>
+                                                </td>
+                                                <td className="p-4 text-center">
+                                                    <span className="text-xs font-medium text-slate-500">{mov.receivedDate ? new Date(mov.receivedDate).toLocaleDateString('pt-BR') : '-'}</span>
+                                                </td>
                                                 <td className="p-4 text-right text-base font-black">
                                                     <span className={mov.type === 'IN' ? 'text-emerald-500' : 'text-amber-500'}>
                                                         {mov.type === 'IN' ? '+' : '-'}{mov.quantity}
@@ -431,7 +486,7 @@ export default function DepotClient({
                                             </tr>
                                         ))}
                                         {allMovements.length === 0 && (
-                                            <tr><td colSpan={6} className="p-10 text-center text-slate-400 font-bold">Nenhum lançamento no histórico.</td></tr>
+                                            <tr><td colSpan={8} className="p-10 text-center text-slate-400 font-bold">Nenhum lançamento no histórico.</td></tr>
                                         )}
                                     </tbody>
                                 </table>
@@ -586,9 +641,35 @@ export default function DepotClient({
                                                 <div className="w-10 h-10 bg-emerald-500 text-white rounded-full flex items-center justify-center"><Check size={20} strokeWidth={3}/></div>
                                                 <div><p className="font-black text-slate-800 text-sm">Dados Extraídos</p><p className="text-[10px] text-gray-400 font-bold uppercase">{parsedNfData.fornecedor || 'Fornecedor não identificado'}</p></div>
                                             </div>
-                                            <div className="flex gap-4">
+                                            <div className="flex flex-wrap gap-4">
                                                 <div><label className="text-[9px] text-gray-400 font-black uppercase">Nº do Documento</label><input type="text" value={parsedNfData.numero_nf || ''} onChange={e => setParsedNfData({...parsedNfData, numero_nf: e.target.value})} className="block font-black text-mrts-blue border-b-2 border-slate-100 outline-none focus:border-mrts-blue"/></div>
-                                                <div><label className="text-[9px] text-gray-400 font-black uppercase">Vencimento (Contas a Pagar)</label><input type="date" value={nfDueDateStr} onChange={e => setNfDueDateStr(e.target.value)} className="block font-bold text-slate-700 text-xs border-b-2 border-slate-100 outline-none"/></div>
+                                                <div>
+                                                    <label className="text-[9px] text-gray-400 font-black uppercase">Data de Emissão (NF)</label>
+                                                    <input
+                                                        type="date"
+                                                        value={nfIssueDateStr}
+                                                        onChange={e => setNfIssueDateStr(e.target.value)}
+                                                        className="block font-bold text-slate-700 text-xs border-b-2 border-slate-100 outline-none focus:border-mrts-blue"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[9px] text-gray-400 font-black uppercase">Data de Recebimento</label>
+                                                    <input
+                                                        type="date"
+                                                        value={nfReceivedDateStr}
+                                                        onChange={e => setNfReceivedDateStr(e.target.value)}
+                                                        className="block font-bold text-slate-700 text-xs border-b-2 border-slate-100 outline-none focus:border-mrts-blue"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[9px] text-gray-400 font-black uppercase">Vencimento do Boleto</label>
+                                                    <input
+                                                        type="date"
+                                                        value={nfDueDateStr}
+                                                        onChange={e => setNfDueDateStr(e.target.value)}
+                                                        className="block font-bold text-slate-700 text-xs border-b-2 border-slate-100 outline-none focus:border-mrts-blue"
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
 

@@ -79,11 +79,12 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
               price: product.price.toString(),
               cost: (product.cost || 0).toString(),
               iconUrl: product.iconUrl || "",
-              unit: product.unit || "UN"
+              unit: product.unit || "UN",
+              allowFractional: product.allowFractional || false
           });
       } else {
           setFormData({
-              id: undefined, name: "", categoryId: categories[0]?.id || "", price: "0", cost: "0", iconUrl: "🍔", unit: "UN"
+              id: undefined, name: "", categoryId: categories[0]?.id || "", price: "0", cost: "0", iconUrl: "🍔", unit: "UN", allowFractional: false
           });
       }
       setFormModalOpen(true);
@@ -101,7 +102,8 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                   price: parseFloat(formData.price.replace(',', '.')),
                   cost: parseFloat(formData.cost.replace(',', '.')),
                   iconUrl: formData.iconUrl,
-                  unit: String(formData.unit).substring(0, 2).toUpperCase()
+                  unit: String(formData.unit).substring(0, 2).toUpperCase(),
+                  allowFractional: !!formData.allowFractional
               });
               alert("Produto salvo com sucesso! (A página vai recarregar)");
               setFormModalOpen(false);
@@ -438,6 +440,19 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                             ))}
                         </select>
                     </div>
+
+                    <label className="col-span-2 flex items-start gap-3 bg-blue-50/50 border border-blue-100 rounded-xl p-4 cursor-pointer select-none hover:border-mrts-blue transition">
+                        <input 
+                            type="checkbox" 
+                            checked={!!formData.allowFractional}
+                            onChange={e => setFormData({...formData, allowFractional: e.target.checked})}
+                            className="w-5 h-5 mt-0.5 accent-blue-600 cursor-pointer shrink-0"
+                        />
+                        <span>
+                            <span className="block text-sm font-bold text-slate-800">Permite quantidade quebrada</span>
+                            <span className="block text-xs text-gray-500 mt-0.5">Ex: vender 0,5 (meio) serviço/produto. A quantidade poderá ser editada no PDV e nas Comandas.</span>
+                        </span>
+                    </label>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>

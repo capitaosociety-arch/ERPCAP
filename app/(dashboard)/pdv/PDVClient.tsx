@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from 'react';
 import { processCheckoutAction, getOrderWithPayments, cancelOrderAction } from '../../actions/checkout';
-import { processPayment, addItemToOrder } from '../../actions/comandas';
+import { processPayment, addItemToOrder, updateOrderItemQuantity } from '../../actions/comandas';
 import { openGlobalCashRegister, closeGlobalCashRegister, getRegisterSummary } from '../../actions/caixa';
-import { Check, Search, X, Receipt, QrCode, CreditCard, Banknote, ShoppingCart, Plus, ShoppingBag, Lock, Unlock } from 'lucide-react';
+import { Check, Search, X, Receipt, QrCode, CreditCard, Banknote, ShoppingCart, Plus, Minus, ShoppingBag, Lock, Unlock } from 'lucide-react';
 
 export default function PDVClient({ products, services = [], categories, user, openRegister }: any) {
   const [cart, setCart] = useState<any[]>([]);
@@ -56,13 +56,27 @@ export default function PDVClient({ products, services = [], categories, user, o
   });
 
   const addItem = (product: any) => {
+    const step = product.allowFractional ? 0.5 : 1;
     const existing = cart.find(c => c.product.id === product.id);
     if(existing) {
-      setCart(cart.map(c => c.product.id === product.id ? { ...c, quantity: c.quantity + 1 } : c));
+      setCart(cart.map(c => c.product.id === product.id ? { ...c, quantity: roundQty(c.quantity + step) } : c));
     } else {
-      setCart([...cart, { product, quantity: 1 }]);
+      setCart([...cart, { product, quantity: step }]);
     }
   };
+
+  const updateCartQty = (id: string, delta: number) => {
+    setCart(cart.map(c => {
+      if (c.product.id !== id) return c;
+      const step = c.product.allowFractional ? 0.5 : 1;
+      const min = step;
+      const newQty = roundQty(c.quantity + delta);
+      if (newQty < min) return c;
+      return { ...c, quantity: newQty };
+    }));
+  };
+
+  const roundQty = (n: number) => Math.round(n * 100) / 100;
 
   const removeItem = (id: string) => {
     setCart(cart.filter((c) => c.product.id !== id));
@@ -123,6 +137,29 @@ export default function PDVClient({ products, services = [], categories, user, o
           // Opcional: recarregar ou avisar
       } catch (e: any) {
           alert("Erro ao cancelar: " + e.message);
+      }
+      setPayLoading(false);
+  };
+
+  // Altera a quantidade de um item já lançado no pedido (durante o pagamento)
+  const handleUpdateItemQuantity = async (item: any, delta: number) => {
+      if(!paymentOrder) return;
+      const isFractional = !!(item.product?.allowFractional || item.service?.allowFractional);
+      const step = isFractional ? 0.5 : 1;
+      const newQty = Math.round(((item.quantity || 0) + delta * step) * 100) / 100;
+      if (newQty < step) return;
+      setPayLoading(true);
+      try {
+          await updateOrderItemQuantity(item.id, newQty);
+          const updatedOrder = await getOrderWithPayments(paymentOrder.id);
+          if(updatedOrder) {
+              setPaymentOrder(updatedOrder);
+              const totalPaid = updatedOrder.payments?.reduce((acc: any, p: any) => acc + p.amount, 0) || 0;
+              const balance = updatedOrder.total - updatedOrder.discount - totalPaid;
+              setPaymentAmount(Math.max(0, balance).toFixed(2));
+          }
+      } catch (e: any) {
+          alert("Erro ao alterar quantidade: " + (e.message || "Tente novamente."));
       }
       setPayLoading(false);
   };
@@ -304,7 +341,16 @@ export default function PDVClient({ products, services = [], categories, user, o
                   <p className="text-xs font-semibold text-mrts-blue mt-0.5">R$ {item.product.price.toFixed(2).replace('.',',')}</p>
                 </div>
                 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg px-1 py-0.5">
+                    <button onClick={() => updateCartQty(item.product.id, -(item.product.allowFractional ? 0.5 : 1))} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-white hover:bg-red-400 rounded transition" title="Diminuir quantidade">
+                      <Minus size={13} strokeWidth={3} />
+                    </button>
+                    <span className="w-8 text-center font-black text-slate-800 text-xs">{item.quantity}</span>
+                    <button onClick={() => updateCartQty(item.product.id, (item.product.allowFractional ? 0.5 : 1))} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-white hover:bg-green-500 rounded transition" title="Aumentar quantidade">
+                      <Plus size={13} strokeWidth={3} />
+                    </button>
+                  </div>
                   <span className="font-black text-slate-800 text-sm">R$ {(item.quantity * item.product.price).toFixed(2).replace('.',',')}</span>
                   <button onClick={() => removeItem(item.product.id)} className="text-red-400 hover:text-white bg-red-50 hover:bg-red-500 p-2 rounded-lg transition shadow-sm" title="Remover">
                     <X size={16} strokeWidth={3}/>
@@ -441,6 +487,42 @@ export default function PDVClient({ products, services = [], categories, user, o
                         <p className="text-2xl font-black text-green-700">R$ {balance.toFixed(2).replace('.', ',')}</p>
                     </div>
                 </div>
+
+                {/* Itens do pedido com edição de quantidade */}
+                {paymentOrder.items && paymentOrder.items.length > 0 && (
+                    <div className="mb-6 p-4 rounded-xl bg-gray-50 border border-gray-200 max-h-56 overflow-y-auto">
+                        <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+                            <ShoppingCart size={14} /> Itens Lançados
+                        </p>
+                        <div className="flex flex-col gap-2">
+                            {paymentOrder.items.map((item: any) => (
+                                <div key={item.id} className="flex items-center justify-between gap-3 bg-white border border-gray-100 rounded-lg px-3 py-2">
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-bold text-slate-800 truncate">{item.product?.name || "Produto"}</p>
+                                        <p className="text-[10px] text-gray-400 font-medium">R$ {Number(item.subtotal || 0).toFixed(2).replace('.', ',')}</p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                            disabled={payLoading}
+                                            onClick={() => handleUpdateItemQuantity(item, -1)}
+                                            className="w-7 h-7 flex items-center justify-center bg-gray-100 text-gray-600 rounded-lg hover:bg-red-500 hover:text-white transition disabled:opacity-40"
+                                        >
+                                            <Minus size={14} strokeWidth={3} />
+                                        </button>
+                                        <span className="w-8 text-center text-sm font-black text-slate-800">{item.quantity}</span>
+                                        <button
+                                            disabled={payLoading}
+                                            onClick={() => handleUpdateItemQuantity(item, 1)}
+                                            className="w-7 h-7 flex items-center justify-center bg-gray-100 text-gray-600 rounded-lg hover:bg-green-500 hover:text-white transition disabled:opacity-40"
+                                        >
+                                            <Plus size={14} strokeWidth={3} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {paymentOrder.payments && paymentOrder.payments.length > 0 && (
                      <div className="mb-6 p-4 rounded-xl bg-gray-50 border border-gray-200">

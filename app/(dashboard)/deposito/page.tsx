@@ -37,13 +37,12 @@ export default async function DepotPage() {
         orderBy: { createdAt: 'desc' }
     });
 
-    // Carregar Histórico de Movimentações (Recentes)
+    // Carregar Histórico de Movimentações (todas, para permitir buscar lançamentos antigos)
     const movements = await prisma.depotMovement.findMany({
         include: {
             product: true
         },
-        orderBy: { date: 'desc' },
-        take: 100
+        orderBy: { date: 'desc' }
     });
 
     return <DepotClient 

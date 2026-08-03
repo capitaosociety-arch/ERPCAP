@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react';
-import { Plus, Search, Coffee, X, ShoppingBag, Eye, Banknote, QrCode, CreditCard, Receipt, Trash2, RotateCcw } from 'lucide-react';
-import { createComanda, closeComanda, addItemToOrder, processPayment, removeItemFromOrder, deleteComandaAction, voidPaymentAction } from '../../actions/comandas';
+import { Plus, Search, Coffee, X, ShoppingBag, Eye, Banknote, QrCode, CreditCard, Receipt, Trash2, RotateCcw, Minus } from 'lucide-react';
+import { createComanda, closeComanda, addItemToOrder, processPayment, removeItemFromOrder, deleteComandaAction, voidPaymentAction, updateOrderItemQuantity } from '../../actions/comandas';
 
 export default function ComandaBoard({ openOrders, products, openRegister }: { openOrders: any[], products: any[], openRegister?: any }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -14,6 +14,7 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
     const [selectedOrder, setSelectedOrder] = useState<any>(null);
     const [addingItemId, setAddingItemId] = useState<string | null>(null);
     const [productSearch, setProductSearch] = useState("");
+    const [selectedQty, setSelectedQty] = useState(1);
 
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [viewOrder, setViewOrder] = useState<any>(null);
@@ -39,13 +40,15 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
         e.stopPropagation();
         if(!openRegister) return alert("Caixa fechado! Para lançar produtos, inicie o turno no balcão do PDV.");
         setSelectedOrder(order);
+        setSelectedQty(1);
         setIsProductModalOpen(true);
     };
 
     const handleConfirmAddProduct = async (product: any) => {
         if(!selectedOrder) return;
         setAddingItemId(product.id);
-        await addItemToOrder(selectedOrder.id, product.id, 1, product.price);
+        await addItemToOrder(selectedOrder.id, product.id, selectedQty, product.price);
+        setSelectedQty(1);
         setAddingItemId(null);
     };
 
@@ -85,6 +88,21 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
             await removeItemFromOrder(itemId);
         } catch (e: any) {
             alert(e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUpdateItemQuantity = async (item: any, delta: number) => {
+        const isFractional = !!(item.product?.allowFractional || item.service?.allowFractional);
+        const step = isFractional ? 0.5 : 1;
+        const newQty = Math.round(((item.quantity || 0) + delta * step) * 100) / 100;
+        if (newQty < step) return;
+        setLoading(true);
+        try {
+            await updateOrderItemQuantity(item.id, newQty);
+        } catch (e: any) {
+            alert(e.message || "Erro ao alterar quantidade.");
         } finally {
             setLoading(false);
         }
@@ -242,10 +260,29 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
                                         <div key={item.id || idx} className="bg-white p-4 rounded-2xl border border-gray-200 flex items-center justify-between shadow-sm group">
                                             <div className="flex-1">
                                                 <p className="font-bold text-slate-800">{item.product?.name || "Produto Genérico"}</p>
-                                                <p className="text-xs text-slate-400 mt-0.5">{item.quantity}x de R$ {item.unitPrice.toFixed(2).replace('.', ',')}</p>
+                                                <p className="text-xs text-slate-400 mt-0.5">R$ {item.unitPrice.toFixed(2).replace('.', ',')} cada</p>
                                             </div>
-                                            <div className="flex items-center gap-4">
-                                                <p className="font-bold text-slate-800">R$ {item.subtotal.toFixed(2).replace('.', ',')}</p>
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-1 py-1">
+                                                    <button
+                                                        disabled={loading}
+                                                        onClick={() => handleUpdateItemQuantity(item, -1)}
+                                                        className="w-8 h-8 flex items-center justify-center bg-white text-gray-600 rounded-lg hover:bg-red-500 hover:text-white transition shadow-sm disabled:opacity-40"
+                                                        title="Diminuir quantidade"
+                                                    >
+                                                        <Minus size={15} strokeWidth={3} />
+                                                    </button>
+                                                    <span className="w-7 text-center text-sm font-black text-slate-800">{item.quantity}</span>
+                                                    <button
+                                                        disabled={loading}
+                                                        onClick={() => handleUpdateItemQuantity(item, 1)}
+                                                        className="w-8 h-8 flex items-center justify-center bg-white text-gray-600 rounded-lg hover:bg-green-500 hover:text-white transition shadow-sm disabled:opacity-40"
+                                                        title="Aumentar quantidade"
+                                                    >
+                                                        <Plus size={15} strokeWidth={3} />
+                                                    </button>
+                                                </div>
+                                                <p className="font-bold text-slate-800 w-20 text-right">R$ {item.subtotal.toFixed(2).replace('.', ',')}</p>
                                                 <button 
                                                     disabled={loading}
                                                     onClick={() => handleRemoveItem(item.id)}
@@ -347,9 +384,44 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
                                             </div>
                                             <div className="flex items-center gap-4">
                                                 <p className="font-bold text-lg text-slate-800">R$ {prod.price.toFixed(2).replace('.',',')}</p>
-                                                <button disabled={addingItemId === prod.id} onClick={() => handleConfirmAddProduct(prod)} className="w-11 h-11 rounded-xl bg-mrts-blue text-white flex items-center justify-center hover:scale-105">
-                                                    {addingItemId === prod.id ? <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin"></div> : <Plus size={22} strokeWidth={3} />}
-                                                </button>
+                                                {prod.allowFractional ? (
+                                                    <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-1.5 py-1">
+                                                        <button
+                                                            onClick={() => setSelectedQty(q => Math.round(Math.max(0.5, q - 0.5) * 100) / 100)}
+                                                            className="w-8 h-8 flex items-center justify-center bg-white text-gray-600 rounded-lg hover:bg-red-500 hover:text-white transition shadow-sm"
+                                                            title="Diminuir (0,5)"
+                                                        >
+                                                            <Minus size={15} strokeWidth={3} />
+                                                        </button>
+                                                        <span className="w-10 text-center font-black text-slate-800 text-sm">{selectedQty}</span>
+                                                        <button
+                                                            onClick={() => setSelectedQty(q => Math.round((q + 0.5) * 100) / 100)}
+                                                            className="w-8 h-8 flex items-center justify-center bg-white text-gray-600 rounded-lg hover:bg-green-500 hover:text-white transition shadow-sm"
+                                                            title="Aumentar (0,5)"
+                                                        >
+                                                            <Plus size={15} strokeWidth={3} />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        disabled={addingItemId === prod.id}
+                                                        onClick={() => { setSelectedQty(1); handleConfirmAddProduct(prod); }}
+                                                        className="w-11 h-11 rounded-xl bg-mrts-blue text-white flex items-center justify-center hover:scale-105 transition"
+                                                        title="Adicionar 1"
+                                                    >
+                                                        {addingItemId === prod.id ? <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin"></div> : <Plus size={22} strokeWidth={3} />}
+                                                    </button>
+                                                )}
+                                                {prod.allowFractional && (
+                                                    <button
+                                                        disabled={addingItemId === prod.id}
+                                                        onClick={() => handleConfirmAddProduct(prod)}
+                                                        className="w-11 h-11 rounded-xl bg-mrts-blue text-white flex items-center justify-center hover:scale-105 transition disabled:opacity-50"
+                                                        title={`Adicionar ${selectedQty}`}
+                                                    >
+                                                        {addingItemId === prod.id ? <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin"></div> : <Plus size={22} strokeWidth={3} />}
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -388,6 +460,46 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
                                 <p className="text-xl font-black text-mrts-blue">R$ {balance.toFixed(2)}</p>
                             </div>
                         </div>
+
+                        {/* Itens lançados com edição de quantidade */}
+                        {activePaymentOrder.items && activePaymentOrder.items.length > 0 && (
+                            <div className="mb-6 p-4 rounded-xl bg-gray-50 border border-gray-200 max-h-48 overflow-y-auto">
+                                <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+                                    <ShoppingBag size={14} /> Itens Lançados
+                                </p>
+                                <div className="flex flex-col gap-2">
+                                    {activePaymentOrder.items.map((item: any) => (
+                                        <div key={item.id} className="flex items-center justify-between gap-3 bg-white border border-gray-100 rounded-lg px-3 py-2">
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-xs font-bold text-slate-800 truncate">{item.product?.name || "Produto"}</p>
+                                                <p className="text-[10px] text-gray-400 font-medium">R$ {Number(item.subtotal || 0).toFixed(2).replace('.', ',')}</p>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                <button
+                                                    disabled={loading}
+                                                    onClick={() => {
+                                                        handleUpdateItemQuantity(item, -1);
+                                                    }}
+                                                    className="w-7 h-7 flex items-center justify-center bg-gray-100 text-gray-600 rounded-lg hover:bg-red-500 hover:text-white transition disabled:opacity-40"
+                                                >
+                                                    <Minus size={14} strokeWidth={3} />
+                                                </button>
+                                                <span className="w-8 text-center text-sm font-black text-slate-800">{item.quantity}</span>
+                                                <button
+                                                    disabled={loading}
+                                                    onClick={() => {
+                                                        handleUpdateItemQuantity(item, 1);
+                                                    }}
+                                                    className="w-7 h-7 flex items-center justify-center bg-gray-100 text-gray-600 rounded-lg hover:bg-green-500 hover:text-white transition disabled:opacity-40"
+                                                >
+                                                    <Plus size={14} strokeWidth={3} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <div className="space-y-4 mb-6">
                             <div>
