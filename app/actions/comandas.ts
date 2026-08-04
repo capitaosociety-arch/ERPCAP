@@ -64,12 +64,14 @@ export async function addItemToOrder(orderId: string, itemId: string, quantity: 
                    data: { quantity: { decrement: quantity } }
                });
                
+               const prod = await tx.product.findUnique({ where: { id: itemId }, select: { cost: true } });
                await tx.stockMovement.create({
                    data: {
                        productId: itemId,
                        type: "OUT_SALE",
                        quantity,
-                       notes: `Adicionado Ã  comanda`
+                       unitCost: prod?.cost ?? null,
+                       notes: `Adicionado à comanda`
                    }
                });
             }
@@ -166,11 +168,13 @@ export async function processPayment(orderId: string, amount: number, method: st
                     data: { quantity: { decrement: delta } }
                 });
 
+                const prodCost = delta > 0 && item.productId ? (await tx.product.findUnique({ where: { id: item.productId }, select: { cost: true } }))?.cost ?? null : null;
                 await tx.stockMovement.create({
                     data: {
                         productId: item.productId,
                         type: delta > 0 ? "OUT_SALE" : "IN",
                         quantity: Math.abs(delta),
+                        unitCost: prodCost,
                         notes: `Ajuste de quantidade na comanda (${item.quantity} -> ${newQuantity})`
                     }
                 });

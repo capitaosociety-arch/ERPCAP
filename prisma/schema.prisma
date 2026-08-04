@@ -187,6 +187,7 @@ model StockMovement {
   productId   String
   type        String   // IN, OUT_SALE, OUT_MANUAL, LOSS
   quantity    Float
+  unitCost    Float?   // Custo unitário no momento da saída (snapshot p/ DRE)
   notes       String?
   document    String?  // Number of NF or receipt
   imageUrl    String?  // Link to the uploaded invoice image

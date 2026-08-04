@@ -52,7 +52,8 @@ export async function processCheckoutAction(cart: any[]) {
             productId: item.product.id,
             type: 'OUT_SALE',
             quantity: item.quantity,
-            notes: `LanÃ§ado via PDV RÃ¡pido (Cod ${newOrder.id})`
+            unitCost: item.product.cost ?? null,
+            notes: `Lançado via PDV Rápido (Cod ${newOrder.id})`
           }
         });
       }

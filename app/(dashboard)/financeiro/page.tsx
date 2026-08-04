@@ -194,7 +194,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   stockMovements.forEach(m => {
       if (m.type === 'OUT_SALE') {
           const b = getBucket(monthKey(m.date));
-          b.cmv += (m.quantity * (m.product?.cost || 0));
+          b.cmv += (m.quantity * (m.unitCost ?? m.product?.cost ?? 0));
       }
   });
 
@@ -202,6 +202,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   financialEntries.forEach(entry => {
       if (entry.status !== 'PAID') return;
       const paidAt = entry.paymentDate || entry.dueDate;
+      if (paidAt < startDate || paidAt > endDate) return;
       const b = getBucket(monthKey(paidAt));
 
       if (entry.type === 'RECEIVABLE') {
