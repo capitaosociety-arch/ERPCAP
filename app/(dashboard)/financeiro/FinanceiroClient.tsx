@@ -8,9 +8,10 @@ import {
 import { 
     DollarSign, Wallet, Activity, Database, Users, Lock, Unlock, ArrowRight, Sheet, 
     Plus, Calendar, CheckCircle, XCircle, Trash2, Filter, AlertCircle, TrendingUp, TrendingDown, 
-    Eye, CreditCard, Banknote, ShoppingBag, RotateCcw, Landmark, Edit2, Search
+    Eye, CreditCard, Banknote, ShoppingBag, RotateCcw, Landmark, Edit2, Search, FileDown
 } from 'lucide-react';
 import { downloadExcel, downloadMultiSheetExcel } from '../../../lib/excel-export';
+import { downloadDrePdf } from '../../../lib/pdf-export';
 import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry, updateFinancialEntry } from '../../actions/financeiro';
 import { getRegisterSummary, deleteCashSessionAction, getSessionsForDepositAction, recordCashDepositAction, recordGlobalCashDepositAction } from '../../actions/caixa';
 import { voidPaymentAction, editPaymentAction } from '../../actions/comandas';
@@ -27,7 +28,7 @@ export default function FinanceiroClient({ payload }: any) {
         totalRevenue, totalPendingPayable, totalPendingReceivable,
         dailyChart, methodChart, fieldChart, fieldNames,
         fieldCountChart, fieldCountNames,
-        cashRegisters, financialEntries, dreMonths
+        cashRegisters, financialEntries, dreMonths, dreDetails
     } = payload;
 
     const [activeTab, setActiveTab] = useState('DASHBOARD'); // DASHBOARD, CASHIER, BILLING, DRE
@@ -938,6 +939,16 @@ export default function FinanceiroClient({ payload }: any) {
                                     className="bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-slate-900/20 flex items-center gap-2 hover:scale-105 active:scale-95 transition"
                                 >
                                     <Sheet size={16} className="text-emerald-400" /> Exportar Excel
+                                </button>
+                            )}
+                            {monthData && (
+                                <button
+                                    onClick={() => {
+                                        downloadDrePdf(dreMonths, dreDetails, selected);
+                                    }}
+                                    className="bg-white border-2 border-slate-800 text-slate-800 px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-slate-900/10 flex items-center gap-2 hover:scale-105 active:scale-95 transition"
+                                >
+                                    <FileDown size={16} className="text-red-500" /> Exportar PDF
                                 </button>
                             )}
                         </div>

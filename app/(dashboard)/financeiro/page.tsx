@@ -38,7 +38,8 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       }
     }),
     prisma.subscriptionPayment.findMany({
-      where: { paymentDate: { gte: startDate, lte: endDate } }
+      where: { paymentDate: { gte: startDate, lte: endDate } },
+      include: { subscription: { select: { planName: true } } }
     }),
     prisma.rental.findMany({
       where: { startTime: { gte: startDate, lte: endDate } }
@@ -220,6 +221,77 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
             }
       }
   });
+
+  // Detalhamento por conta para o PDF (mesmas fontes do DRE, com data e descrição)
+  type DreDetail = {
+      key: string;
+      vendas: { data: string; metodo: string; comanda: string; valor: number }[];
+      mensalidades: { data: string; plano: string; valor: number }[];
+      outrasReceitas: { data: string; descricao: string; valor: number }[];
+      despesas: { data: string; categoria: string; descricao: string; valor: number }[];
+      cmv: { produto: string; qtd: number; custoUnit: number; total: number }[];
+  };
+  const detailMap = new Map<string, DreDetail>();
+  const getDetail = (key: string): DreDetail => {
+      if (!detailMap.has(key)) {
+          detailMap.set(key, { key, vendas: [], mensalidades: [], outrasReceitas: [], despesas: [], cmv: [] });
+      }
+      return detailMap.get(key)!;
+  };
+
+  payments.forEach(p => {
+      const b = getDetail(monthKey(p.date));
+      b.vendas.push({
+          data: p.date.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' }),
+          metodo: p.method,
+          comanda: p.order?.id?.slice(-6) || '-',
+          valor: Number(p.amount.toFixed(2))
+      });
+  });
+
+  subPayments.forEach(p => {
+      const b = getDetail(monthKey(p.paymentDate));
+      b.mensalidades.push({
+          data: p.paymentDate.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' }),
+          plano: p.subscription?.planName || 'Mensalidade',
+          valor: Number(p.amount.toFixed(2))
+      });
+  });
+
+  stockMovements.forEach(m => {
+      if (m.type === 'OUT_SALE') {
+          const b = getDetail(monthKey(m.date));
+          b.cmv.push({
+              produto: m.product?.name || 'Produto',
+              qtd: m.quantity,
+              custoUnit: Number((m.unitCost ?? m.product?.cost ?? 0).toFixed(2)),
+              total: Number((m.quantity * (m.unitCost ?? m.product?.cost ?? 0)).toFixed(2))
+          });
+      }
+  });
+
+  financialEntries.forEach(entry => {
+      if (entry.status !== 'PAID') return;
+      const paidAt = entry.paymentDate || entry.dueDate;
+      if (paidAt < startDate || paidAt > endDate) return;
+      const b = getDetail(monthKey(paidAt));
+      if (entry.type === 'RECEIVABLE') {
+          b.outrasReceitas.push({
+              data: paidAt.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' }),
+              descricao: entry.description,
+              valor: Number(entry.amount.toFixed(2))
+          });
+      } else {
+          b.despesas.push({
+              data: paidAt.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' }),
+              categoria: entry.category || 'Diversos',
+              descricao: entry.description,
+              valor: Number(entry.amount.toFixed(2))
+          });
+      }
+  });
+
+  const dreDetails = Array.from(detailMap.values()).sort((a, b) => a.key.localeCompare(b.key));
 
   // Se não houver nada no range, garante que o mês atual aparece
   const dreMonths = Array.from(dreMap.entries()).map(([key, b]) => {
@@ -413,7 +485,8 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       fieldCountNames: allFieldNames,
       cashRegisters,
       financialEntries,
-      dreMonths
+      dreMonths,
+      dreDetails
   };
 
   return <FinanceiroClient payload={payload} />;
