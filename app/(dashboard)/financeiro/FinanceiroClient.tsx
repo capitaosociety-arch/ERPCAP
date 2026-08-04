@@ -26,8 +26,7 @@ export default function FinanceiroClient({ payload }: any) {
 
     const {
         totalRevenue, totalPendingPayable, totalPendingReceivable,
-        dailyChart, methodChart, fieldChart, fieldNames,
-        fieldCountChart, fieldCountNames,
+        dailyChart, methodChart,
         cashRegisters, financialEntries, dreMonths, dreDetails
     } = payload;
 
@@ -103,23 +102,6 @@ export default function FinanceiroClient({ payload }: any) {
                     'Produtos (R$)': d.produtos,
                     'Total (R$)': d.total
                 }))
-            },
-            {
-                sheetName: 'Desempenho por Campo',
-                data: fieldChart.map((d: any) => {
-                    const row: any = { 'Data': d.date };
-                    fieldNames.forEach((f: string) => { row[f] = d[f] || 0; });
-                    row['Total do Dia'] = d.total_geral;
-                    return row;
-                })
-            },
-            {
-                sheetName: 'Ocupação (Quantidade)',
-                data: fieldCountChart.map((d: any) => {
-                    const row: any = { 'Data': d.date };
-                    fieldCountNames.forEach((f: string) => { row[f] = d[f] || 0; });
-                    return row;
-                })
             },
             {
                 sheetName: 'Contas e Vencimentos',
@@ -557,161 +539,6 @@ export default function FinanceiroClient({ payload }: any) {
                             )}
                         </div>
                     </div>
-
-                    {/* GRÁFICO DE BARRAS — ALUGUÉIS POR CAMPO */}
-                    <div className="mt-6 bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
-                        <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
-                            <div>
-                                <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                                    Receita de Aluguel por Campo
-                                    <span className="text-xs font-medium text-gray-400 font-mono">(30 Dias)</span>
-                                </h3>
-                                <p className="text-[11px] text-gray-400 mt-0.5">Comparativo diário entre as quadras — locações avulsas e horistas</p>
-                            </div>
-                            <div className="flex flex-wrap gap-3">
-                                {(fieldNames || []).map((name: string, i: number) => (
-                                    <div key={name} className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: COLORS[i % COLORS.length] }}></div>
-                                        <span className="text-[10px] font-bold text-gray-500 uppercase">{name}</span>
-                                    </div>
-                                ))}
-                                <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-200">
-                                    <div className="w-3 h-3 rounded-sm bg-slate-800"></div>
-                                    <span className="text-[10px] font-bold text-slate-800 uppercase">Total do Dia</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {(!fieldChart || fieldChart.length === 0 || !fieldNames || fieldNames.length === 0) ? (
-                            <div className="flex flex-col items-center justify-center h-48 text-gray-300">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
-                                <p className="text-sm font-bold mt-3">Sem locações avulsas nos últimos 30 dias</p>
-                                <p className="text-xs mt-1">Registre aluguéis no módulo de Quadras para ver os dados aqui</p>
-                            </div>
-                        ) : (
-                            <div className="w-full h-72">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={fieldChart} margin={{ top: 5, right: 10, left: 0, bottom: 5 }} barGap={4}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                        <XAxis
-                                            dataKey="date"
-                                            tick={{ fill: '#94a3b8', fontSize: 9 }}
-                                            axisLine={false}
-                                            tickLine={false}
-                                            interval="preserveStartEnd"
-                                        />
-                                        <YAxis
-                                            tick={{ fill: '#94a3b8', fontSize: 10 }}
-                                            axisLine={false}
-                                            tickLine={false}
-                                            tickFormatter={(val) => `R$ ${val}`}
-                                        />
-                                        <RTooltip
-                                            formatter={(value: any, name: any) => [
-                                                `R$ ${Number(value || 0).toFixed(2).replace('.', ',')}`,
-                                                name === 'total_geral' ? 'Total Financeiro do Dia' : String(name)
-                                            ] as [string, string]}
-                                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)', fontSize: '12px' }}
-                                            cursor={{ fill: '#f8fafc' }}
-                                        />
-                                        {(fieldNames || []).map((name: string, i: number) => (
-                                            <Bar
-                                                key={name}
-                                                dataKey={name}
-                                                fill={COLORS[i % COLORS.length]}
-                                                radius={[4, 4, 0, 0]}
-                                                maxBarSize={28}
-                                            />
-                                        ))}
-                                        <Bar
-                                            dataKey="total_geral"
-                                            fill="#1e293b"
-                                            radius={[4, 4, 0, 0]}
-                                            maxBarSize={32}
-                                        />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* GRÁFICO DE BARRAS — CONTAGEM UNITÁRIA DE LOCAÇÕES POR CAMPO */}
-                    <div className="mt-6 bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
-                        <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
-                            <div>
-                                <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                                    Locações por Campo — Quantidade
-                                    <span className="text-xs font-medium text-gray-400 font-mono">(30 Dias)</span>
-                                </h3>
-                                <p className="text-[11px] text-gray-400 mt-0.5">Número de locações avulsas registradas por dia em cada quadra</p>
-                            </div>
-                            <div className="flex flex-wrap gap-3">
-                                {(fieldCountNames || []).map((name: string, i: number) => (
-                                    <div key={name} className="flex items-center gap-2">
-                                        <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: ['#f59e0b', '#8b5cf6', '#10b981', '#3b82f6'][i % 4] }}></div>
-                                        <span className="text-[10px] font-bold text-gray-500 uppercase">{name}</span>
-                                    </div>
-                                ))}
-                                <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-200">
-                                    <div className="w-3 h-3 rounded-sm bg-slate-800"></div>
-                                    <span className="text-[10px] font-bold text-slate-800 uppercase">Total do Dia</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {(!fieldCountChart || !fieldCountNames || fieldCountNames.length === 0) ? (
-                            <div className="flex flex-col items-center justify-center h-48 text-gray-300">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18" /><path d="m19 9-5 5-4-4-3 3" /></svg>
-                                <p className="text-sm font-bold mt-3">Sem locações avulsas para exibir</p>
-                                <p className="text-xs mt-1">Cadastre aluguéis no módulo de Clientes para monitorar a ocupação</p>
-                            </div>
-                        ) : (
-                            <div className="w-full h-72">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={fieldCountChart} margin={{ top: 5, right: 10, left: 0, bottom: 5 }} barGap={4}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                        <XAxis
-                                            dataKey="date"
-                                            tick={{ fill: '#94a3b8', fontSize: 9 }}
-                                            axisLine={false}
-                                            tickLine={false}
-                                            interval="preserveStartEnd"
-                                        />
-                                        <YAxis
-                                            tick={{ fill: '#94a3b8', fontSize: 10 }}
-                                            axisLine={false}
-                                            tickLine={false}
-                                            allowDecimals={false}
-                                            tickFormatter={(val) => `${val}`}
-                                        />
-                                        <RTooltip
-                                            formatter={(value: any, name: any) => [
-                                                `${Number(value || 0)} locaç${Number(value || 0) === 1 ? 'ão' : 'ões'}`,
-                                                name === 'total_geral' ? 'Total Geral de Jogos' : String(name)
-                                            ] as [string, string]}
-                                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)', fontSize: '12px' }}
-                                            cursor={{ fill: '#fafafa' }}
-                                        />
-                                        {(fieldCountNames || []).map((name: string, i: number) => (
-                                            <Bar
-                                                key={name}
-                                                dataKey={name}
-                                                fill={['#f59e0b', '#8b5cf6', '#10b981', '#3b82f6'][i % 4]}
-                                                radius={[4, 4, 0, 0]}
-                                                maxBarSize={28}
-                                            />
-                                        ))}
-                                        <Bar
-                                            dataKey="total_geral"
-                                            fill="#1e293b"
-                                            radius={[4, 4, 0, 0]}
-                                            maxBarSize={32}
-                                        />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        )}
-                    </div>
                 </>
             )}
 
@@ -921,7 +748,6 @@ export default function FinanceiroClient({ payload }: any) {
                                                 sheetName: 'DRE Gerencial',
                                                 data: [
                                                     { 'Conta': 'Receita de Vendas (PDV/Comandas)', 'Valor': monthData.receitasVendas, 'Percentual': '' },
-                                                    { 'Conta': 'Receita de Mensalidades', 'Valor': monthData.receitasMensalidades, 'Percentual': '' },
                                                     { 'Conta': 'Outras Receitas', 'Valor': monthData.receitasOutras, 'Percentual': '' },
                                                     { 'Conta': 'Receita Bruta Total', 'Valor': monthData.totalReceitas, 'Percentual': '100%' },
                                                     { 'Conta': '(-) CMV (Custo das Mercadorias Vendidas)', 'Valor': -monthData.cmv, 'Percentual': `${monthData.totalReceitas > 0 ? ((monthData.cmv / monthData.totalReceitas) * 100).toFixed(1) : 0}%` },
@@ -998,10 +824,6 @@ export default function FinanceiroClient({ payload }: any) {
                                         <div className="px-6 py-3 flex justify-between items-center">
                                             <span className="text-sm font-medium text-slate-600 pl-4">Vendas (PDV / Comandas)</span>
                                             <span className="text-sm font-bold text-emerald-600">R$ {Number(monthData.receitasVendas).toFixed(2).replace('.', ',')}</span>
-                                        </div>
-                                        <div className="px-6 py-3 flex justify-between items-center">
-                                            <span className="text-sm font-medium text-slate-600 pl-4">Mensalidades</span>
-                                            <span className="text-sm font-bold text-emerald-600">R$ {Number(monthData.receitasMensalidades).toFixed(2).replace('.', ',')}</span>
                                         </div>
                                         <div className="px-6 py-3 flex justify-between items-center">
                                             <span className="text-sm font-medium text-slate-600 pl-4">Outras Receitas (contas a receber pagas)</span>

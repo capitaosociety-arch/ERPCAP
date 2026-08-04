@@ -116,7 +116,6 @@ export function downloadDrePdf(dreMonths: any[], dreDetails: any[], selectedKey:
 
     rows.push({ label: '1. RECEITAS', value: '', bg: C.emeraldBg, txt: C.greenDark, bold: true });
     rows.push({ label: 'Vendas (PDV / Comandas)', value: fmt(month?.receitasVendas || 0), sub: true });
-    rows.push({ label: 'Mensalidades', value: fmt(month?.receitasMensalidades || 0), sub: true });
     rows.push({ label: 'Outras Receitas (contas a receber pagas)', value: fmt(month?.receitasOutras || 0), sub: true });
     rows.push({ label: 'Receita Bruta Total', value: fmt(month?.totalReceitas || 0), bold: true, txt: C.greenDark });
 
@@ -236,12 +235,6 @@ export function downloadDrePdf(dreMonths: any[], dreDetails: any[], selectedKey:
             table('Receitas de Vendas (PDV / Comandas)', ['Data', 'Método', 'Comanda', 'Valor'],
                 v.map((x: any) => [x.data, x.metodo, '#' + x.comanda, fmt(x.valor)]),
                 [38, 30, 40, 74]);
-        }
-
-        if (detail.mensalidades.length > 0) {
-            table('Mensalidades Recebidas', ['Data', 'Plano', '', 'Valor'],
-                detail.mensalidades.map((x: any) => [x.data, x.plano, '', fmt(x.valor)]),
-                [38, 90, 0, 54]);
         }
 
         if (detail.outrasReceitas.length > 0) {

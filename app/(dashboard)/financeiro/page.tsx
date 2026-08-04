@@ -24,7 +24,9 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   const rangeLimit = diffDays > 366 ? 366 : diffDays; // Limite de 1 ano para evitar crash de memória
 
   // Execute all heavy queries in parallel
-  const [payments, subPayments, rentals, cashRegisters, financialEntries, stockMovements] = await Promise.all([
+  // O módulo Clientes é independente do financeiro: mensalidades (Subscription)
+  // e jogos/locações (Rental) são apenas informativos dentro do próprio Clientes.
+  const [payments, cashRegisters, financialEntries, stockMovements] = await Promise.all([
     prisma.payment.findMany({
       where: { date: { gte: startDate, lte: endDate } },
       include: { 
@@ -36,13 +38,6 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
           }
         }
       }
-    }),
-    prisma.subscriptionPayment.findMany({
-      where: { paymentDate: { gte: startDate, lte: endDate } },
-      include: { subscription: { select: { planName: true } } }
-    }),
-    prisma.rental.findMany({
-      where: { startTime: { gte: startDate, lte: endDate } }
     }),
     prisma.cashRegister.findMany({
       where: { openedAt: { gte: startDate, lte: endDate } },
@@ -70,8 +65,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       CASH: 0,
       PIX: 0,
       DEBIT: 0,
-      CREDIT: 0,
-      SUBSCRIPTION: 0
+      CREDIT: 0
   };
 
   const dailyRevenueMap: Record<string, { total: number, produtos: number, aluguel: number }> = {};
@@ -120,27 +114,8 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       }
   });
 
-  // Mensalidades são sempre Aluguel
-  subPayments.forEach(p => {
-      totalRevenue += p.amount;
-      methodTotals['SUBSCRIPTION'] += p.amount;
-      
-      const day = p.paymentDate.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
-      if (dailyRevenueMap[day]) {
-          dailyRevenueMap[day].total += p.amount;
-          dailyRevenueMap[day].aluguel += p.amount;
-      }
-  });
-
-  // Locações avulsas diretas (Rentals já pagos fora de comanda se existirem)
-  rentals.forEach(r => {
-      if (r.status === 'PAID') {
-          // Evitar bitagem dupla: se a locação foi paga via comanda, ela já está nos payments
-          // Verificamos se existe um pagamento vinculado a esta locação (não implementado no schema diretamente)
-          // Por segurança, rentals aqui só contam se não estiverem em comandas (mas no erp atual tudo vira comanda/pagamento)
-          // totalRevenue += r.totalAmount;
-      }
-  });
+  // Mensalidades e locações do módulo Clientes NÃO entram no financeiro.
+  // Elas são apenas informação/controle dentro do próprio Clientes.
 
   // Calcular Pendências
   financialEntries.forEach(entry => {
@@ -156,7 +131,6 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   type DreBucket = {
       key: string; // MM/YYYY
       receitasVendas: number;
-      receitasMensalidades: number;
       receitasOutras: number; // contas a receber pagas
       cmv: number; // custo das mercadorias vendidas (estoque OUT_SALE)
       despesas: Record<string, number>; // por categoria de conta paga
@@ -167,7 +141,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   const dreMap = new Map<string, DreBucket>();
   const getBucket = (key: string): DreBucket => {
       if (!dreMap.has(key)) {
-          dreMap.set(key, { key, receitasVendas: 0, receitasMensalidades: 0, receitasOutras: 0, cmv: 0, despesas: {}, despesasFinanceiras: 0, impostos: 0 });
+          dreMap.set(key, { key, receitasVendas: 0, receitasOutras: 0, cmv: 0, despesas: {}, despesasFinanceiras: 0, impostos: 0 });
       }
       return dreMap.get(key)!;
   };
@@ -183,12 +157,6 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   payments.forEach(p => {
       const b = getBucket(monthKey(p.date));
       b.receitasVendas += p.amount;
-  });
-
-  // Mensalidades
-  subPayments.forEach(p => {
-      const b = getBucket(monthKey(p.paymentDate));
-      b.receitasMensalidades += p.amount;
   });
 
   // CMV: custo dos produtos vendidos no período (movimentos de saída de venda)
@@ -226,7 +194,6 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   type DreDetail = {
       key: string;
       vendas: { data: string; metodo: string; comanda: string; valor: number }[];
-      mensalidades: { data: string; plano: string; valor: number }[];
       outrasReceitas: { data: string; descricao: string; valor: number }[];
       despesas: { data: string; categoria: string; descricao: string; valor: number }[];
       cmv: { produto: string; qtd: number; custoUnit: number; total: number }[];
@@ -234,7 +201,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   const detailMap = new Map<string, DreDetail>();
   const getDetail = (key: string): DreDetail => {
       if (!detailMap.has(key)) {
-          detailMap.set(key, { key, vendas: [], mensalidades: [], outrasReceitas: [], despesas: [], cmv: [] });
+          detailMap.set(key, { key, vendas: [], outrasReceitas: [], despesas: [], cmv: [] });
       }
       return detailMap.get(key)!;
   };
@@ -245,15 +212,6 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
           data: p.date.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' }),
           metodo: p.method,
           comanda: p.order?.id?.slice(-6) || '-',
-          valor: Number(p.amount.toFixed(2))
-      });
-  });
-
-  subPayments.forEach(p => {
-      const b = getDetail(monthKey(p.paymentDate));
-      b.mensalidades.push({
-          data: p.paymentDate.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' }),
-          plano: p.subscription?.planName || 'Mensalidade',
           valor: Number(p.amount.toFixed(2))
       });
   });
@@ -295,7 +253,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
 
   // Se não houver nada no range, garante que o mês atual aparece
   const dreMonths = Array.from(dreMap.entries()).map(([key, b]) => {
-      const totalReceitas = b.receitasVendas + b.receitasMensalidades + b.receitasOutras;
+      const totalReceitas = b.receitasVendas + b.receitasOutras;
       const totalDespesasOp = Object.values(b.despesas).reduce((a, v) => a + v, 0);
       const lucroBruto = totalReceitas - b.cmv;
       const ebitda = lucroBruto - totalDespesasOp;
@@ -303,7 +261,6 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       return {
           key,
           receitasVendas: Number(b.receitasVendas.toFixed(2)),
-          receitasMensalidades: Number(b.receitasMensalidades.toFixed(2)),
           receitasOutras: Number(b.receitasOutras.toFixed(2)),
           totalReceitas: Number(totalReceitas.toFixed(2)),
           cmv: Number(b.cmv.toFixed(2)),
@@ -330,148 +287,13 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   })).sort((a, b) => a.rawDate.localeCompare(b.rawDate));
 
   const methodChart = Object.keys(methodTotals).map(m => ({
-      name: m === 'CASH' ? 'Dinheiro' : m === 'PIX' ? 'Pix' : m === 'DEBIT' ? 'Débito' : m === 'CREDIT' ? 'Crédito' : 'Mensalidades',
+      name: m === 'CASH' ? 'Dinheiro' : m === 'PIX' ? 'Pix' : m === 'DEBIT' ? 'Débito' : 'Crédito',
       value: methodTotals[m]
   })).filter(x => x.value > 0);
 
-  // --- UNIFICAÇÃO DE DADOS DE CAMPOS (RENTALS + PRODUTOS DE ALUGUEL) ---
-  const rentalFieldNames = Array.from(new Set(rentals.map(r => r.resource)));
-  const productFieldNames: string[] = [];
-  
-  // Usar um Map de Orders para evitar duplicidade por pagamentos
-  const uniqueOrdersMap = new Map();
-  payments.forEach(p => {
-    if (p.order && !uniqueOrdersMap.has(p.order.id)) {
-      uniqueOrdersMap.set(p.order.id, p.order);
-    }
-  });
-  const uniqueOrders = Array.from(uniqueOrdersMap.values());
-
-  uniqueOrders.forEach((order: any) => {
-    order.items?.forEach((it: any) => {
-      const isRental = !!it.serviceId || it.product?.category?.name.toLowerCase().includes('aluguel') || it.product?.category?.name.toLowerCase().includes('campo') || it.product?.name.toLowerCase().includes('aluguel');
-      if (isRental && it.product?.name) {
-        if (!productFieldNames.includes(it.product.name)) productFieldNames.push(it.product.name);
-      }
-    });
-  });
-
-  const allFieldNames = Array.from(new Set([...rentalFieldNames, ...productFieldNames])).filter(Boolean).sort();
-  
-  const fieldDailyMap: Record<string, Record<string, number>> = {};
-  const fieldCountMap: Record<string, Record<string, number>> = {};
-
-  // Inicializar mapas para o período selecionado
-  for (let i = rangeLimit; i >= 0; i--) {
-    const d = new Date(endDate);
-    d.setDate(d.getDate() - i);
-    const st = d.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
-    fieldDailyMap[st] = {};
-    fieldCountMap[st] = {};
-    allFieldNames.forEach(name => { 
-      fieldDailyMap[st][name] = 0; 
-      fieldCountMap[st][name] = 0;
-    });
-  }
-
-  // 1. Processar Faturamento Real (Vindo dos Pagamentos)
-  payments.forEach(p => {
-    const day = p.date.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
-    if (fieldDailyMap[day]) {
-      const orderItems = p.order?.items || [];
-      const totalOrder = orderItems.reduce((sum: number, it: any) => sum + it.subtotal, 0);
-      
-      orderItems.forEach((it: any) => {
-        const isRental = !!it.serviceId || it.product?.category?.name.toLowerCase().includes('aluguel') || it.product?.category?.name.toLowerCase().includes('campo') || it.product?.name.toLowerCase().includes('aluguel');
-        if (isRental && it.product?.name) {
-          const ratio = totalOrder > 0 ? it.subtotal / totalOrder : 1;
-          fieldDailyMap[day][it.product.name] = (fieldDailyMap[day][it.product.name] || 0) + (p.amount * ratio);
-        }
-      });
-    }
-  });
-
-  // 2. Processar Quantidade (Deduplicada)
-  // Primeiro: Contamos todos os agendamentos (Rentals)
-  rentals.forEach(r => {
-    const day = r.startTime.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
-    if (fieldCountMap[day]) {
-      fieldCountMap[day][r.resource] = (fieldCountMap[day][r.resource] || 0) + 1;
-    }
-  });
-
-  // Segundo: Contamos vendas de balcão (Orders) que NÃO foram originadas de um agendamento
-  // Como não há link direto, vamos contar apenas se o total de vendas for maior que o de agendamentos no dia para aquele recurso
-  // Ou melhor: para este ERP, vamos considerar que Rentals são a fonte primária de 'Quantidade' e Orders a de 'Receita'.
-  // Se o usuário lança direto no PDV sem agendar, precisamos capturar.
-  // Ajuste: Vamos contar agendamentos, e do PDV apenas o que exceder a quantidade de agendamentos (heurística de proteção)
-  const posCountBuffer: Record<string, Record<string, number>> = {};
-  uniqueOrders.forEach((order: any) => {
-    const day = (order.closedAt || order.openedAt).toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
-    if (fieldCountMap[day]) {
-      order.items?.forEach((it: any) => {
-        const isRental = !!it.serviceId || it.product?.category?.name.toLowerCase().includes('aluguel') || it.product?.category?.name.toLowerCase().includes('campo') || it.product?.name.toLowerCase().includes('aluguel');
-        if (isRental && it.product?.name) {
-          if (!posCountBuffer[day]) posCountBuffer[day] = {};
-          posCountBuffer[day][it.product.name] = (posCountBuffer[day][it.product.name] || 0) + it.quantity;
-        }
-      });
-    }
-  });
-
-  // Mesclar: se a venda no PDV for maior que os agendamentos, usamos a venda (evita bitagem)
-  Object.keys(fieldCountMap).forEach(day => {
-    allFieldNames.forEach(name => {
-      const rentalCount = fieldCountMap[day][name] || 0;
-      const posCount = posCountBuffer[day]?.[name] || 0;
-      // Heurística: o maior valor entre agendamento e venda balcão representa a realidade
-      fieldCountMap[day][name] = Math.max(rentalCount, posCount);
-    });
-  });
-
-  // Mensalidades: Categoria Genérica (Apenas Receita)
-  const subFieldName = 'Mensalistas';
-  if (subPayments.length > 0) {
-    Object.keys(fieldDailyMap).forEach(day => { if (fieldDailyMap[day]) fieldDailyMap[day][subFieldName] = 0; });
-    subPayments.forEach(p => {
-      const day = p.paymentDate.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
-      if (fieldDailyMap[day]) {
-        fieldDailyMap[day][subFieldName] = (fieldDailyMap[day][subFieldName] || 0) + p.amount;
-      }
-    });
-  }
-
-  const fieldChart = Object.keys(fieldDailyMap)
-    .sort()
-    .map(date => {
-      const dayEntries = Object.entries(fieldDailyMap[date]);
-      const dayTotal = dayEntries.reduce((sum, [_, val]) => sum + val, 0);
-      return {
-        date: new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
-        rawDate: date,
-        total_geral: Number(dayTotal.toFixed(2)),
-        ...Object.fromEntries(
-          dayEntries.map(([k, v]) => [k, Number(v.toFixed(2))])
-        )
-      };
-    });
-
-  const fieldCountChart = Object.keys(fieldCountMap)
-    .sort()
-    .map(date => {
-      const dayEntries = Object.entries(fieldCountMap[date]);
-      const dayTotal = dayEntries.reduce((sum, [_, val]) => sum + val, 0);
-      return {
-        date: new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
-        rawDate: date,
-        total_geral: dayTotal,
-        ...Object.fromEntries(
-          dayEntries.map(([k, v]) => [k, v])
-        )
-      };
-    });
-
-  const finalFieldNames = Array.from(new Set([...allFieldNames, subPayments.length > 0 ? subFieldName : ''])).filter(Boolean).sort();
+  // --- GRAFICOS POR CAMPO/JOGOS REMOVIDOS DO FINANCEIRO ---
+  // Jogos/locações (Rental) e mensalidades são dados do módulo Clientes,
+  // usados apenas para informação e controle dentro do próprio Clientes.
 
   const payload = {
       totalRevenue,
@@ -479,10 +301,6 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       totalPendingReceivable,
       dailyChart,
       methodChart,
-      fieldChart,
-      fieldNames: finalFieldNames,
-      fieldCountChart,
-      fieldCountNames: allFieldNames,
       cashRegisters,
       financialEntries,
       dreMonths,

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { Plus, Edit3, X, User as UserIcon, Calendar, CheckCircle, AlertTriangle, Clock, CreditCard, Trash2 } from 'lucide-react';
-import { upsertCustomer, paySubscription, createRental, deleteCustomer } from '../../actions/customers';
+import { upsertCustomer, paySubscription, createRental, deleteCustomer, updateSubscriptionPayment, deleteSubscriptionPayment, updateRental, deleteRental } from '../../actions/customers';
 
 export default function ClientesClient({ initialCustomers }: any) {
   const [customers, setCustomers] = useState(initialCustomers);
@@ -74,6 +74,75 @@ export default function ClientesClient({ initialCustomers }: any) {
       startTransition(async () => {
           await paySubscription(subId, amount);
           alert("Pagamento registrado!");
+          window.location.reload();
+      });
+  };
+
+  // Editing Subscription Payment (mensalidade)
+  const [editingPayment, setEditingPayment] = useState<any>(null);
+  const [paymentForm, setPaymentForm] = useState<any>({});
+
+  const openEditPayment = (payment: any) => {
+      setEditingPayment(payment);
+      setPaymentForm({
+          amount: payment.amount,
+          paymentDate: new Date(payment.paymentDate).toLocaleDateString('sv-SE')
+      });
+  };
+
+  const handleSavePaymentEdit = () => {
+      if (!editingPayment) return;
+      const amount = parseFloat(paymentForm.amount.toString().replace(',', '.'));
+      if (isNaN(amount) || amount <= 0) { alert("Valor inválido."); return; }
+
+      startTransition(async () => {
+          await updateSubscriptionPayment(editingPayment.id, amount, paymentForm.paymentDate);
+          alert("Lançamento de mensalidade atualizado!");
+          setEditingPayment(null);
+          window.location.reload();
+      });
+  };
+
+  const handleDeletePayment = (payment: any) => {
+      if(!confirm("Excluir este lançamento de mensalidade? Esta ação não pode ser desfeita.")) return;
+      startTransition(async () => {
+          await deleteSubscriptionPayment(payment.id);
+          alert("Lançamento excluído!");
+          window.location.reload();
+      });
+  };
+
+  // Editing Rental (locação)
+  const [editingRental, setEditingRental] = useState<any>(null);
+
+  const openEditRental = (rent: any) => {
+      setEditingRental(rent);
+      const start = new Date(rent.startTime);
+      const end = new Date(rent.endTime);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      setRentalResource(rent.resource);
+      setRentalDate(start.toLocaleDateString('sv-SE'));
+      setRentalStart(`${pad(start.getHours())}:${pad(start.getMinutes())}`);
+      setRentalEnd(`${pad(end.getHours())}:${pad(end.getMinutes())}`);
+      setRentalAmount(rent.totalAmount);
+  };
+
+  const handleSaveRentalEdit = () => {
+      if (!editingRental || !rentalResource) return;
+
+      startTransition(async () => {
+          await updateRental(editingRental.id, rentalResource, rentalDate, rentalStart, rentalEnd, parseFloat(rentalAmount.toString().replace(',','.')));
+          alert("Locação atualizada!");
+          setEditingRental(null);
+          window.location.reload();
+      });
+  };
+
+  const handleDeleteRental = (rent: any) => {
+      if(!confirm("Excluir esta locação? Esta ação não pode ser desfeita.")) return;
+      startTransition(async () => {
+          await deleteRental(rent.id);
+          alert("Locação excluída!");
           window.location.reload();
       });
   };
@@ -287,10 +356,37 @@ export default function ClientesClient({ initialCustomers }: any) {
 
                                 <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-2">
                                     {selectedCustomer.subscription.payments?.map((payment: any) => (
-                                        <div key={payment.id} className="text-xs flex justify-between p-2 pb-2 border-b border-gray-100 last:border-0 items-center">
-                                            <span className="text-gray-500 font-medium">{new Date(payment.paymentDate).toLocaleDateString('pt-BR')}</span>
-                                            <span className="font-bold text-slate-700">R$ {payment.amount.toFixed(2).replace('.',',')}</span>
-                                        </div>
+                                        editingPayment?.id === payment.id ? (
+                                            <div key={payment.id} className="flex flex-col gap-2 p-2 bg-blue-50 border border-blue-100 rounded-xl">
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="block text-[10px] text-gray-500 uppercase mb-1">Valor (R$)</label>
+                                                        <input type="number" step="0.01" value={paymentForm.amount} onChange={e => setPaymentForm({...paymentForm, amount: e.target.value})} className="w-full bg-white border border-blue-100 rounded-lg px-2 py-1.5 text-sm focus:outline-none font-bold text-slate-700"/>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] text-gray-500 uppercase mb-1">Data</label>
+                                                        <input type="date" value={paymentForm.paymentDate} onChange={e => setPaymentForm({...paymentForm, paymentDate: e.target.value})} className="w-full bg-white border border-blue-100 rounded-lg px-2 py-1.5 text-sm focus:outline-none font-medium text-slate-700"/>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => setEditingPayment(null)} className="flex-1 text-[10px] font-bold text-gray-500 bg-white border border-gray-200 rounded-lg py-1.5 hover:bg-gray-100 transition">Cancelar</button>
+                                                    <button disabled={isPending} onClick={handleSavePaymentEdit} className="flex-1 text-[10px] font-bold text-white bg-mrts-blue rounded-lg py-1.5 hover:bg-mrts-hover transition disabled:opacity-50">Salvar</button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div key={payment.id} className="text-xs flex justify-between p-2 pb-2 border-b border-gray-100 last:border-0 items-center">
+                                                <span className="text-gray-500 font-medium">{new Date(payment.paymentDate).toLocaleDateString('pt-BR')}</span>
+                                                <span className="flex items-center gap-2">
+                                                    <span className="font-bold text-slate-700">R$ {payment.amount.toFixed(2).replace('.',',')}</span>
+                                                    <button onClick={() => openEditPayment(payment)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar lançamento">
+                                                        <Edit3 size={12} />
+                                                    </button>
+                                                    <button onClick={() => handleDeletePayment(payment)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg transition" title="Excluir lançamento">
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                </span>
+                                            </div>
+                                        )
                                     ))}
                                     {selectedCustomer.subscription.payments?.length === 0 && <span className="text-xs text-gray-400 text-center block">Nenhum pagamento registrado</span>}
                                 </div>
@@ -333,25 +429,38 @@ export default function ClientesClient({ initialCustomers }: any) {
                                             <input type="number" step="0.01" value={rentalAmount} onChange={e => setRentalAmount(parseFloat(e.target.value) || 0)} className="w-full bg-blue-50/50 border border-mrts-blue/30 text-mrts-blue rounded-lg px-3 py-2 focus:outline-none focus:border-mrts-blue text-sm font-bold"/>
                                         </div>
                                     </div>
-                                    <button disabled={isPending} onClick={handleCreateRental} className="w-full bg-mrts-blue text-white text-sm font-bold py-2.5 rounded-lg shadow-sm hover:bg-mrts-hover transition disabled:opacity-50 mt-1">
-                                        Confirmar Reserva
-                                    </button>
+                                     <button disabled={isPending} onClick={() => editingRental ? handleSaveRentalEdit() : handleCreateRental()} className="w-full bg-mrts-blue text-white text-sm font-bold py-2.5 rounded-lg shadow-sm hover:bg-mrts-hover transition disabled:opacity-50 mt-1">
+                                        {editingRental ? 'Salvar Alterações' : 'Confirmar Reserva'}
+                                     </button>
+                                     {editingRental && (
+                                        <button disabled={isPending} onClick={() => { setEditingRental(null); setRentalResource(""); setRentalAmount(0); }} className="w-full text-[11px] font-bold text-gray-500 bg-white border border-gray-200 py-2 rounded-lg hover:bg-gray-100 transition">
+                                            Cancelar Edição
+                                        </button>
+                                     )}
                                </div>
 
                                <div>
                                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5 py-2"><Calendar size={14}/> Histórico de Locações</h3>
                                    <div className="flex flex-col gap-2">
-                                       {selectedCustomer.rentals?.map((rent: any) => (
-                                           <div key={rent.id} className="bg-white border text-left border-gray-200 rounded-xl p-3 flex justify-between items-center shadow-sm">
-                                               <div className="flex flex-col">
-                                                   <span className="font-bold text-slate-800 text-xs">{rent.resource}</span>
-                                                   <span className="text-[10px] text-gray-500 font-medium">
-                                                       {new Date(rent.startTime).toLocaleDateString('pt-BR')} das {new Date(rent.startTime).getHours()}:{new Date(rent.startTime).getMinutes().toString().padStart(2, '0')} as {new Date(rent.endTime).getHours()}:{new Date(rent.endTime).getMinutes().toString().padStart(2, '0')}
-                                                   </span>
-                                               </div>
-                                               <span className="text-xs font-black text-slate-600">R$ {rent.totalAmount.toFixed(2).replace('.',',')}</span>
-                                           </div>
-                                       ))}
+                                        {selectedCustomer.rentals?.map((rent: any) => (
+                                            <div key={rent.id} className="bg-white border text-left border-gray-200 rounded-xl p-3 flex justify-between items-center shadow-sm">
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-slate-800 text-xs">{rent.resource}</span>
+                                                    <span className="text-[10px] text-gray-500 font-medium">
+                                                        {new Date(rent.startTime).toLocaleDateString('pt-BR')} das {new Date(rent.startTime).getHours()}:{new Date(rent.startTime).getMinutes().toString().padStart(2, '0')} as {new Date(rent.endTime).getHours()}:{new Date(rent.endTime).getMinutes().toString().padStart(2, '0')}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-black text-slate-600">R$ {rent.totalAmount.toFixed(2).replace('.',',')}</span>
+                                                    <button onClick={() => openEditRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar locação">
+                                                        <Edit3 size={13} />
+                                                    </button>
+                                                    <button onClick={() => handleDeleteRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg transition" title="Excluir locação">
+                                                        <Trash2 size={13} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
                                        {selectedCustomer.rentals?.length === 0 && <p className="text-xs text-center text-gray-400 py-4 font-medium">Nenhuma reserva localizada</p>}
                                    </div>
                                </div>

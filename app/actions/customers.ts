@@ -101,6 +101,62 @@ export async function createRental(customerId: string, resource: string, date: s
     return { success: true };
 }
 
+export async function updateSubscriptionPayment(paymentId: string, amount: number, paymentDate?: string) {
+    if (!paymentId) throw new Error("ID inválido");
+
+    await prisma.subscriptionPayment.update({
+        where: { id: paymentId },
+        data: {
+            amount,
+            paymentDate: paymentDate ? new Date(paymentDate) : undefined
+        }
+    });
+
+    revalidatePath("/clientes");
+    return { success: true };
+}
+
+export async function deleteSubscriptionPayment(paymentId: string) {
+    if (!paymentId) throw new Error("ID inválido");
+
+    await prisma.subscriptionPayment.delete({
+        where: { id: paymentId }
+    });
+
+    revalidatePath("/clientes");
+    return { success: true };
+}
+
+export async function updateRental(rentalId: string, resource: string, date: string, startHour: string, endHour: string, amount: number) {
+    if (!rentalId || !resource) throw new Error("Faltam dados do agendamento.");
+
+    const [sy, sm, sd] = date.split('-').map(Number);
+    const [sh, smin] = startHour.split(':').map(Number);
+    const [eh, emin] = endHour.split(':').map(Number);
+
+    const startTime = new Date(sy, sm-1, sd, sh, smin);
+    const endTime = new Date(sy, sm-1, sd, eh, emin);
+
+    await prisma.rental.update({
+        where: { id: rentalId },
+        data: { resource, startTime, endTime, totalAmount: amount }
+    });
+
+    revalidatePath("/clientes");
+    return { success: true };
+}
+
+export async function deleteRental(rentalId: string) {
+    if (!rentalId) throw new Error("ID inválido");
+
+    await prisma.rental.delete({
+        where: { id: rentalId }
+    });
+
+    revalidatePath("/clientes");
+    return { success: true };
+}
+
 export async function deleteCustomer(id: string) {
     if (!id) return { success: false, error: "ID inválido." };
 
