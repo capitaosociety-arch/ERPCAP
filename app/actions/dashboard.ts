@@ -141,7 +141,7 @@ export async function getDashboardKpis() {
           order: { 
             include: { 
               items: { 
-                include: { product: { include: { category: true } } } 
+                include: { product: { include: { category: true } }, service: true } 
               } 
             } 
           } 
@@ -149,18 +149,31 @@ export async function getDashboardKpis() {
       }),
       prisma.orderItem.findMany({
         where: { 
+          status: 'ACTIVE',
           order: { status: 'CLOSED', closedAt: { gte: startOfDay, lte: endOfDay } } 
         },
         include: { product: true }
       }),
       prisma.order.findMany({
           where: { status: 'CLOSED', closedAt: { gte: startOfDay, lte: endOfDay } },
-          include: { items: { include: { product: { include: { category: true } } } } }
+          include: { items: { where: { status: 'ACTIVE' }, include: { product: { include: { category: true } }, service: true } } }
       }),
       prisma.subscriptionPayment.findMany({
           where: { paymentDate: { gte: startOfDay, lte: endOfDay } }
       })
     ]);
+
+    // Helpers de identificação de aluguéis de campo (mesma lógica do Financeiro)
+    const isRentalItem = (it: any) => {
+        const prodName = it.product?.name?.toLowerCase() || '';
+        const catName = it.product?.category?.name?.toLowerCase() || '';
+        const svcName = it.service?.name?.toLowerCase() || '';
+        return !!it.serviceId || catName.includes('aluguel') || catName.includes('campo') || 
+               prodName.includes('aluguel') || prodName.includes('campo') || 
+               svcName.includes('aluguel') || svcName.includes('campo');
+    };
+    const isFut5 = (name: string) => /fut5|fut\s*5|futebol\s*5/i.test(name);
+    const isFut7 = (name: string) => /fut7|fut\s*7|futebol\s*7/i.test(name);
 
     // 1. Taxa de Ocupação (Capacidade: 16h/dia)
     const totalBookedHours = rentals.reduce((acc, r) => {
@@ -169,41 +182,37 @@ export async function getDashboardKpis() {
     }, 0);
     const occupancyRate = (totalBookedHours / 16) * 100;
 
-    // 2. Ticket Médio Bar (Apenas produtos, excluindo aluguéis)
+    // 2. Ticket Médio Bar (Apenas produtos, excluindo aluguéis de campo)
     const barOrdersToday = closedOrders.filter(order => 
-      order.items.some(it => !it.serviceId && !it.product?.category?.name?.toLowerCase().includes('aluguel'))
+      order.items.some(it => !isRentalItem(it))
     );
     
     let totalBarRevenue = 0;
     barOrdersToday.forEach(order => {
         order.items.forEach(it => {
-            const isRental = it.serviceId || it.product?.category?.name?.toLowerCase().includes('aluguel');
-            if (!isRental) totalBarRevenue += it.subtotal;
+            if (!isRentalItem(it)) totalBarRevenue += it.subtotal;
         });
     });
     
     const barTicketAverage = barOrdersToday.length > 0 ? totalBarRevenue / barOrdersToday.length : 0;
 
-    // 3. Faturamento por Campo (Consolidado)
-    const fieldRevenue: Record<string, number> = {};
-    
-    // Mensalidades: Contam como receita de campo
-    const subRevenue = subPayments.reduce((acc, sp) => acc + sp.amount, 0);
-    if (subRevenue > 0) fieldRevenue['Mensalistas'] = subRevenue;
+    // 3. Faturamento por Campo (hoje, separado por FUT5/FUT7)
+    const fieldRevenue = { fut5: 0, fut7: 0, total: 0 };
 
-    // Pagamentos de PDV e Rentals (evitando duplicidade)
+    // Pagamentos de PDV e comandas (evitando duplicidade com Rentals)
     payments.forEach(p => {
         p.order?.items.forEach(it => {
-            const isFieldProduct = it.product?.category?.name?.toLowerCase().includes('aluguel') || 
-                                  it.product?.category?.name?.toLowerCase().includes('campo') ||
-                                  it.product?.name?.toLowerCase().includes('aluguel');
-            if (isFieldProduct && it.product?.name) {
-                fieldRevenue[it.product.name] = (fieldRevenue[it.product.name] || 0) + it.subtotal;
-            }
+            if (!isRentalItem(it)) return;
+            const amt = it.subtotal || 0;
+            fieldRevenue.total += amt;
+            const itemName = `${it.product?.name?.toLowerCase() || ''} ${it.service?.name?.toLowerCase() || ''}`;
+            if (isFut5(itemName)) fieldRevenue.fut5 += amt;
+            else if (isFut7(itemName)) fieldRevenue.fut7 += amt;
         });
     });
 
     // 4. Lucro Líquido do Dia (Faturamento Total - Custo dos Produtos)
+    const subRevenue = subPayments.reduce((acc, sp) => acc + sp.amount, 0);
     const todayRevenue = payments.reduce((acc, p) => acc + p.amount, 0) + subRevenue;
     const totalCost = orderItems.reduce((acc, it) => acc + ((it.product?.cost || 0) * it.quantity), 0);
     const dailyProfit = todayRevenue - totalCost;
@@ -221,7 +230,7 @@ export async function getDashboardKpis() {
     return {
       occupancyRate: 0,
       barTicketAverage: 0,
-      fieldRevenue: {},
+      fieldRevenue: { fut5: 0, fut7: 0, total: 0 },
       dailyProfit: 0,
       totalRentals: 0,
       todayRevenue: 0

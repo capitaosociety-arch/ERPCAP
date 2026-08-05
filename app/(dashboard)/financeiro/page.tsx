@@ -69,6 +69,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   };
 
   const dailyRevenueMap: Record<string, { total: number, produtos: number, aluguel: number }> = {};
+  const fieldRentalDailyMap: Record<string, { fut5Count: number; fut7Count: number; totalCount: number; fut5Amount: number; fut7Amount: number; totalAmount: number }> = {};
 
   // Init range dinâmico
   for (let i = rangeLimit; i >= 0; i--) {
@@ -76,6 +77,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
         d.setDate(d.getDate() - i);
         const st = d.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
         dailyRevenueMap[st] = { total: 0, produtos: 0, aluguel: 0 };
+        fieldRentalDailyMap[st] = { fut5Count: 0, fut7Count: 0, totalCount: 0, fut5Amount: 0, fut7Amount: 0, totalAmount: 0 };
   }
 
   // Processar Pagamentos de Comandas
@@ -112,6 +114,40 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
               dailyRevenueMap[day].produtos += p.amount; // Default
           }
       }
+  });
+
+  // --- ESTATÍSTICAS DE ALUGUEL DE CAMPOS (caixa do diário: PDV e comandas) ---
+  // Identifica itens de aluguel de campo nas comandas/PDV pagos no período.
+  const isFut5 = (name: string) => /fut5|fut\s*5|futebol\s*5/i.test(name);
+  const isFut7 = (name: string) => /fut7|fut\s*7|futebol\s*7/i.test(name);
+
+  payments.forEach(p => {
+      const day = p.date.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
+      const bucket = fieldRentalDailyMap[day];
+      if (!bucket) return;
+
+      const orderItems = p.order?.items || [];
+      orderItems.forEach(item => {
+          const prodName = item.product?.name?.toLowerCase() || '';
+          const catName = item.product?.category?.name?.toLowerCase() || '';
+          const svcName = item.service?.name?.toLowerCase() || '';
+          const isRental = !!item.serviceId || catName.includes('aluguel') || catName.includes('campo') || prodName.includes('aluguel') || prodName.includes('campo');
+          if (!isRental) return;
+
+          const qty = item.quantity || 0;
+          const amt = item.subtotal || 0;
+          bucket.totalCount += qty;
+          bucket.totalAmount += amt;
+
+          const itemName = `${prodName} ${svcName}`;
+          if (isFut5(itemName)) {
+              bucket.fut5Count += qty;
+              bucket.fut5Amount += amt;
+          } else if (isFut7(itemName)) {
+              bucket.fut7Count += qty;
+              bucket.fut7Amount += amt;
+          }
+      });
   });
 
   // Mensalidades e locações do módulo Clientes NÃO entram no financeiro.
@@ -295,6 +331,30 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   // Jogos/locações (Rental) e mensalidades são dados do módulo Clientes,
   // usados apenas para informação e controle dentro do próprio Clientes.
 
+  // --- ESTATÍSTICAS DE ALUGUEL DE CAMPOS PARA OS CARDS ---
+  const fieldDailySeries = Object.keys(fieldRentalDailyMap).map(date => ({
+      day: date,
+      fut5Count: fieldRentalDailyMap[date].fut5Count,
+      fut7Count: fieldRentalDailyMap[date].fut7Count,
+      totalCount: fieldRentalDailyMap[date].totalCount,
+      fut5Amount: Number(fieldRentalDailyMap[date].fut5Amount.toFixed(2)),
+      fut7Amount: Number(fieldRentalDailyMap[date].fut7Amount.toFixed(2)),
+      totalAmount: Number(fieldRentalDailyMap[date].totalAmount.toFixed(2))
+  })).sort((a, b) => a.day.localeCompare(b.day));
+
+  const sumField = (pick: (d: any) => number) => fieldDailySeries.reduce((acc, d) => acc + pick(d), 0);
+
+  const fieldRentalStats = {
+      periodLabel: `${startDate.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' })} a ${endDate.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' })}`,
+      totalGames: sumField((d) => d.totalCount),
+      totalAmount: sumField((d) => d.totalAmount),
+      fut5Count: sumField((d) => d.fut5Count),
+      fut7Count: sumField((d) => d.fut7Count),
+      fut5Amount: sumField((d) => d.fut5Amount),
+      fut7Amount: sumField((d) => d.fut7Amount),
+      dailySeries: fieldDailySeries
+  };
+
   const payload = {
       totalRevenue,
       totalPendingPayable,
@@ -304,7 +364,8 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       cashRegisters,
       financialEntries,
       dreMonths,
-      dreDetails
+      dreDetails,
+      fieldRentalStats
   };
 
   return <FinanceiroClient payload={payload} />;

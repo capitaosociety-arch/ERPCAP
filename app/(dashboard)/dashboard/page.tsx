@@ -40,12 +40,7 @@ export default async function DashboardPage() {
   ]);
   
   // Transform data for the client component
-  let totalCost = 0;
   const paymentsList = lastRegisterPayments.map(p => {
-        // Calcular custo desta venda
-        const orderCost = p.order?.items.reduce((acc, item) => acc + ((item.product?.cost || 0) * item.quantity), 0) || 0;
-        totalCost += orderCost;
-
         return {
             id: p.id,
             amount: p.amount,

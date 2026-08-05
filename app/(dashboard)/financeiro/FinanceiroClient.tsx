@@ -8,7 +8,7 @@ import {
 import { 
     DollarSign, Wallet, Activity, Database, Users, Lock, Unlock, ArrowRight, Sheet, 
     Plus, Calendar, CheckCircle, XCircle, Trash2, Filter, AlertCircle, TrendingUp, TrendingDown, 
-    Eye, CreditCard, Banknote, ShoppingBag, RotateCcw, Landmark, Edit2, Search, FileDown
+    Eye, CreditCard, Banknote, ShoppingBag, RotateCcw, Landmark, Edit2, Search, FileDown, Trophy
 } from 'lucide-react';
 import { downloadExcel, downloadMultiSheetExcel } from '../../../lib/excel-export';
 import { downloadDrePdf } from '../../../lib/pdf-export';
@@ -27,7 +27,7 @@ export default function FinanceiroClient({ payload }: any) {
     const {
         totalRevenue, totalPendingPayable, totalPendingReceivable,
         dailyChart, methodChart,
-        cashRegisters, financialEntries, dreMonths, dreDetails
+        cashRegisters, financialEntries, dreMonths, dreDetails, fieldRentalStats
     } = payload;
 
     const [activeTab, setActiveTab] = useState('DASHBOARD'); // DASHBOARD, CASHIER, BILLING, DRE
@@ -460,6 +460,83 @@ export default function FinanceiroClient({ payload }: any) {
                             <h2 className="text-2xl font-black text-white relative z-10">R$ {Number((totalRevenue || 0) + (totalPendingReceivable || 0) - (totalPendingPayable || 0)).toFixed(2).replace('.', ',')}</h2>
                             <div className="absolute right-0 bottom-0 p-2 opacity-10">
                                 <DollarSign size={64} className="text-white" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* CARDS: ALUGUEL DE CAMPOS (caixa do diário) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                        {/* CARD: QUANTIDADE DE ALUGUEL DE CAMPOS */}
+                        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+                            <div className="absolute -right-6 -top-6 w-28 h-28 bg-emerald-500/10 rounded-full blur-3xl"></div>
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="w-11 h-11 bg-emerald-500/10 text-emerald-400 rounded-xl flex items-center justify-center">
+                                    <Trophy size={22} />
+                                </div>
+                                <span className="text-[10px] font-black text-slate-400 bg-slate-800 px-2.5 py-1 rounded-lg uppercase tracking-wider">{fieldRentalStats?.periodLabel}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2 mb-4">
+                                <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT5: {fieldRentalStats?.fut5Count ?? 0}</span>
+                                <span className="text-[10px] font-black text-sky-400 bg-sky-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT7: {fieldRentalStats?.fut7Count ?? 0}</span>
+                                <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">Total: {fieldRentalStats?.totalGames ?? 0}</span>
+                            </div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Aluguéis de Campo no Período</p>
+                            <h3 className="text-3xl font-black text-white tracking-tight">{fieldRentalStats?.totalGames ?? 0}</h3>
+                            <div className="w-full h-56 mt-4">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={fieldRentalStats?.dailySeries || []} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+                                        <XAxis dataKey="day" tick={{ fill: '#64748b', fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: string) => String(Number(v.slice(-2)))} />
+                                        <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                                        <RTooltip
+                                            formatter={(value: any, name: any) => [`${value} aluguel${value === 1 ? '' : 'eis'}`, name]}
+                                            labelFormatter={(label: any) => new Date(String(label) + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', fontSize: '12px' }}
+                                            cursor={{ fill: '#0f172a' }}
+                                        />
+                                        <Legend wrapperStyle={{ fontSize: '11px', fontWeight: 700, fontFamily: 'monospace' }} />
+                                        <Bar dataKey="fut5Count" name="FUT5" fill="#10b981" radius={[3, 3, 0, 0]} maxBarSize={12} />
+                                        <Bar dataKey="fut7Count" name="FUT7" fill="#0ea5e9" radius={[3, 3, 0, 0]} maxBarSize={12} />
+                                        <Bar dataKey="totalCount" name="Total" fill="#f59e0b" radius={[3, 3, 0, 0]} maxBarSize={12} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* CARD: VOLUME FINANCEIRO DE ALUGUEL DE CAMPOS */}
+                        <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm relative overflow-hidden">
+                            <div className="absolute -right-6 -top-6 w-28 h-28 bg-blue-500/10 rounded-full blur-3xl"></div>
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="w-11 h-11 bg-blue-50 text-mrts-blue rounded-xl flex items-center justify-center">
+                                    <DollarSign size={22} />
+                                </div>
+                                <span className="text-[10px] font-black text-gray-400 bg-gray-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">{fieldRentalStats?.periodLabel}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-2 mb-4">
+                                <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT5: R$ {Number(fieldRentalStats?.fut5Amount || 0).toFixed(2).replace('.', ',')}</span>
+                                <span className="text-[10px] font-black text-sky-600 bg-sky-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT7: R$ {Number(fieldRentalStats?.fut7Amount || 0).toFixed(2).replace('.', ',')}</span>
+                                <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">Total: R$ {Number(fieldRentalStats?.totalAmount || 0).toFixed(2).replace('.', ',')}</span>
+                            </div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Volume Financeiro</p>
+                            <h3 className="text-3xl font-black text-slate-800 tracking-tight">R$ {Number(fieldRentalStats?.totalAmount || 0).toFixed(2).replace('.', ',')}</h3>
+                            <div className="w-full h-56 mt-4">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={fieldRentalStats?.dailySeries || []} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                        <XAxis dataKey="day" tick={{ fill: '#94a3b8', fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: string) => String(Number(v.slice(-2)))} />
+                                        <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(val: number) => `R$ ${val}`} />
+                                        <RTooltip
+                                            formatter={(value: any, name: any) => [`R$ ${Number(value || 0).toFixed(2).replace('.', ',')}`, name]}
+                                            labelFormatter={(label: any) => new Date(String(label) + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', fontSize: '12px' }}
+                                            cursor={{ fill: '#f8fafc' }}
+                                        />
+                                        <Legend wrapperStyle={{ fontSize: '11px', fontWeight: 700, fontFamily: 'monospace' }} />
+                                        <Bar dataKey="fut5Amount" name="FUT5" fill="#10b981" radius={[3, 3, 0, 0]} maxBarSize={12} />
+                                        <Bar dataKey="fut7Amount" name="FUT7" fill="#0ea5e9" radius={[3, 3, 0, 0]} maxBarSize={12} />
+                                        <Bar dataKey="totalAmount" name="Total" fill="#f59e0b" radius={[3, 3, 0, 0]} maxBarSize={12} />
+                                    </BarChart>
+                                </ResponsiveContainer>
                             </div>
                         </div>
                     </div>

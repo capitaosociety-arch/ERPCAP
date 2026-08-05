@@ -34,7 +34,7 @@ interface DashboardClientProps {
         todayRevenue: number
         occupancyRate: number
         barTicketAverage: number
-        fieldRevenue: Record<string, number>
+        fieldRevenue: { fut5: number; fut7: number; total: number }
         dailyProfit: number
         totalRentals: number
     }
@@ -72,10 +72,10 @@ export default function DashboardClient({ stats, payments, userName, userRole }:
         }
     }, [router])
 
-    const fieldData = Object.entries(stats.fieldRevenue).map(([name, value]) => ({
-        name,
-        value,
-    })).sort((a, b) => b.value - a.value);
+    const fieldData = [
+        { name: 'FUT5', value: stats.fieldRevenue.fut5 },
+        { name: 'FUT7', value: stats.fieldRevenue.fut7 },
+    ].filter((x) => x.value > 0);
 
     const getMethodIcon = (method: string) => {
         switch (method) {
@@ -199,18 +199,22 @@ export default function DashboardClient({ stats, payments, userName, userRole }:
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                 <div className="lg:col-span-2 bg-white p-8 rounded-[2rem] shadow-soft border border-gray-100 flex flex-col">
                     <div className="flex items-center justify-between mb-8">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-slate-900 text-white rounded-lg flex items-center justify-center">
-                                <PieChart size={16}/>
-                            </div>
-                            <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest">Receita por Campo</h3>
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-slate-900 text-white rounded-lg flex items-center justify-center">
+                            <PieChart size={16}/>
                         </div>
-                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Ranking Financeiro</div>
+                        <h3 className="font-black text-slate-800 uppercase text-xs tracking-widest">Receita por Campo</h3>
                     </div>
-                    
-                    <div className="h-72 w-full">
-                        {fieldData.length === 0 ? (
-                            <div className="h-full flex items-center justify-center text-gray-400 text-sm italic">Sem movimentação nos campos hoje.</div>
+                    <div className="flex flex-wrap gap-2">
+                        <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT5: R$ {stats.fieldRevenue.fut5.toFixed(2).replace('.', ',')}</span>
+                        <span className="text-[10px] font-black text-sky-600 bg-sky-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT7: R$ {stats.fieldRevenue.fut7.toFixed(2).replace('.', ',')}</span>
+                        <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">Total: R$ {stats.fieldRevenue.total.toFixed(2).replace('.', ',')}</span>
+                    </div>
+                </div>
+
+                <div className="h-72 w-full">
+                    {fieldData.length === 0 ? (
+                        <div className="h-full flex items-center justify-center text-gray-400 text-sm italic">Sem movimentação de aluguéis de campo hoje.</div>
                         ) : (
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={fieldData} layout="vertical" margin={{ left: 40, right: 20 }}>
