@@ -55,6 +55,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
 
   // NEW: DE-PARA Verification & Zoom State
   const [verifiedRows, setVerifiedRows] = useState<Set<number>>(new Set());
+  const [excludedRows, setExcludedRows] = useState<Set<number>>(new Set());
   const [imgZoom, setImgZoom] = useState(1);
   const [imgPos, setImgPos] = useState({ x: 0, y: 0 });
   const [mobileTab, setMobileTab] = useState<'data' | 'photo'>('data'); // Mobile: aba ativa
@@ -166,6 +167,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                   setNfDueDateStr(res.data.data);
               }
               setVerifiedRows(new Set()); // Reset verification for new NF
+              setExcludedRows(new Set()); // Reset exclusions for new NF
               setImgZoom(1); // Reset zoom
               setImgPos({ x: 0, y: 0 });
               setMobileTab('data'); // No mobile, começa na aba de dados
@@ -215,6 +217,8 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
       };
 
       for (const [idx, mOptions] of Object.entries(mappedItems)) {
+          const indexNum = Number(idx);
+          if (excludedRows.has(indexNum)) continue; // Pular itens excluídos
           if (!mOptions.productId) {
               return alert(`Associe todos os itens à um produto no sistema para continuar.`);
           }
@@ -243,6 +247,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                   setParsedNfData(null);
                   setNfImageUrl(null);
                   setVerifiedRows(new Set());
+                  setExcludedRows(new Set());
                   window.location.reload();
               } else {
                   alert("Erro ao salvar itens: " + res.error);
@@ -261,6 +266,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
           produtos: []
       });
       setVerifiedRows(new Set());
+      setExcludedRows(new Set());
       setMappedItems({});
       setNfImageUrl(null);
   };
@@ -307,6 +313,13 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
       setVerifiedRows(newV);
   };
 
+  const toggleExcluded = (idx: number) => {
+      const newE = new Set(excludedRows);
+      if (newE.has(idx)) newE.delete(idx);
+      else newE.add(idx);
+      setExcludedRows(newE);
+  };
+
   const filteredProducts = products.filter((p: any) => {
       if (p.isActive === false) return false;
       if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) {
@@ -319,6 +332,11 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
       }
       return true;
   });
+
+  // Itens ativos (não excluídos) para o controle de verificação da NF
+  const activeItemsCount = parsedNfData?.produtos
+      ? parsedNfData.produtos.filter((_: any, i: number) => !excludedRows.has(i)).length
+      : 0;
 
   // Filtra histórico de movimentos
   const allMovements = useMemo(() => {
@@ -778,13 +796,13 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
 
                                 <div className="flex flex-wrap items-center justify-between gap-4 bg-white shadow-sm p-4 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/50 to-transparent">
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-inner transition-colors ${verifiedRows.size === (parsedNfData.produtos?.length || 0) ? 'bg-emerald-500 text-white' : 'bg-blue-100 text-blue-600'}`}>
-                                            {verifiedRows.size === (parsedNfData.produtos?.length || 0) ? <Check size={20} strokeWidth={3}/> : <RefreshCw size={18} className="animate-spin-slow"/>}
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shadow-inner transition-colors ${verifiedRows.size === activeItemsCount ? 'bg-emerald-500 text-white' : 'bg-blue-100 text-blue-600'}`}>
+                                            {verifiedRows.size === activeItemsCount ? <Check size={20} strokeWidth={3}/> : <RefreshCw size={18} className="animate-spin-slow"/>}
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-slate-800 text-sm">Conferência DE-PARA</h3>
                                             <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
-                                                {verifiedRows.size} de {parsedNfData.produtos?.length || 0} ITENS VALIDADOS
+                                                {verifiedRows.size} de {activeItemsCount} ITENS VALIDADOS
                                             </p>
                                         </div>
                                     </div>
@@ -813,15 +831,26 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                                             <tbody className="divide-y divide-gray-100">
                                                 {parsedNfData.produtos?.map((item: any, idx: number) => {
                                                     const isVerified = verifiedRows.has(idx);
+                                                    const isExcluded = excludedRows.has(idx);
                                                     return (
-                                                        <tr key={idx} className={`transition-colors h-20 ${isVerified ? 'bg-emerald-50/30' : 'hover:bg-slate-50/50'}`}>
+                                                        <tr key={idx} className={`transition-colors h-20 ${isExcluded ? 'bg-gray-100/70 opacity-60' : isVerified ? 'bg-emerald-50/30' : 'hover:bg-slate-50/50'}`}>
                                                             <td className="p-4 text-center">
-                                                                <button 
-                                                                    onClick={() => toggleVerified(idx)}
-                                                                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isVerified ? 'bg-emerald-500 text-white shadow-lg' : 'bg-white border-2 border-slate-200 text-slate-300 hover:border-mrts-blue hover:text-mrts-blue'}`}
-                                                                >
-                                                                    <Check size={20} strokeWidth={3} />
-                                                                </button>
+                                                                <div className="flex items-center justify-center gap-1">
+                                                                    <button 
+                                                                        onClick={() => toggleVerified(idx)}
+                                                                        disabled={isExcluded}
+                                                                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all disabled:opacity-30 ${isVerified ? 'bg-emerald-500 text-white shadow-lg' : 'bg-white border-2 border-slate-200 text-slate-300 hover:border-mrts-blue hover:text-mrts-blue'}`}
+                                                                    >
+                                                                        <Check size={20} strokeWidth={3} />
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={() => toggleExcluded(idx)}
+                                                                        title={isExcluded ? "Reativar item para lançamento" : "Não lançar este item"}
+                                                                        className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isExcluded ? 'bg-red-500 text-white shadow-lg' : 'bg-white border-2 border-slate-200 text-slate-300 hover:border-red-500 hover:text-red-500'}`}
+                                                                    >
+                                                                        {isExcluded ? <CheckCircle size={18} strokeWidth={3} /> : <X size={18} strokeWidth={3} />}
+                                                                    </button>
+                                                                </div>
                                                             </td>
                                                             {!parsedNfData.isManual && (
                                                                 <td className="p-4">
@@ -829,7 +858,8 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                                                                         type="text"
                                                                         value={item.nome || ''}
                                                                         onChange={(e) => updateItemName(idx, e.target.value)}
-                                                                        className="font-bold text-slate-700 block w-full bg-transparent border-b border-dashed border-gray-300 focus:border-mrts-blue focus:bg-white outline-none text-xs py-1 transition-all"
+                                                                        disabled={isExcluded}
+                                                                        className={`font-bold text-slate-700 block w-full bg-transparent border-b border-dashed border-gray-300 focus:border-mrts-blue focus:bg-white outline-none text-xs py-1 transition-all disabled:line-through disabled:text-gray-400`}
                                                                         title="Clique para corrigir o que a IA leu"
                                                                     />
                                                                     <div className="flex gap-2 mt-1">
@@ -844,6 +874,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                                                             <td className="p-4">
                                                                 <div className="flex items-center gap-2">
                                                                     <select 
+                                                                        disabled={isExcluded}
                                                                         value={mappedItems[idx]?.productId === 'NEW' ? 'NEW' : (mappedItems[idx]?.productId || '')} 
                                                                         onChange={(e) => {
                                                                             const val = e.target.value;
@@ -855,7 +886,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                                                                                 setMappedItems(newM);
                                                                             }
                                                                         }}
-                                                                        className={`w-full max-w-[280px] truncate text-xs px-3 py-2.5 rounded-xl focus:ring-2 focus:ring-mrts-blue outline-none border transition-all ${mappedItems[idx]?.productId && mappedItems[idx]?.productId !== 'NEW' ? 'border-mrts-blue bg-blue-50/50 text-mrts-blue font-bold shadow-sm' : 'border-gray-200 font-bold text-slate-400 hover:border-gray-300 bg-white'}`}
+                                                                        className={`w-full max-w-[280px] truncate text-xs px-3 py-2.5 rounded-xl focus:ring-2 focus:ring-mrts-blue outline-none border transition-all disabled:opacity-40 ${mappedItems[idx]?.productId && mappedItems[idx]?.productId !== 'NEW' ? 'border-mrts-blue bg-blue-50/50 text-mrts-blue font-bold shadow-sm' : 'border-gray-200 font-bold text-slate-400 hover:border-gray-300 bg-white'}`}
                                                                     >
                                                                         <option value="" disabled className="text-gray-400">--- Seleção no Sistema ---</option>
                                                                         <option value="NEW" className="font-bold text-emerald-600 bg-emerald-50">✨ Criar Novo Produto</option>
@@ -864,8 +895,9 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                                                                         ))}
                                                                     </select>
                                                                     <button 
+                                                                        disabled={isExcluded}
                                                                         onClick={() => handleQuickCreate(idx, item.nome, item.preco_unitario || mappedItems[idx]?.price)}
-                                                                        className="w-9 h-9 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 hover:bg-emerald-500 hover:text-white transition shrink-0 shadow-sm"
+                                                                        className="w-9 h-9 flex items-center justify-center bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100 hover:bg-emerald-500 hover:text-white transition shrink-0 shadow-sm disabled:opacity-30"
                                                                         title="Cadastrar Novo Produto"
                                                                     >
                                                                         <Plus size={18} strokeWidth={3} />
@@ -875,25 +907,27 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                                                             <td className="p-4">
                                                                 <input 
                                                                     type="text" 
+                                                                    disabled={isExcluded}
                                                                     value={mappedItems[idx]?.quantity || ''}
                                                                     onChange={(e) => {
                                                                         const newM = {...mappedItems};
                                                                         newM[idx].quantity = e.target.value;
                                                                         setMappedItems(newM);
                                                                     }}
-                                                                    className="w-16 px-2 py-2 border-2 border-slate-100 rounded-lg text-xs font-black text-center mx-auto block focus:border-mrts-blue outline-none bg-white"
+                                                                    className="w-16 px-2 py-2 border-2 border-slate-100 rounded-lg text-xs font-black text-center mx-auto block focus:border-mrts-blue outline-none bg-white disabled:opacity-40"
                                                                 />
                                                             </td>
                                                             <td className="p-4 text-right">
                                                                 <input 
                                                                     type="text" 
+                                                                    disabled={isExcluded}
                                                                     value={mappedItems[idx]?.price || ''}
                                                                     onChange={(e) => {
                                                                         const newM = {...mappedItems};
                                                                         newM[idx].price = e.target.value;
                                                                         setMappedItems(newM);
                                                                     }}
-                                                                    className="w-20 px-2 py-2 border-2 border-slate-100 rounded-lg text-xs font-black text-right ml-auto block focus:border-mrts-blue outline-none bg-white font-mono"
+                                                                    className="w-20 px-2 py-2 border-2 border-slate-100 rounded-lg text-xs font-black text-right ml-auto block focus:border-mrts-blue outline-none bg-white font-mono disabled:opacity-40"
                                                                 />
                                                             </td>
                                                         </tr>
@@ -931,7 +965,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                             Refazer Foto
                         </button>
                         
-                        {!parsedNfData.isManual && verifiedRows.size < (parsedNfData.produtos?.length || 0) && (
+                        {!parsedNfData.isManual && verifiedRows.size < activeItemsCount && (
                             <div className="flex items-center gap-2 text-blue-600 bg-blue-50 px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest border border-blue-100 animate-pulse">
                                 <AlertCircle size={14}/>
                                 Verifique todos os itens (Clique no Check) para liberar
@@ -939,7 +973,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                         )}
 
                         <button 
-                            disabled={isPending || Object.values(mappedItems).some(m => !m.productId) || (!parsedNfData.isManual && verifiedRows.size < (parsedNfData.produtos?.length || 0))} 
+                            disabled={isPending || Object.entries(mappedItems).some(([i, m]) => !m.productId && !excludedRows.has(Number(i))) || (!parsedNfData.isManual && verifiedRows.size < activeItemsCount)} 
                             onClick={handleBatchSaveNf} 
                             className="w-full sm:w-auto bg-emerald-500 text-white font-black text-lg py-3.5 px-8 rounded-xl hover:bg-emerald-600 transition shadow-xl shadow-emerald-500/30 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed flex items-center justify-center gap-3 transform active:scale-95"
                         >

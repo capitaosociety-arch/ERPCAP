@@ -1,12 +1,33 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { Plus, Edit3, X, User as UserIcon, Calendar, CheckCircle, AlertTriangle, Clock, CreditCard, Trash2 } from 'lucide-react';
+import { useState, useMemo, useTransition } from 'react';
+import { Plus, Edit3, X, User as UserIcon, Calendar, CheckCircle, AlertTriangle, Clock, CreditCard, Trash2, Trophy, DollarSign } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { upsertCustomer, paySubscription, createRental, deleteCustomer, updateSubscriptionPayment, deleteSubscriptionPayment, updateRental, deleteRental } from '../../actions/customers';
+
+const TZ = 'America/Cuiaba';
+
+function toDateStr(d: Date): string {
+  return d.toLocaleDateString('sv-SE', { timeZone: TZ });
+}
+
+function todayStr(): string {
+  return toDateStr(new Date());
+}
+
+function monthStartStr(): string {
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat('sv-SE', { timeZone: TZ, year: 'numeric', month: '2-digit' }).formatToParts(now);
+  const y = parts.find(p => p.type === 'year')!.value;
+  const m = parts.find(p => p.type === 'month')!.value;
+  return `${y}-${m}-01`;
+}
 
 export default function ClientesClient({ initialCustomers }: any) {
   const [customers, setCustomers] = useState(initialCustomers);
   const [activeTab, setActiveTab] = useState('ALL'); // ALL, OVERDUE
+  const [dateFrom, setDateFrom] = useState(monthStartStr());
+  const [dateTo, setDateTo] = useState(todayStr());
 
   // Modals
   const [isCustomerModalOpen, setCustomerModalOpen] = useState(false);
@@ -190,6 +211,57 @@ export default function ClientesClient({ initialCustomers }: any) {
       return true;
   });
 
+  const gamesStats = useMemo(() => {
+      const from = dateFrom || monthStartStr();
+      const to = dateTo || todayStr();
+
+      const isFut5 = (r: any) => /fut5|fut\s*5|futebol\s*5/i.test(r.resource || '');
+      const isFut7 = (r: any) => /fut7|fut\s*7|futebol\s*7/i.test(r.resource || '');
+
+      const allRentals = (customers as any[]).flatMap((c: any) => c.rentals || []);
+      const filtered = allRentals.filter((r: any) => {
+          const day = toDateStr(new Date(r.startTime));
+          return day >= from && day <= to;
+      });
+
+      // Inicializar todos os dias do período
+      const dailySeries: Record<string, { day: string; fut5Count: number; fut7Count: number; totalCount: number; fut5Amount: number; fut7Amount: number; totalAmount: number }> = {};
+      const cursor = new Date(from + 'T00:00:00');
+      const last = new Date(to + 'T00:00:00');
+      while (cursor <= last) {
+          const key = toDateStr(cursor);
+          dailySeries[key] = { day: key, fut5Count: 0, fut7Count: 0, totalCount: 0, fut5Amount: 0, fut7Amount: 0, totalAmount: 0 };
+          cursor.setDate(cursor.getDate() + 1);
+      }
+
+      filtered.forEach((r: any) => {
+          const key = toDateStr(new Date(r.startTime));
+          const d = dailySeries[key];
+          if (d) {
+              const amt = r.totalAmount || 0;
+              d.totalCount += 1;
+              d.totalAmount += amt;
+              if (isFut5(r)) { d.fut5Count += 1; d.fut5Amount += amt; }
+              else if (isFut7(r)) { d.fut7Count += 1; d.fut7Amount += amt; }
+          }
+      });
+
+      const fmt = (iso: string) => new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR');
+      const series = Object.values(dailySeries).sort((a, b) => a.day.localeCompare(b.day));
+      const sum = (pick: (d: any) => number) => series.reduce((acc, d) => acc + pick(d), 0);
+
+      return {
+          monthLabel: `${fmt(from)} a ${fmt(to)}`,
+          totalGames: sum((d) => d.totalCount),
+          totalAmount: sum((d) => d.totalAmount),
+          fut5Count: sum((d) => d.fut5Count),
+          fut7Count: sum((d) => d.fut7Count),
+          fut5Amount: sum((d) => d.fut5Amount),
+          fut7Amount: sum((d) => d.fut7Amount),
+          dailySeries: series
+      };
+  }, [customers, dateFrom, dateTo]);
+
   return (
     <div className="animate-in fade-in duration-500">
       <div className="flex justify-between items-end mb-6">
@@ -210,6 +282,119 @@ export default function ClientesClient({ initialCustomers }: any) {
                 <Plus size={18} /> Novo Cliente
             </button>
         </div>
+      </div>
+
+      {/* CARDS E GRÁFICOS DE JOGOS */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+              <Trophy size={16} className="text-emerald-500" /> Jogos & Locações
+          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                  <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      title="Data inicial"
+                      className="bg-white border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none w-40"
+                  />
+              </div>
+              <span className="text-[10px] font-black text-gray-400 uppercase">até</span>
+              <div className="relative">
+                  <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      title="Data final"
+                      className="bg-white border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none w-40"
+                  />
+              </div>
+              <button
+                  onClick={() => { setDateFrom(monthStartStr()); setDateTo(todayStr()); }}
+                  className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 px-2 py-2 rounded-lg hover:bg-emerald-50 transition"
+                  title="Voltar para o mês atual"
+              >
+                  Este mês
+              </button>
+          </div>
+      </div>
+
+      <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* CARD: QUANTIDADE DE JOGOS */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+              <div className="absolute -right-6 -top-6 w-28 h-28 bg-emerald-500/10 rounded-full blur-3xl"></div>
+              <div className="flex items-center justify-between mb-4">
+                  <div className="w-11 h-11 bg-emerald-500/10 text-emerald-400 rounded-xl flex items-center justify-center">
+                      <Trophy size={22} />
+                  </div>
+                  <span className="text-[10px] font-black text-slate-400 bg-slate-800 px-2.5 py-1 rounded-lg uppercase tracking-wider">{gamesStats.monthLabel}</span>
+              </div>
+              <div className="flex flex-wrap gap-2 mb-4">
+                  <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT5: {gamesStats.fut5Count}</span>
+                  <span className="text-[10px] font-black text-sky-400 bg-sky-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT7: {gamesStats.fut7Count}</span>
+                  <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">Total: {gamesStats.totalGames}</span>
+              </div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Jogos no Período</p>
+              <h3 className="text-3xl font-black text-white tracking-tight">{gamesStats.totalGames}</h3>
+              <div className="w-full h-56 mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={gamesStats.dailySeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
+                          <XAxis dataKey="day" tick={{ fill: '#64748b', fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: string) => String(Number(v.slice(-2)))} />
+                          <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                          <RTooltip
+                              formatter={(value: any, name: any) => [`${value} jogo${value === 1 ? '' : 's'}`, name]}
+                              labelFormatter={(label: any) => new Date(String(label) + 'T12:00:00').toLocaleDateString('pt-BR')}
+                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', fontSize: '12px' }}
+                              cursor={{ fill: '#0f172a' }}
+                          />
+                          <Legend wrapperStyle={{ fontSize: '11px', fontWeight: 700, fontFamily: 'monospace' }} />
+                          <Bar dataKey="fut5Count" name="FUT5" fill="#10b981" radius={[3, 3, 0, 0]} maxBarSize={12} />
+                          <Bar dataKey="fut7Count" name="FUT7" fill="#0ea5e9" radius={[3, 3, 0, 0]} maxBarSize={12} />
+                          <Bar dataKey="totalCount" name="Total" fill="#f59e0b" radius={[3, 3, 0, 0]} maxBarSize={12} />
+                      </BarChart>
+                  </ResponsiveContainer>
+              </div>
+          </div>
+
+          {/* CARD: VOLUME FINANCEIRO */}
+          <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm relative overflow-hidden">
+              <div className="absolute -right-6 -top-6 w-28 h-28 bg-blue-500/10 rounded-full blur-3xl"></div>
+              <div className="flex items-center justify-between mb-4">
+                  <div className="w-11 h-11 bg-blue-50 text-mrts-blue rounded-xl flex items-center justify-center">
+                      <DollarSign size={22} />
+                  </div>
+                  <span className="text-[10px] font-black text-gray-400 bg-gray-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">{gamesStats.monthLabel}</span>
+              </div>
+              <div className="flex flex-wrap gap-2 mb-4">
+                  <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT5: R$ {Number(gamesStats.fut5Amount || 0).toFixed(2).replace('.', ',')}</span>
+                  <span className="text-[10px] font-black text-sky-600 bg-sky-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT7: R$ {Number(gamesStats.fut7Amount || 0).toFixed(2).replace('.', ',')}</span>
+                  <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2.5 py-1 rounded-lg uppercase tracking-wider">Total: R$ {Number(gamesStats.totalAmount || 0).toFixed(2).replace('.', ',')}</span>
+              </div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Volume Financeiro</p>
+              <h3 className="text-3xl font-black text-slate-800 tracking-tight">R$ {Number(gamesStats.totalAmount || 0).toFixed(2).replace('.', ',')}</h3>
+              <div className="w-full h-56 mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={gamesStats.dailySeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="day" tick={{ fill: '#94a3b8', fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: string) => String(Number(v.slice(-2)))} />
+                          <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(val: number) => `R$ ${val}`} />
+                          <RTooltip
+                              formatter={(value: any, name: any) => [`R$ ${Number(value || 0).toFixed(2).replace('.', ',')}`, name]}
+                              labelFormatter={(label: any) => new Date(String(label) + 'T12:00:00').toLocaleDateString('pt-BR')}
+                              contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', fontSize: '12px' }}
+                              cursor={{ fill: '#f8fafc' }}
+                          />
+                          <Legend wrapperStyle={{ fontSize: '11px', fontWeight: 700, fontFamily: 'monospace' }} />
+                          <Bar dataKey="fut5Amount" name="FUT5" fill="#10b981" radius={[3, 3, 0, 0]} maxBarSize={12} />
+                          <Bar dataKey="fut7Amount" name="FUT7" fill="#0ea5e9" radius={[3, 3, 0, 0]} maxBarSize={12} />
+                          <Bar dataKey="totalAmount" name="Total" fill="#f59e0b" radius={[3, 3, 0, 0]} maxBarSize={12} />
+                      </BarChart>
+                  </ResponsiveContainer>
+              </div>
+          </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
