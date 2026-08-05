@@ -141,6 +141,7 @@ export async function getDashboardKpis() {
           order: { 
             include: { 
               items: { 
+                where: { status: 'ACTIVE' },
                 include: { product: { include: { category: true } }, service: true } 
               } 
             } 

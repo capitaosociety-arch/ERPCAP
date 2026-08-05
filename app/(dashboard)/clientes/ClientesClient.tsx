@@ -23,7 +23,7 @@ function monthStartStr(): string {
   return `${y}-${m}-01`;
 }
 
-export default function ClientesClient({ initialCustomers }: any) {
+export default function ClientesClient({ initialCustomers, fieldRentalLancamentos }: any) {
   const [customers, setCustomers] = useState(initialCustomers);
   const [activeTab, setActiveTab] = useState('ALL'); // ALL, OVERDUE
   const [dateFrom, setDateFrom] = useState(monthStartStr());
@@ -215,14 +215,12 @@ export default function ClientesClient({ initialCustomers }: any) {
       const from = dateFrom || monthStartStr();
       const to = dateTo || todayStr();
 
-      const isFut5 = (r: any) => /fut5|fut\s*5|futebol\s*5/i.test(r.resource || '');
-      const isFut7 = (r: any) => /fut7|fut\s*7|futebol\s*7/i.test(r.resource || '');
+      const isFut5 = (name: string) => /fut5|fut\s*5|futebol\s*5/i.test(name);
+      const isFut7 = (name: string) => /fut7|fut\s*7|futebol\s*7/i.test(name);
 
-      const allRentals = (customers as any[]).flatMap((c: any) => c.rentals || []);
-      const filtered = allRentals.filter((r: any) => {
-          const day = toDateStr(new Date(r.startTime));
-          return day >= from && day <= to;
-      });
+      // Jogos lançados nas sessões de caixa (PDV/comandas), fonte da verdade
+      const lancamentos: any[] = fieldRentalLancamentos || [];
+      const filtered = lancamentos.filter((l: any) => l.day >= from && l.day <= to);
 
       // Inicializar todos os dias do período
       const dailySeries: Record<string, { day: string; fut5Count: number; fut7Count: number; totalCount: number; fut5Amount: number; fut7Amount: number; totalAmount: number }> = {};
@@ -234,15 +232,15 @@ export default function ClientesClient({ initialCustomers }: any) {
           cursor.setDate(cursor.getDate() + 1);
       }
 
-      filtered.forEach((r: any) => {
-          const key = toDateStr(new Date(r.startTime));
-          const d = dailySeries[key];
+      filtered.forEach((l: any) => {
+          const d = dailySeries[l.day];
           if (d) {
-              const amt = r.totalAmount || 0;
-              d.totalCount += 1;
+              const qty = l.qty || 0;
+              const amt = l.amount || 0;
+              d.totalCount += qty;
               d.totalAmount += amt;
-              if (isFut5(r)) { d.fut5Count += 1; d.fut5Amount += amt; }
-              else if (isFut7(r)) { d.fut7Count += 1; d.fut7Amount += amt; }
+              if (isFut5(l.name)) { d.fut5Count += qty; d.fut5Amount += amt; }
+              else if (isFut7(l.name)) { d.fut7Count += qty; d.fut7Amount += amt; }
           }
       });
 
@@ -260,7 +258,7 @@ export default function ClientesClient({ initialCustomers }: any) {
           fut7Amount: sum((d) => d.fut7Amount),
           dailySeries: series
       };
-  }, [customers, dateFrom, dateTo]);
+  }, [fieldRentalLancamentos, dateFrom, dateTo]);
 
   return (
     <div className="animate-in fade-in duration-500">

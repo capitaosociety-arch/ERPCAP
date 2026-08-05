@@ -33,6 +33,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
         order: {
           include: {
             items: {
+              where: { status: 'ACTIVE' },
               include: { product: { include: { category: true } }, service: true }
             }
           }
