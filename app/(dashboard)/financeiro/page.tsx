@@ -119,23 +119,39 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
 
   // --- ESTATÍSTICAS DE ALUGUEL DE CAMPOS (caixa do diário: PDV e comandas) ---
   // Identifica itens de aluguel de campo nas comandas/PDV pagos no período.
+  // Pagamento parcial: jogo pago pela metade conta como meio jogo (proporção pago/a pagar).
   const isFut5 = (name: string) => /fut5|fut\s*5|futebol\s*5/i.test(name);
   const isFut7 = (name: string) => /fut7|fut\s*7|futebol\s*7/i.test(name);
 
-  payments.forEach(p => {
+  // Total pago por ordem (soma de todos os pagamentos de cada comanda)
+  const paidByOrder: Record<string, number> = {};
+  payments.forEach(p => { if (p.orderId) paidByOrder[p.orderId] = (paidByOrder[p.orderId] || 0) + p.amount; });
+
+  // Processa cada ordem uma única vez (evita dupla contagem em pagamentos divididos)
+  const processedOrders = new Set<string>();
+  const paymentsSorted = [...payments].sort((a, b) => a.date.getTime() - b.date.getTime());
+  paymentsSorted.forEach(p => {
+      if (!p.orderId || processedOrders.has(p.orderId)) return;
+      processedOrders.add(p.orderId);
+
+      const order = p.order;
+      if (!order) return;
+      const payable = (order.total || 0) - (order.discount || 0);
+      const paid = paidByOrder[p.orderId] || 0;
+      const ratio = payable > 0 ? Math.min(1, paid / payable) : 1;
+
       const day = p.date.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
       const bucket = fieldRentalDailyMap[day];
       if (!bucket) return;
 
-      const orderItems = p.order?.items || [];
-      orderItems.forEach(item => {
+      (order.items || []).forEach(item => {
           const prodName = item.product?.name?.toLowerCase() || '';
           const catName = item.product?.category?.name?.toLowerCase() || '';
           const svcName = item.service?.name?.toLowerCase() || '';
           const isRental = !!item.serviceId || catName.includes('aluguel') || catName.includes('campo') || prodName.includes('aluguel') || prodName.includes('campo');
           if (!isRental) return;
 
-          const qty = item.quantity || 0;
+          const qty = (item.quantity || 0) * ratio;
           const amt = item.subtotal || 0;
           bucket.totalCount += qty;
           bucket.totalAmount += amt;

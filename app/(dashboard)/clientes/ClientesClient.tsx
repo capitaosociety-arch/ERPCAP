@@ -38,6 +38,12 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   
   const [isPending, startTransition] = useTransition();
 
+  // Formata contagens que podem ser fracionadas por pagamento parcial (ex.: meio jogo)
+  const fmtCount = (v: any) => {
+      const n = Number(v || 0);
+      return Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
+  };
+
   const openCustomerModal = (customer?: any) => {
       setSelectedCustomer(customer || null);
       if (customer) {
@@ -330,20 +336,20 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                   <span className="text-[10px] font-black text-slate-400 bg-slate-800 px-2.5 py-1 rounded-lg uppercase tracking-wider">{gamesStats.monthLabel}</span>
               </div>
               <div className="flex flex-wrap gap-2 mb-4">
-                  <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT5: {gamesStats.fut5Count}</span>
-                  <span className="text-[10px] font-black text-sky-400 bg-sky-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT7: {gamesStats.fut7Count}</span>
-                  <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">Total: {gamesStats.totalGames}</span>
+                  <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT5: {fmtCount(gamesStats.fut5Count)}</span>
+                  <span className="text-[10px] font-black text-sky-400 bg-sky-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT7: {fmtCount(gamesStats.fut7Count)}</span>
+                  <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">Total: {fmtCount(gamesStats.totalGames)}</span>
               </div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Jogos no Período</p>
-              <h3 className="text-3xl font-black text-white tracking-tight">{gamesStats.totalGames}</h3>
+              <h3 className="text-3xl font-black text-white tracking-tight">{fmtCount(gamesStats.totalGames)}</h3>
               <div className="w-full h-56 mt-4">
                   <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={gamesStats.dailySeries} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" />
                           <XAxis dataKey="day" tick={{ fill: '#64748b', fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v: string) => String(Number(v.slice(-2)))} />
-                          <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                          <YAxis tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
                           <RTooltip
-                              formatter={(value: any, name: any) => [`${value} jogo${value === 1 ? '' : 's'}`, name]}
+                              formatter={(value: any, name: any) => [`${fmtCount(value)} jogo${Number(value) === 1 ? '' : 's'}`, name]}
                               labelFormatter={(label: any) => new Date(String(label) + 'T12:00:00').toLocaleDateString('pt-BR')}
                               contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', fontSize: '12px' }}
                               cursor={{ fill: '#0f172a' }}
