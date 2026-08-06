@@ -141,6 +141,7 @@ model Product {
   depotStock       DepotStock?
   depotMovements   DepotMovement[]
   transferRequests TransferRequest[]
+  stockCounts      StockCount[]
 
   @@index([name])
   @@index([categoryId])
@@ -395,5 +396,20 @@ model TransferRequest {
   @@index([productId])
   @@index([status])
   @@index([createdAt])
+}
+
+// Contagem diária de estoque (apenas informativa - NÃO altera o estoque real)
+model StockCount {
+  id        String   @id @default(cuid())
+  productId String
+  date      String   // YYYY-MM-DD (dia da contagem)
+  quantity  Float    // Quantidade contada fisicamente
+  createdAt DateTime @default(now())
+
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([productId, date])
+  @@index([date])
+  @@index([productId])
 }
 

@@ -45,10 +45,14 @@ export default async function DepotPage() {
         orderBy: { date: 'desc' }
     });
 
+    // Carregar Contagens Diárias de Estoque
+    const stockCounts = await prisma.stockCount.findMany();
+
     return <DepotClient 
         initialInventory={inventory} 
         initialRequests={requests} 
         initialMovements={movements}
+        initialStockCounts={stockCounts}
         userRole={dbUser.role} 
     />;
 }

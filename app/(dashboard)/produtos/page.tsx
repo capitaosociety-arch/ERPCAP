@@ -7,6 +7,8 @@ export default async function ProductsRoute() {
       include: { 
           category: true, 
           stock: true,
+          depotStock: true,
+          stockCounts: { orderBy: { date: 'desc' } },
           priceHistories: { orderBy: { date: 'desc' } }
       },
       orderBy: { category: { name: 'asc' } }

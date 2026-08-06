@@ -180,6 +180,7 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
   const handleExportExcel = () => {
     const exportData = products.map((p: any) => {
       const profitPercent = p.cost > 0 ? ((p.price - p.cost) / p.cost) * 100 : 0;
+      const count = p.stockCounts?.[0]?.quantity;
       return {
         "ID": p.id,
         "Produto": p.name,
@@ -188,6 +189,9 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
         "Preço Venda (R$)": p.price || 0,
         "Lucro (%)": profitPercent.toFixed(2) + "%",
         "Estoque Atual": p.stock?.quantity || 0,
+        "Volume Matriz": p.depotStock?.quantity || 0,
+        "Contagem": count == null ? "" : count,
+        "Diferença": count == null ? "" : Math.round(((p.depotStock?.quantity || 0) - count) * 100) / 100,
         "Unidade": p.unit || "UN",
         "Status": p.isActive ? "Ativo" : "Inativo"
       };
@@ -247,6 +251,8 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                 <th className="p-4 font-bold">Preço de Venda</th>
                 <th className="p-4 font-bold">Lucro (%)</th>
                 <th className="p-4 font-bold">Estoque</th>
+                <th className="p-4 font-bold">Contagem</th>
+                <th className="p-4 font-bold">Diferença</th>
                 <th className="p-4 font-bold text-right">Ações</th>
               </tr>
             </thead>
@@ -290,6 +296,28 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                     <span className={`text-xs font-bold px-3 py-1.5 rounded-lg ${product.stock && product.stock.quantity > product.stock.minQuantity ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
                       {product.stock?.quantity || 0} <span className="font-medium text-[10px] uppercase ml-0.5">{product.unit}</span>
                     </span>
+                  </td>
+                  <td className="p-4">
+                    {product.stockCounts && product.stockCounts.length > 0 ? (
+                      <span className="text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-200">
+                        {product.stockCounts[0].quantity} <span className="font-medium text-[10px] uppercase ml-0.5">{product.unit}</span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-300 font-medium">—</span>
+                    )}
+                  </td>
+                  <td className="p-4">
+                    {(() => {
+                      const volume = product.depotStock?.quantity || 0;
+                      const count = product.stockCounts?.[0]?.quantity;
+                      if (count == null) return <span className="text-xs text-slate-300 font-medium">—</span>;
+                      const diff = Math.round((volume - count) * 100) / 100;
+                      return (
+                        <span className={`text-xs font-bold px-3 py-1.5 rounded-lg ${diff === 0 ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-amber-50 text-amber-600 border border-amber-100'}`}>
+                          {diff > 0 ? '+' : ''}{diff} <span className="font-medium text-[10px] uppercase ml-0.5">{product.unit}</span>
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="p-4 text-right">
                     <div className="flex items-center justify-end gap-2">

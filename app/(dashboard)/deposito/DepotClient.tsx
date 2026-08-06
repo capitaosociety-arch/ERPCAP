@@ -1,29 +1,71 @@
 'use client'
 
 import { useState, useTransition } from 'react';
-import { Search, Warehouse, ArrowRightLeft, PackagePlus, AlertTriangle, X, Check, Box, Clock, ShieldCheck, ThumbsDown, Camera, Edit, RefreshCw, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, AlertCircle, Upload, Plus, CalendarRange } from 'lucide-react';
+import { Search, Warehouse, ArrowRightLeft, PackagePlus, AlertTriangle, X, Check, Box, Clock, ShieldCheck, ThumbsDown, Camera, Edit, RefreshCw, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, AlertCircle, Upload, Plus, CalendarRange, ClipboardList } from 'lucide-react';
 import { addDepotStock, requestTransfer, authorizeTransfer, rejectTransfer, adjustDepotStockLoss, directTransfer, updateDepotMinStock, registerBatchDepotStockMovement } from '../../actions/depot';
 import { quickCreateProductFromInvoice } from '../../actions/products';
+import { saveStockCounts } from '../../actions/stock-count';
 
 export default function DepotClient({ 
     initialInventory, 
     initialRequests, 
     initialMovements = [],
+    initialStockCounts = [],
     userRole 
 }: { 
     initialInventory: any[], 
     initialRequests: any[], 
     initialMovements: any[],
+    initialStockCounts: any[],
     userRole: string 
 }) {
     const [activeTab, setActiveTab] = useState<'inventory' | 'requests'>('inventory');
-    const [filter, setFilter] = useState<'ALL' | 'LOW' | 'HISTORY'>('ALL');
+    const [filter, setFilter] = useState<'ALL' | 'LOW' | 'HISTORY' | 'COUNT'>('ALL');
     const [search, setSearch] = useState("");
     const [movFrom, setMovFrom] = useState("");
     const [movTo, setMovTo] = useState("");
     const [isPending, startTransition] = useTransition();
     const [requests, setRequests] = useState<any[]>(initialRequests);
     const [processingId, setProcessingId] = useState<string | null>(null);
+
+    // Contagem diária de estoque
+    const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
+    const [countDate, setCountDate] = useState<string>(todayStr);
+    const [countQty, setCountQty] = useState<Record<string, string>>(() => {
+        const map: Record<string, string> = {};
+        for (const c of initialStockCounts) {
+            if (c.date === todayStr) map[c.productId] = String(c.quantity);
+        }
+        return map;
+    });
+    const switchCountDate = (d: string) => {
+        setCountDate(d);
+        const map: Record<string, string> = {};
+        for (const c of initialStockCounts) {
+            if (c.date === d) map[c.productId] = String(c.quantity);
+        }
+        setCountQty(map);
+    };
+
+    const handleSaveCount = () => {
+        const items: { productId: string; quantity: number }[] = [];
+        for (const p of initialInventory) {
+            const raw = (countQty[p.id] || '').replace(',', '.');
+            if (raw !== '' && Number.isFinite(Number(raw)) && Number(raw) >= 0) {
+                items.push({ productId: p.id, quantity: Number(raw) });
+            }
+        }
+        if (items.length === 0) return alert('Informe a contagem de pelo menos um produto.');
+        startTransition(async () => {
+            try {
+                const res = await saveStockCounts(countDate, items);
+                if (res.success) {
+                    alert(`Contagem de ${res.saved} produto(s) salva para ${countDate}.`);
+                    window.location.reload();
+                }
+            } catch (e: any) { alert(e.message || 'Erro ao salvar contagem.'); }
+        });
+    };
 
     // Modals
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -321,6 +363,9 @@ export default function DepotClient({
                             <button onClick={() => setFilter('HISTORY')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${filter === 'HISTORY' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
                                 <RefreshCw size={16}/> Lançamentos (NF)
                             </button>
+                            <button onClick={() => setFilter('COUNT')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${filter === 'COUNT' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                                <ClipboardList size={16}/> Contagem EST.
+                            </button>
                         </div>
                     </div>
 
@@ -353,6 +398,88 @@ export default function DepotClient({
                         </div>
                     )}
 
+                    {filter === 'COUNT' && (
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div className="p-4 border-b border-gray-100 bg-slate-50 flex flex-col md:flex-row gap-3 justify-between items-start md:items-center">
+                                <div className="flex items-center gap-3">
+                                    <ClipboardList className="text-mrts-blue" size={18}/>
+                                    <div>
+                                        <h3 className="font-bold text-slate-800 text-sm uppercase">Contagem Diária de Estoque</h3>
+                                        <p className="text-[10px] text-slate-500 font-medium">Registre a quantidade contada fisicamente. Não altera o estoque real.</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <input type="date" value={countDate} onChange={e => switchCountDate(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-mrts-blue"/>
+                                    <button disabled={isPending} onClick={handleSaveCount} className="px-4 py-2 rounded-xl text-sm font-bold bg-mrts-blue text-white shadow-lg hover:bg-blue-600 transition flex items-center gap-2 disabled:opacity-50">
+                                        {isPending ? <RefreshCw size={16} className="animate-spin"/> : <Check size={16}/>} Salvar Contagem
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse whitespace-nowrap">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-gray-100 text-xs uppercase text-slate-500 font-bold tracking-wider">
+                                            <th className="p-4">Produto</th>
+                                            <th className="p-4 text-right">Volume Matriz</th>
+                                            <th className="p-4 text-right">Contagem</th>
+                                            <th className="p-4 text-center">Diferença</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-50 text-sm font-medium">
+                                        {initialInventory.filter(p => p.isActive !== false).map(product => {
+                                            const depotQty = product.depotStock?.quantity || 0;
+                                            const raw = (countQty[product.id] || '').replace(',', '.');
+                                            const counted = raw === '' ? null : Number(raw);
+                                            const diff = counted === null ? null : Math.round((depotQty - counted) * 100) / 100;
+                                            return (
+                                                <tr key={product.id} className="hover:bg-slate-50/50 transition">
+                                                    <td className="p-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
+                                                                {product.iconUrl ? <img src={product.iconUrl} className="w-6 h-6" /> : <Box size={20} className="text-slate-300"/>}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-bold text-slate-800">{product.name || 'Sem nome'}</p>
+                                                                <p className="text-[10px] text-gray-400 uppercase">{product.category?.name || 'Vários'}</p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="p-4 text-right text-base font-black text-slate-800">
+                                                        {depotQty.toFixed(2).replace(/\.00$/, '')} <span className="text-xs font-medium opacity-60">{product.unit}</span>
+                                                    </td>
+                                                    <td className="p-4 text-right">
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={countQty[product.id] || ''}
+                                                            placeholder="0"
+                                                            onChange={e => setCountQty(prev => ({ ...prev, [product.id]: e.target.value }))}
+                                                            className="w-24 text-right font-black bg-slate-50 border-2 border-slate-100 rounded-lg px-2 py-1.5 outline-none focus:border-mrts-blue transition"
+                                                        />
+                                                    </td>
+                                                    <td className="p-4 text-center">
+                                                        {diff === null ? (
+                                                            <span className="text-xs text-slate-300 font-medium">—</span>
+                                                        ) : (
+                                                            <span className={`text-sm font-black ${diff === 0 ? 'text-emerald-500' : diff > 0 ? 'text-red-500' : 'text-amber-500'}`}>
+                                                                {diff > 0 ? '+' : ''}{diff.toFixed(2).replace(/\.00$/, '')}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                        {initialInventory.filter(p => p.isActive !== false).length === 0 && (
+                                            <tr><td colSpan={4} className="p-10 text-center text-slate-400 font-bold">Nenhum produto localizado.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {filter !== 'COUNT' && (
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                         {filter !== 'HISTORY' ? (
                             <div className="overflow-x-auto">
@@ -493,6 +620,7 @@ export default function DepotClient({
                             </div>
                         )}
                     </div>
+                    )}
                 </>
             )}
 
