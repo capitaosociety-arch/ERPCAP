@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition, useMemo } from 'react';
-import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search, Upload, Plus, ClipboardList, Sheet } from 'lucide-react';
+import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search, Upload, Plus, ClipboardList, Sheet, CalendarRange } from 'lucide-react';
 import { registerStockMovement, updateMinStock, registerBatchStockMovement } from '../../actions/stock';
 import { parseInvoiceImage } from '../../actions/invoice-ai';
 import { quickCreateProductFromInvoice } from '../../actions/products';
@@ -47,6 +47,21 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
       }
       setCountQty(map);
   };
+
+  // Consulta de contagens salvas por período (Balcão)
+  const [countFrom, setCountFrom] = useState("");
+  const [countTo, setCountTo] = useState("");
+  const countSearch = (searchQuery || '').toLowerCase();
+  const countHistory = initialStockCounts
+      .filter((c: any) => {
+          if (countFrom && c.date < countFrom) return false;
+          if (countTo && c.date > countTo) return false;
+          const prod = products.find(p => p.id === c.productId);
+          if (!prod) return true;
+          return (prod.name || '').toLowerCase().includes(countSearch);
+      })
+      .map((c: any) => ({ ...c, product: products.find(p => p.id === c.productId) }))
+      .sort((a: any, b: any) => a.date < b.date ? 1 : a.date > b.date ? -1 : (a.product?.name || '').localeCompare(b.product?.name || ''));
 
   const handleSaveCount = () => {
       const items: { productId: string; quantity: number }[] = [];
@@ -533,6 +548,64 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                     <tr>
                         <td colSpan={4} className="p-8 text-center text-gray-500 font-medium">Nenhum produto localizado.</td>
                     </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="p-4 border-t border-gray-100 bg-slate-50">
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+              <div className="flex items-center gap-2 flex-1 flex-wrap">
+                <CalendarRange size={16} className="text-gray-400" />
+                <span className="text-xs font-bold text-slate-600 uppercase">Consultar contagens salvas</span>
+                <input
+                    type="date"
+                    value={countFrom}
+                    onChange={e => setCountFrom(e.target.value)}
+                    className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-mrts-blue"
+                />
+                <span className="text-gray-400 text-sm">até</span>
+                <input
+                    type="date"
+                    value={countTo}
+                    onChange={e => setCountTo(e.target.value)}
+                    className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-mrts-blue"
+                />
+                {(countFrom || countTo) && (
+                    <button onClick={() => { setCountFrom(""); setCountTo(""); }} className="text-xs font-bold text-red-500 hover:text-red-600 transition flex items-center gap-1 px-2 py-1">
+                        <X size={13}/> Limpar
+                    </button>
+                )}
+              </div>
+              <span className="text-xs text-gray-400 font-medium shrink-0">
+                {countHistory.length} contagem(ns) no período
+              </span>
+            </div>
+          </div>
+          <div className="overflow-x-auto border-t border-gray-100">
+            <table className="w-full text-left border-collapse whitespace-nowrap">
+              <thead>
+                <tr className="bg-gray-50/80 border-b border-gray-100 text-xs uppercase text-gray-500 tracking-wider">
+                  <th className="p-4 font-bold">Data</th>
+                  <th className="p-4 font-bold">Produto</th>
+                  <th className="p-4 font-bold text-right">Contagem Salva</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {countHistory.map((h: any) => (
+                  <tr key={h.id} className="hover:bg-slate-50 transition">
+                    <td className="p-4 text-xs text-slate-400">{new Date(h.date + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                    <td className="p-4 font-bold text-slate-800">{h.product?.name || 'Produto removido'}</td>
+                    <td className="p-4 text-right">
+                      <span className="text-base font-black text-slate-700">{h.quantity}</span>
+                      <span className="text-xs font-medium opacity-70 ml-1 uppercase">{h.product?.stock?.unit || h.product?.unit || "UN"}</span>
+                    </td>
+                  </tr>
+                ))}
+                {countHistory.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="p-8 text-center text-gray-500 font-medium">Nenhuma contagem salva no período selecionado.</td>
+                  </tr>
                 )}
               </tbody>
             </table>

@@ -48,6 +48,22 @@ export default function DepotClient({
         setCountQty(map);
     };
 
+    // Consulta de contagens salvas por período
+    const [countFrom, setCountFrom] = useState("");
+    const [countTo, setCountTo] = useState("");
+    const countSearch = (search || '').toLowerCase();
+    const countHistory = initialStockCounts
+        .filter(c => {
+            if (countFrom && c.date < countFrom) return false;
+            if (countTo && c.date > countTo) return false;
+            const prod = initialInventory.find(p => p.id === c.productId);
+            if (!prod) return true;
+            return (prod.name || '').toLowerCase().includes(countSearch) ||
+                   (prod.code && prod.code.toLowerCase().includes(countSearch));
+        })
+        .map(c => ({ ...c, product: initialInventory.find(p => p.id === c.productId) }))
+        .sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : ((a.product?.name || '')).localeCompare(b.product?.name || ''));
+
     const handleSaveCount = () => {
         const items: { productId: string; quantity: number }[] = [];
         for (const p of initialInventory) {
@@ -496,6 +512,64 @@ export default function DepotClient({
                                         })}
                                         {initialInventory.filter(p => p.isActive !== false).length === 0 && (
                                             <tr><td colSpan={4} className="p-10 text-center text-slate-400 font-bold">Nenhum produto localizado.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div className="p-4 border-t border-gray-100 bg-slate-50">
+                                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+                                    <div className="flex items-center gap-2 flex-1 flex-wrap">
+                                        <CalendarRange size={16} className="text-gray-400" />
+                                        <span className="text-xs font-bold text-slate-600 uppercase">Consultar contagens salvas</span>
+                                        <input
+                                            type="date"
+                                            value={countFrom}
+                                            onChange={e => setCountFrom(e.target.value)}
+                                            className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-mrts-blue"
+                                        />
+                                        <span className="text-gray-400 text-sm">até</span>
+                                        <input
+                                            type="date"
+                                            value={countTo}
+                                            onChange={e => setCountTo(e.target.value)}
+                                            className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-mrts-blue"
+                                        />
+                                        {(countFrom || countTo) && (
+                                            <button onClick={() => { setCountFrom(""); setCountTo(""); }} className="text-xs font-bold text-red-500 hover:text-red-600 transition flex items-center gap-1 px-2 py-1">
+                                                <X size={13}/> Limpar
+                                            </button>
+                                        )}
+                                    </div>
+                                    <span className="text-xs text-gray-400 font-medium shrink-0">
+                                        {countHistory.length} contagem(ns) no período
+                                    </span>
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto border-t border-gray-100">
+                                <table className="w-full text-left border-collapse whitespace-nowrap">
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-gray-100 text-xs uppercase text-slate-500 font-bold tracking-wider">
+                                            <th className="p-4">Data</th>
+                                            <th className="p-4">Produto</th>
+                                            <th className="p-4 text-right">Contagem Salva</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-50 text-sm font-medium">
+                                        {countHistory.map(h => (
+                                            <tr key={h.id} className="hover:bg-slate-50/50 transition">
+                                                <td className="p-4 text-xs text-slate-400">
+                                                    {new Date(h.date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                                </td>
+                                                <td className="p-4 font-bold text-slate-800">{h.product?.name || 'Produto removido'}</td>
+                                                <td className="p-4 text-right">
+                                                    <span className="text-base font-black text-slate-700">{h.quantity}</span>
+                                                    <span className="text-xs font-medium opacity-60 ml-1">{h.product?.unit || 'UN'}</span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {countHistory.length === 0 && (
+                                            <tr><td colSpan={3} className="p-10 text-center text-slate-400 font-bold">Nenhuma contagem salva no período selecionado.</td></tr>
                                         )}
                                     </tbody>
                                 </table>
