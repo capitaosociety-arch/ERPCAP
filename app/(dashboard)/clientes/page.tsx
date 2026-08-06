@@ -6,7 +6,11 @@ export default async function ClientesRoute() {
     prisma.customer.findMany({
       include: {
         subscription: { include: { payments: { orderBy: { paymentDate: 'desc' }} } },
-        rentals: { orderBy: { startTime: 'desc' } }
+        rentals: { orderBy: { startTime: 'desc' } },
+        orders: {
+          where: { status: { not: 'OPEN' } },
+          select: { id: true, total: true, discount: true, notes: true, closedAt: true }
+        }
       },
       orderBy: { name: 'asc' }
     }),

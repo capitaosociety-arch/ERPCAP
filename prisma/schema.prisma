@@ -57,6 +57,8 @@ model Customer {
   services     Service[]      @relation("CustomerServices")
   subscription Subscription?
   rentals      Rental[]
+  score        CustomerScore?
+  scoreHistory CustomerScoreHistory[]
 
   @@index([name])
   @@index([cpf])
@@ -316,7 +318,8 @@ model Rental {
   startTime   DateTime
   endTime     DateTime
   totalAmount Float
-  status      String   @default("PENDING") // PENDING, PAID, CANCELED
+  status      String   @default("PENDING") // PENDING, PAID, CANCELED, NO_SHOW
+  cancelledAt DateTime?
   createdAt   DateTime @default(now())
 
   customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
@@ -414,5 +417,49 @@ model StockCount {
   @@index([date])
   @@index([productId])
   @@index([location])
+}
+
+// ---------------------------------------------------------------------------
+// Score de Clientes (Capitão Society)
+// ---------------------------------------------------------------------------
+
+// Score atual de cada cliente (cache/snapshot; o valor real é recalculado
+// sempre na carga da tela pelo motor em lib/score.ts).
+model CustomerScore {
+  id            String   @id @default(cuid())
+  customerId    String   @unique
+  score         Int
+  classificacao String
+  componentes   Json     // { fator: { peso, pontos, normalizado, motivo } }
+  recomendacao  String
+  updatedAt     DateTime @updatedAt
+
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([score])
+}
+
+// Histórico de snapshots do score (para evolução ao longo do tempo).
+model CustomerScoreHistory {
+  id            String   @id @default(cuid())
+  customerId    String
+  score         Int
+  classificacao String
+  componentes   Json
+  snapshotAt    DateTime @default(now())
+
+  customer      Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([snapshotAt])
+}
+
+// Configuração de pesos e limiares do score (linha única, id = 1).
+model ScoreConfig {
+  id        Int      @id @default(1)
+  pesos     Json     // { frequencia, gastoAluguel, consumoBar, pontualidade, cancelamentos, faltas, recencia, recorrencia, inadimplencia }
+  limiares  Json     // { reservasRef, aluguelRef, barRef, prazoCancelamentoHoras, diasInatividade, mesesAnalise, graceDiasMensalidade, capInadimplente }
+  updatedAt DateTime @updatedAt
 }
 

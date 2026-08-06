@@ -1,11 +1,34 @@
 'use client';
 
-import { useState, useMemo, useTransition } from 'react';
-import { Plus, Edit3, X, User as UserIcon, Calendar, CheckCircle, AlertTriangle, Clock, CreditCard, Trash2, Trophy, DollarSign } from 'lucide-react';
+import { useState, useMemo, useTransition, useEffect } from 'react';
+import { Plus, Edit3, X, User as UserIcon, Calendar, CheckCircle, AlertTriangle, Clock, CreditCard, Trash2, Trophy, DollarSign, Gauge, Settings, RefreshCw, Star, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend } from 'recharts';
-import { upsertCustomer, paySubscription, createRental, deleteCustomer, updateSubscriptionPayment, deleteSubscriptionPayment, updateRental, deleteRental } from '../../actions/customers';
+import { upsertCustomer, paySubscription, createRental, deleteCustomer, updateSubscriptionPayment, deleteSubscriptionPayment, updateRental, deleteRental, setRentalStatus } from '../../actions/customers';
+import { getScores, saveScoreConfig, recalcScore, getScoreHistory, getScoreConfig } from '../../actions/score';
 
 const TZ = 'America/Cuiaba';
+
+const CLASS_ORDER = ['PREMIUM', 'FREQUENTE', 'REGULAR', 'EM_RISCO', 'INATIVO'];
+
+const CLASS_META: Record<string, { label: string; color: string; bg: string }> = {
+    PREMIUM: { label: 'Premium', color: 'text-amber-700', bg: 'bg-amber-100 border-amber-200' },
+    FREQUENTE: { label: 'Frequente', color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-200' },
+    REGULAR: { label: 'Regular', color: 'text-sky-700', bg: 'bg-sky-100 border-sky-200' },
+    EM_RISCO: { label: 'Em risco', color: 'text-orange-700', bg: 'bg-orange-100 border-orange-200' },
+    INATIVO: { label: 'Inativo', color: 'text-red-700', bg: 'bg-red-100 border-red-200' },
+};
+
+const FATOR_LABEL: Record<string, string> = {
+    frequencia: 'Frequência',
+    gastoAluguel: 'Gasto em Aluguéis',
+    consumoBar: 'Consumo no Bar',
+    pontualidade: 'Pontualidade',
+    cancelamentos: 'Cancelamentos',
+    faltas: 'Faltas',
+    recencia: 'Recência',
+    recorrencia: 'Recorrência',
+    inadimplencia: 'Inadimplência',
+};
 
 function toDateStr(d: Date): string {
   return d.toLocaleDateString('sv-SE', { timeZone: TZ });
@@ -24,10 +47,21 @@ function monthStartStr(): string {
 }
 
 export default function ClientesClient({ initialCustomers, fieldRentalLancamentos }: any) {
-  const [customers, setCustomers] = useState(initialCustomers);
+  const [customers] = useState(initialCustomers);
   const [activeTab, setActiveTab] = useState('ALL'); // ALL, OVERDUE
+  const [classFilter, setClassFilter] = useState('ALL');
   const [dateFrom, setDateFrom] = useState(monthStartStr());
   const [dateTo, setDateTo] = useState(todayStr());
+
+  // Score state
+  const [scores, setScores] = useState<Record<string, any>>({});
+  const [scoresLoading, setScoresLoading] = useState(true);
+  const [scoreConfig, setScoreConfig] = useState<any>(null);
+  const [showScoreConfig, setShowScoreConfig] = useState(false);
+  const [pesosForm, setPesosForm] = useState<any>(null);
+  const [pesosSaving, setPesosSaving] = useState(false);
+  const [scoreHistory, setScoreHistory] = useState<any[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
 
   // Modals
   const [isCustomerModalOpen, setCustomerModalOpen] = useState(false);
@@ -207,6 +241,86 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       });
   };
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const [res, cfg] = await Promise.all([getScores(), getScoreConfig()]);
+        const map: Record<string, any> = {};
+        (res.scores || []).forEach((s: any) => { map[s.id] = s; });
+        setScores(map);
+        setScoreConfig(cfg);
+        setPesosForm(cfg?.pesos ? { ...cfg.pesos } : null);
+      } catch (e) {
+        console.error("Erro ao carregar scores:", e);
+      } finally {
+        setScoresLoading(false);
+      }
+    })();
+  }, []);
+
+  const openScoreConfig = () => {
+    setPesosForm(scoreConfig?.pesos ? { ...scoreConfig.pesos } : null);
+    setShowScoreConfig(true);
+  };
+
+  const handleSaveScoreConfig = () => {
+    if (!pesosForm) return;
+    setPesosSaving(true);
+    startTransition(async () => {
+      try {
+        const res = await saveScoreConfig(pesosForm, scoreConfig?.limiares);
+        if (res?.success) {
+          alert("Pesos atualizados! Todos os scores foram recalculados.");
+          setShowScoreConfig(false);
+          window.location.reload();
+        } else {
+          alert(res?.error || "Erro ao salvar configuração.");
+        }
+      } catch (e: any) {
+        alert(e?.message || "Erro ao salvar configuração.");
+      } finally {
+        setPesosSaving(false);
+      }
+    });
+  };
+
+  const handleRecalcScore = (customerId: string) => {
+    startTransition(async () => {
+      try {
+        const res = await recalcScore(customerId);
+        if (res?.cliente) {
+          setScores((prev) => ({ ...prev, [customerId]: res.cliente }));
+          alert(`Score recalculado: ${res.cliente.score} (${res.cliente.classificacao}).`);
+        }
+      } catch (e: any) {
+        alert(e?.message || "Erro ao recalcular score.");
+      }
+    });
+  };
+
+  const handleShowHistory = async (customerId: string) => {
+    try {
+      const res = await getScoreHistory(customerId);
+      setScoreHistory(res?.history || []);
+      setShowHistory(true);
+    } catch (e) {
+      alert("Erro ao carregar histórico.");
+    }
+  };
+
+  const handleRentalStatus = (rent: any, status: string) => {
+    if (!rent) return;
+    startTransition(async () => {
+      try {
+        await setRentalStatus(rent.id, status);
+        alert("Status da reserva atualizado.");
+        window.location.reload();
+      } catch (e: any) {
+        alert(e?.message || "Erro ao atualizar status.");
+      }
+    });
+  };
+
   const checkIsOverdue = (sub: any) => {
       if(!sub) return false;
       return new Date(sub.nextDueDate) < new Date();
@@ -214,6 +328,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
 
   const filteredCustomers = customers.filter((c: any) => {
       if (activeTab === 'OVERDUE') return checkIsOverdue(c.subscription);
+      if (classFilter !== 'ALL' && scores[c.id]?.classificacao !== classFilter) return false;
       return true;
   });
 
@@ -285,7 +400,29 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
             <button onClick={() => openCustomerModal()} className="bg-mrts-blue text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-blue-500/20 flex items-center gap-2 hover:bg-mrts-hover hover:-translate-y-0.5 transition-all">
                 <Plus size={18} /> Novo Cliente
             </button>
+            <button onClick={openScoreConfig} className="bg-slate-900 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-md flex items-center gap-2 hover:bg-slate-800 hover:-translate-y-0.5 transition-all" title="Configurar pesos do Score">
+                <Settings size={16} /> Score
+            </button>
         </div>
+      </div>
+
+      {/* FILTRO POR CLASSIFICAÇÃO DO SCORE */}
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5 mr-1">
+              <Gauge size={15} className="text-mrts-blue" /> Score
+          </span>
+          <button onClick={() => setClassFilter('ALL')} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${classFilter === 'ALL' ? 'bg-slate-800 text-white shadow-sm' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-100'}`}>
+              Todos
+          </button>
+          {CLASS_ORDER.map((c) => {
+              const meta = CLASS_META[c];
+              return (
+                  <button key={c} onClick={() => setClassFilter(classFilter === c ? 'ALL' : c)} className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${classFilter === c ? meta.bg + ' ' + meta.color : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-100'}`}>
+                      {meta.label}
+                  </button>
+              );
+          })}
+          {scoresLoading && <span className="text-[10px] text-gray-400 font-bold uppercase">Calculando…</span>}
       </div>
 
       {/* CARDS E GRÁFICOS DE JOGOS */}
@@ -410,6 +547,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                 <th className="p-4 font-bold">Contato</th>
                 <th className="p-4 font-bold">Plano Mensal</th>
                 <th className="p-4 font-bold">Status Mensalidade</th>
+                <th className="p-4 font-bold">Score</th>
                 <th className="p-4 font-bold text-right">Perfil</th>
               </tr>
             </thead>
@@ -417,6 +555,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
               {filteredCustomers.map((customer: any) => {
                   const sub = customer.subscription;
                   const isOverdue = checkIsOverdue(sub);
+                  const sc = scores[customer.id];
 
                   return (
                     <tr key={customer.id} className="hover:bg-blue-50/40 transition">
@@ -441,6 +580,13 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                 <span className="inline-flex items-center gap-1.5 text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold uppercase"><CheckCircle size={12}/>  Em Dia (Vence dia {sub.dueDate})</span>
                             )}
                         </td>
+                        <td className="p-4">
+                            {sc ? (
+                                <span className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2 py-1 rounded-lg border ${CLASS_META[sc.classificacao]?.bg || 'bg-gray-100 border-gray-200'} ${CLASS_META[sc.classificacao]?.color || 'text-gray-600'}`}>
+                                    {sc.score} · {CLASS_META[sc.classificacao]?.label || sc.classificacao}
+                                </span>
+                            ) : <span className="text-xs text-gray-300">—</span>}
+                        </td>
                         <td className="p-4 text-right">
                             <button onClick={() => openCustomerModal(customer)} className="w-9 h-9 inline-flex items-center justify-center text-gray-400 bg-white border border-gray-200 hover:text-mrts-blue hover:border-mrts-blue rounded-xl shadow-sm transition hover:-translate-y-0.5 ml-auto">
                                 <Edit3 size={16} />
@@ -451,7 +597,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
               })}
               {filteredCustomers.length === 0 && (
                   <tr>
-                      <td colSpan={5} className="p-8 text-center text-gray-500 font-medium">Nenhum cliente atende a este filtro.</td>
+                      <td colSpan={6} className="p-8 text-center text-gray-500 font-medium">Nenhum cliente atende a este filtro.</td>
                   </tr>
               )}
             </tbody>
@@ -592,6 +738,76 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                            </div>
                        ) : (
                            <div className="flex flex-col gap-6">
+                               {/* SCORE & PERFIL */}
+                               <div className="bg-slate-900 rounded-2xl p-5 shadow-xl border border-slate-800 flex flex-col gap-4">
+                                   <div className="flex items-start justify-between">
+                                       <div>
+                                           <h3 className="font-bold text-slate-100 text-sm flex items-center gap-1.5"><Gauge size={16} className="text-sky-400"/> Score & Perfil</h3>
+                                           {(() => { const sc = scores[selectedCustomer.id]; const meta = CLASS_META[sc?.classificacao]; return (
+                                               <>
+                                                   <div className="flex items-end gap-3 mt-3">
+                                                       <span className="text-5xl font-black text-white tracking-tight">{sc ? sc.score : '—'}</span>
+                                                       {meta && <span className={`mb-1.5 inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-1 rounded-lg border ${meta.bg} ${meta.color}`}>{meta.label}</span>}
+                                                   </div>
+                                                   {sc?.recomendacao && <p className="text-xs text-slate-400 mt-2 leading-relaxed">{sc.recomendacao}</p>}
+                                               </>
+                                           ); })()}
+                                       </div>
+                                       <div className="flex flex-col gap-1.5 shrink-0">
+                                           <button disabled={isPending} onClick={() => handleRecalcScore(selectedCustomer.id)} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-300 bg-slate-800 border border-slate-700 px-2.5 py-1.5 rounded-lg hover:bg-slate-700 transition disabled:opacity-50" title="Recalcular score agora">
+                                               <RefreshCw size={12}/> Recalcular
+                                           </button>
+                                           <button onClick={() => handleShowHistory(selectedCustomer.id)} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-300 bg-slate-800 border border-slate-700 px-2.5 py-1.5 rounded-lg hover:bg-slate-700 transition" title="Histórico de scores">
+                                               <TrendingUp size={12}/> Histórico
+                                           </button>
+                                       </div>
+                                   </div>
+
+                                   {(() => { const sc = scores[selectedCustomer.id]; if (!sc) return (
+                                       <div className="text-xs text-slate-500 font-medium py-2">Calculando score deste cliente…</div>
+                                   ); return (
+                                       <>
+                                           <div className="grid grid-cols-3 gap-2">
+                                               <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
+                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Frequência</p>
+                                                   <p className="text-sm font-black text-white mt-0.5">{sc.frequencia}</p>
+                                               </div>
+                                               <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
+                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Ticket Bar</p>
+                                                   <p className="text-sm font-black text-white mt-0.5">R$ {Number(sc.ticketBar || 0).toFixed(2).replace('.', ',')}</p>
+                                               </div>
+                                               <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
+                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Gasto Total</p>
+                                                   <p className="text-sm font-black text-white mt-0.5">R$ {Number(sc.gastoAcumulado || 0).toFixed(2).replace('.', ',')}</p>
+                                               </div>
+                                               <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
+                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Última Reserva</p>
+                                                   <p className="text-[10px] font-bold text-white mt-0.5">{sc.ultimaReserva ? new Date(sc.ultimaReserva).toLocaleDateString('pt-BR') : '—'}</p>
+                                               </div>
+                                               <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
+                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Cancel. praz.</p>
+                                                   <p className="text-sm font-black text-white mt-0.5">{sc.canceladosForaPrazo}</p>
+                                               </div>
+                                               <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
+                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Faltas</p>
+                                                   <p className="text-sm font-black text-white mt-0.5">{sc.faltas}</p>
+                                               </div>
+                                           </div>
+                                           <div className="flex flex-col gap-2 mt-1">
+                                               {sc.fatores?.map((f: any) => (
+                                                   <div key={f.fator} className="flex items-center gap-2">
+                                                       <span className="w-32 text-[9px] font-bold text-slate-400 uppercase tracking-wide shrink-0" title={f.motivo}>{f.rotulo}</span>
+                                                       <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                                           <div className="h-full rounded-full" style={{ width: `${f.normalizado}%`, background: f.normalizado >= 60 ? '#10b981' : f.normalizado >= 30 ? '#f59e0b' : '#ef4444' }} />
+                                                       </div>
+                                                       <span className="w-8 text-right text-[10px] font-black text-slate-300">{f.normalizado}</span>
+                                                   </div>
+                                               ))}
+                                           </div>
+                                       </>
+                                   ); })()}
+                               </div>
+
                                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col gap-4">
                                     <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5"><Clock size={16}/> Agendar Espaço / Mesa</h3>
                                     
@@ -632,21 +848,49 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5 py-2"><Calendar size={14}/> Histórico de Locações</h3>
                                    <div className="flex flex-col gap-2">
                                         {selectedCustomer.rentals?.map((rent: any) => (
-                                            <div key={rent.id} className="bg-white border text-left border-gray-200 rounded-xl p-3 flex justify-between items-center shadow-sm">
-                                                <div className="flex flex-col">
-                                                    <span className="font-bold text-slate-800 text-xs">{rent.resource}</span>
-                                                    <span className="text-[10px] text-gray-500 font-medium">
-                                                        {new Date(rent.startTime).toLocaleDateString('pt-BR')} das {new Date(rent.startTime).getHours()}:{new Date(rent.startTime).getMinutes().toString().padStart(2, '0')} as {new Date(rent.endTime).getHours()}:{new Date(rent.endTime).getMinutes().toString().padStart(2, '0')}
-                                                    </span>
+                                            <div key={rent.id} className="bg-white border text-left border-gray-200 rounded-xl p-3 flex flex-col gap-2 shadow-sm">
+                                                <div className="flex justify-between items-center">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold text-slate-800 text-xs">{rent.resource}</span>
+                                                        <span className="text-[10px] text-gray-500 font-medium">
+                                                            {new Date(rent.startTime).toLocaleDateString('pt-BR')} das {new Date(rent.startTime).getHours()}:{new Date(rent.startTime).getMinutes().toString().padStart(2, '0')} as {new Date(rent.endTime).getHours()}:{new Date(rent.endTime).getMinutes().toString().padStart(2, '0')}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-black text-slate-600">R$ {rent.totalAmount.toFixed(2).replace('.',',')}</span>
+                                                        <button onClick={() => openEditRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar locação">
+                                                            <Edit3 size={13} />
+                                                        </button>
+                                                        <button onClick={() => handleDeleteRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg transition" title="Excluir locação">
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-xs font-black text-slate-600">R$ {rent.totalAmount.toFixed(2).replace('.',',')}</span>
-                                                    <button onClick={() => openEditRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar locação">
-                                                        <Edit3 size={13} />
-                                                    </button>
-                                                    <button onClick={() => handleDeleteRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg transition" title="Excluir locação">
-                                                        <Trash2 size={13} />
-                                                    </button>
+                                                <div className="flex items-center justify-between">
+                                                    {(() => {
+                                                        const badge: Record<string, { label: string; cls: string }> = {
+                                                            PENDING: { label: 'Pendente', cls: 'bg-amber-100 text-amber-700 border-amber-200' },
+                                                            CONFIRMED: { label: 'Confirmada', cls: 'bg-sky-100 text-sky-700 border-sky-200' },
+                                                            PAID: { label: 'Paga', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+                                                            CANCELED: { label: 'Cancelada', cls: 'bg-red-100 text-red-700 border-red-200' },
+                                                            NO_SHOW: { label: 'Falta', cls: 'bg-orange-100 text-orange-700 border-orange-200' },
+                                                        };
+                                                        const b = badge[rent.status] || badge.PENDING;
+                                                        return <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-lg border ${b.cls}`}>{b.label}</span>;
+                                                    })()}
+                                                    <select
+                                                        value={rent.status}
+                                                        onChange={(e) => handleRentalStatus(rent, e.target.value)}
+                                                        disabled={isPending}
+                                                        className="text-[10px] font-bold text-slate-600 bg-gray-50 border border-gray-200 rounded-lg px-1.5 py-1 outline-none focus:border-mrts-blue disabled:opacity-50"
+                                                        title="Alterar status da reserva"
+                                                    >
+                                                        <option value="PENDING">Pendente</option>
+                                                        <option value="CONFIRMED">Confirmar</option>
+                                                        <option value="PAID">Marcar paga</option>
+                                                        <option value="CANCELED">Cancelar reserva</option>
+                                                        <option value="NO_SHOW">No-show (falta)</option>
+                                                    </select>
                                                 </div>
                                             </div>
                                         ))}
@@ -656,6 +900,85 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                            </div>
                        )}
                     </div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* MODAL: CONFIGURAÇÃO DE PESOS DO SCORE */}
+      {showScoreConfig && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl animate-in zoom-in-95 flex flex-col border border-gray-100 max-h-[85vh] overflow-hidden">
+                <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50 shrink-0">
+                    <div>
+                        <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                            <Settings size={18} className="text-mrts-blue" /> Configurar Score
+                        </h2>
+                        <p className="text-xs text-gray-500 mt-0.5 font-medium">Pesos de cada fator — a soma deve ser 100.</p>
+                    </div>
+                    <button onClick={() => setShowScoreConfig(false)} className="w-9 h-9 flex items-center justify-center bg-white border border-gray-200 hover:bg-gray-100 rounded-full transition">
+                        <X size={18} className="text-gray-500" />
+                    </button>
+                </div>
+                <div className="p-5 overflow-y-auto flex flex-col gap-2.5">
+                    {pesosForm && Object.keys(FATOR_LABEL).map((key) => (
+                        <div key={key} className="flex items-center justify-between gap-3">
+                            <span className="text-sm font-bold text-slate-700 flex-1">{FATOR_LABEL[key]}</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-400 font-medium">%</span>
+                                <input
+                                    type="number" min="0" max="100" step="1"
+                                    value={pesosForm[key]}
+                                    onChange={(e) => setPesosForm({ ...pesosForm, [key]: parseFloat(e.target.value) || 0 })}
+                                    className="w-20 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-mrts-blue font-bold text-slate-700 text-right"
+                                />
+                            </div>
+                        </div>
+                    ))}
+                    {pesosForm && (() => {
+                        const soma: number = Object.values(pesosForm as Record<string, number>).reduce((a, b) => a + (b || 0), 0);
+                        return (
+                            <div className={`mt-2 px-4 py-2.5 rounded-xl border font-bold text-sm flex items-center justify-between ${Math.abs(soma - 100) <= 0.01 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                                <span>Soma</span>
+                                <span>{soma.toLocaleString('pt-BR')} / 100 {Math.abs(soma - 100) <= 0.01 ? '✓' : '✗'}</span>
+                            </div>
+                        );
+                    })()}
+                </div>
+                <div className="p-5 pt-2 border-t border-gray-100 bg-gray-50 shrink-0">
+                    <button disabled={pesosSaving} onClick={handleSaveScoreConfig} className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition disabled:opacity-50">
+                        {pesosSaving ? 'Salvando e recalculando…' : 'Salvar e recalcular todos'}
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* MODAL: HISTÓRICO DE SCORE */}
+      {showHistory && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95 flex flex-col border border-gray-100 max-h-[70vh] overflow-hidden">
+                <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50 shrink-0">
+                    <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
+                        <TrendingUp size={18} className="text-mrts-blue" /> Histórico de Score
+                    </h2>
+                    <button onClick={() => setShowHistory(false)} className="w-9 h-9 flex items-center justify-center bg-white border border-gray-200 hover:bg-gray-100 rounded-full transition">
+                        <X size={18} className="text-gray-500" />
+                    </button>
+                </div>
+                <div className="p-5 overflow-y-auto flex flex-col gap-2">
+                    {scoreHistory.length === 0 && <p className="text-sm text-gray-400 text-center font-medium py-4">Nenhum snapshot registrado ainda.</p>}
+                    {scoreHistory.map((h, i) => {
+                        const meta = CLASS_META[h.classificacao];
+                        return (
+                            <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-slate-50 border border-gray-200 rounded-xl">
+                                <span className="text-xs text-gray-500 font-medium">{new Date(h.snapshotAt).toLocaleString('pt-BR')}</span>
+                                <span className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2 py-1 rounded-lg border ${meta?.bg || 'bg-gray-100 border-gray-200'} ${meta?.color || 'text-gray-600'}`}>
+                                    {h.score} · {meta?.label || h.classificacao}
+                                </span>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         </div>

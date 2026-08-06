@@ -3,6 +3,7 @@
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
 import { createAuditLog } from "./audit";
+import { recalcScore } from "./score";
 
 export async function upsertCustomer(data: {
     id?: string;
@@ -13,8 +14,9 @@ export async function upsertCustomer(data: {
 }) {
     if (!data.name) throw new Error("Nome é obrigatório.");
 
+    let custId = data.id;
+
     await prisma.$transaction(async (tx) => {
-        let custId = data.id;
 
         if (custId) {
             await tx.customer.update({
@@ -54,15 +56,31 @@ export async function upsertCustomer(data: {
     });
 
     revalidatePath("/clientes");
+    if (custId) await recalcScore(custId).catch(() => {});
     return { success: true };
+}
+
+export async function createCustomerQuick(name: string) {
+    if (!name || !name.trim()) throw new Error("Nome é obrigatório.");
+
+    const customer = await prisma.customer.create({
+        data: { name: name.trim(), phone: "", notes: "" }
+    });
+
+    revalidatePath("/clientes");
+    revalidatePath("/mesas");
+    return { success: true, customer: { id: customer.id, name: customer.name } };
 }
 
 export async function paySubscription(subscriptionId: string, amount: number) {
     if (!subscriptionId) throw new Error("ID inválido");
 
+    let customerId: string | null = null;
+
     await prisma.$transaction(async (tx) => {
         const sub = await tx.subscription.findUnique({ where: { id: subscriptionId }});
         if (!sub) throw new Error("Assinatura não existe");
+        customerId = sub.customerId;
 
         const refMonth = new Date(sub.nextDueDate);
 
@@ -80,6 +98,7 @@ export async function paySubscription(subscriptionId: string, amount: number) {
     });
 
     revalidatePath("/clientes");
+    if (customerId) await recalcScore(customerId).catch(() => {});
     return { success: true };
 }
 
@@ -98,6 +117,29 @@ export async function createRental(customerId: string, resource: string, date: s
     });
 
     revalidatePath("/clientes");
+    await recalcScore(customerId).catch(() => {});
+    return { success: true };
+}
+
+export async function setRentalStatus(rentalId: string, status: string) {
+    if (!rentalId) throw new Error("ID inválido");
+
+    const allowed = ['PENDING', 'CONFIRMED', 'PAID', 'CANCELED', 'NO_SHOW'];
+    if (!allowed.includes(status)) throw new Error("Status inválido.");
+
+    const rental = await prisma.rental.findUnique({ where: { id: rentalId } });
+    if (!rental) throw new Error("Reserva não encontrada.");
+
+    await prisma.rental.update({
+        where: { id: rentalId },
+        data: {
+            status,
+            cancelledAt: status === 'CANCELED' ? new Date() : null
+        }
+    });
+
+    revalidatePath("/clientes");
+    if (rental.customerId) await recalcScore(rental.customerId).catch(() => {});
     return { success: true };
 }
 
@@ -113,17 +155,28 @@ export async function updateSubscriptionPayment(paymentId: string, amount: numbe
     });
 
     revalidatePath("/clientes");
+    const p = await prisma.subscriptionPayment.findUnique({
+        where: { id: paymentId },
+        include: { subscription: { select: { customerId: true } } }
+    });
+    if (p?.subscription?.customerId) await recalcScore(p.subscription.customerId).catch(() => {});
     return { success: true };
 }
 
 export async function deleteSubscriptionPayment(paymentId: string) {
     if (!paymentId) throw new Error("ID inválido");
 
+    const payment = await prisma.subscriptionPayment.findUnique({
+        where: { id: paymentId },
+        include: { subscription: { select: { customerId: true } } }
+    });
+
     await prisma.subscriptionPayment.delete({
         where: { id: paymentId }
     });
 
     revalidatePath("/clientes");
+    if (payment?.subscription?.customerId) await recalcScore(payment.subscription.customerId).catch(() => {});
     return { success: true };
 }
 
@@ -143,17 +196,21 @@ export async function updateRental(rentalId: string, resource: string, date: str
     });
 
     revalidatePath("/clientes");
+    const r = await prisma.rental.findUnique({ where: { id: rentalId }, select: { customerId: true } });
+    if (r?.customerId) await recalcScore(r.customerId).catch(() => {});
     return { success: true };
 }
 
 export async function deleteRental(rentalId: string) {
     if (!rentalId) throw new Error("ID inválido");
 
+    const rental = await prisma.rental.findUnique({ where: { id: rentalId } });
     await prisma.rental.delete({
         where: { id: rentalId }
     });
 
     revalidatePath("/clientes");
+    if (rental?.customerId) await recalcScore(rental.customerId).catch(() => {});
     return { success: true };
 }
 

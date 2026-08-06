@@ -6,7 +6,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../api/auth/[...nextauth]/route";
 import { createAuditLog } from "./audit";
 
-export async function createComanda(name: string) {
+export async function createComanda(name: string, customerId?: string | null) {
     if(!name) throw new Error("Name required");
 
     const session = await getServerSession(authOptions) as any;
@@ -20,9 +20,15 @@ export async function createComanda(name: string) {
             notes: name,
             userId: userId,
             status: "OPEN",
-            total: 0
+            total: 0,
+            customerId: customerId || null
         }
     });
+
+    if (customerId) {
+        const { recalcScore } = await import('./score');
+        await recalcScore(customerId);
+    }
 
     revalidatePath("/mesas");
     revalidatePath("/dashboard");

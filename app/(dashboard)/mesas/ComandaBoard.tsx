@@ -3,12 +3,18 @@
 import { useState } from 'react';
 import { Plus, Search, Coffee, X, ShoppingBag, Eye, Banknote, QrCode, CreditCard, Receipt, Trash2, RotateCcw, Minus } from 'lucide-react';
 import { createComanda, closeComanda, addItemToOrder, processPayment, removeItemFromOrder, deleteComandaAction, voidPaymentAction, updateOrderItemQuantity } from '../../actions/comandas';
+import { createCustomerQuick } from '../../actions/customers';
 
-export default function ComandaBoard({ openOrders, products, openRegister }: { openOrders: any[], products: any[], openRegister?: any }) {
+export default function ComandaBoard({ openOrders, products, openRegister, customers }: { openOrders: any[], products: any[], openRegister?: any, customers?: { id: string; name: string; phone: string | null }[] }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [comandaName, setComandaName] = useState("");
     const [loading, setLoading] = useState(false);
     const [search, setSearch] = useState("");
+
+    const [customersList, setCustomersList] = useState(customers || []);
+    const [selectedCustomerId, setSelectedCustomerId] = useState("");
+    const [newCustomerName, setNewCustomerName] = useState("");
+    const [creatingCustomer, setCreatingCustomer] = useState(false);
 
     const [isProductModalOpen, setIsProductModalOpen] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState<any>(null);
@@ -30,10 +36,30 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
         if(!openRegister) return alert("Não é possível abrir comandas com o caixa fechado! Acesse o PDV para abrir o turno.");
         if(!comandaName.trim()) return;
         setLoading(true);
-        await createComanda(comandaName.trim());
-        setComandaName("");
-        setIsModalOpen(false);
-        setLoading(false);
+        try {
+            let customerId: string | null = null;
+            if (selectedCustomerId === "__new__") {
+                if (!newCustomerName.trim()) return alert("Digite o nome do novo cliente.");
+                setCreatingCustomer(true);
+                const res = await createCustomerQuick(newCustomerName.trim());
+                if (res?.customer?.id) {
+                    customerId = res.customer.id;
+                    setCustomersList((prev) => [...prev, { id: res.customer.id, name: res.customer.name, phone: "" }]);
+                }
+                setCreatingCustomer(false);
+            } else if (selectedCustomerId) {
+                customerId = selectedCustomerId;
+            }
+            await createComanda(comandaName.trim(), customerId);
+        } catch (e: any) {
+            alert(e?.message || "Erro ao criar comanda.");
+        } finally {
+            setComandaName("");
+            setSelectedCustomerId("");
+            setNewCustomerName("");
+            setIsModalOpen(false);
+            setLoading(false);
+        }
     };
 
     const handleAddProductClick = (e: any, order: any) => {
@@ -226,8 +252,35 @@ export default function ComandaBoard({ openOrders, products, openRegister }: { o
                             value={comandaName}
                             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
                             onChange={(e) => setComandaName(e.target.value)}
-                            className="w-full border-2 border-gray-200 rounded-xl p-3 outline-none focus:border-mrts-blue mt-4 mb-6 font-medium text-slate-700"
+                            className="w-full border-2 border-gray-200 rounded-xl p-3 outline-none focus:border-mrts-blue mt-4 mb-2 font-medium text-slate-700"
                         />
+                        <div className="mb-6">
+                            <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wide">Cliente (opcional)</label>
+                            <select
+                                value={selectedCustomerId}
+                                onChange={(e) => setSelectedCustomerId(e.target.value)}
+                                className="w-full border-2 border-gray-200 rounded-xl p-3 outline-none focus:border-mrts-blue font-medium text-slate-700 bg-white"
+                            >
+                                <option value="">— Sem vínculo —</option>
+                                {customersList.map((c) => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                                <option value="__new__">+ Cadastrar novo cliente…</option>
+                            </select>
+                            {selectedCustomerId === "__new__" && (
+                                <div className="mt-2 flex gap-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Nome do novo cliente"
+                                        value={newCustomerName}
+                                        onChange={(e) => setNewCustomerName(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                                        className="flex-1 border-2 border-gray-200 rounded-xl p-2.5 outline-none focus:border-mrts-blue font-medium text-slate-700"
+                                    />
+                                    {creatingCustomer && <span className="flex items-center text-xs text-gray-400">Criando…</span>}
+                                </div>
+                            )}
+                        </div>
                         <div className="flex gap-3">
                             <button disabled={loading} onClick={() => setIsModalOpen(false)} className="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl">Cancelar</button>
                             <button disabled={loading} onClick={handleCreate} className="flex-1 bg-mrts-blue text-white font-bold py-3 rounded-xl">{loading ? '...' : 'Criar'}</button>
