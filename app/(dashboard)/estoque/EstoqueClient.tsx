@@ -455,17 +455,17 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                 <Camera size={14}/> Ler Nota por Foto
             </button>
 
-            <div className="flex overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-200 p-0.5 hide-scrollbar">
-                <button onClick={() => setFilter('ALL')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${filter === 'ALL' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+            <div className="w-full sm:w-auto grid grid-cols-2 sm:flex sm:overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-200 p-0.5 gap-0.5 hide-scrollbar">
+                <button onClick={() => setFilter('ALL')} className={`px-2.5 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 whitespace-nowrap ${filter === 'ALL' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
                     <Filter size={14}/> Produtos
                 </button>
-                <button onClick={() => setFilter('LOW')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${filter === 'LOW' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                <button onClick={() => setFilter('LOW')} className={`px-2.5 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 whitespace-nowrap ${filter === 'LOW' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
                     <AlertCircle size={14}/> Baixo
                 </button>
-                <button onClick={() => setFilter('HISTORY')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${filter === 'HISTORY' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                <button onClick={() => setFilter('HISTORY')} className={`px-2.5 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 whitespace-nowrap ${filter === 'HISTORY' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
                     <PackagePlus size={14}/> Lançamentos (NF)
                 </button>
-                <button onClick={() => setFilter('COUNT')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${filter === 'COUNT' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                <button onClick={() => setFilter('COUNT')} className={`px-2.5 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 whitespace-nowrap ${filter === 'COUNT' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
                     <ClipboardList size={14}/> Contagem EST.
                 </button>
             </div>
@@ -482,17 +482,17 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                 <p className="text-[10px] text-slate-500 font-medium">Registre a quantidade contada fisicamente. Não altera o estoque real.</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <input type="date" value={countDate} onChange={e => switchCountDate(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-mrts-blue"/>
-              <button onClick={handleDownloadCountExcel} className="px-4 py-2 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 transition flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full md:w-auto">
+              <input type="date" value={countDate} onChange={e => switchCountDate(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-mrts-blue w-full sm:w-auto"/>
+              <button onClick={handleDownloadCountExcel} className="px-4 py-2 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 transition flex items-center justify-center gap-2 flex-1 sm:flex-none">
                 <Sheet size={16}/> Baixar Excel
               </button>
-              <button disabled={isPending} onClick={handleSaveCount} className="px-4 py-2 rounded-xl text-sm font-bold bg-mrts-blue text-white shadow-lg hover:bg-blue-600 transition flex items-center gap-2 disabled:opacity-50">
+              <button disabled={isPending} onClick={handleSaveCount} className="px-4 py-2 rounded-xl text-sm font-bold bg-mrts-blue text-white shadow-lg hover:bg-blue-600 transition flex items-center justify-center gap-2 flex-1 sm:flex-none disabled:opacity-50">
                 {isPending ? <RefreshCw size={16} className="animate-spin"/> : <Check size={16}/>} Salvar Contagem
               </button>
             </div>
           </div>
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse whitespace-nowrap">
               <thead>
                 <tr className="bg-gray-50/80 border-b border-gray-100 text-xs uppercase text-gray-500 tracking-wider">
@@ -553,6 +553,48 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="md:hidden divide-y divide-gray-100">
+            {products.filter((p: any) => p.isActive !== false).map((product: any) => {
+                const qty = product.stock?.quantity || 0;
+                const unit = product.stock?.unit || product.unit || "UN";
+                const raw = (countQty[product.id] || '').replace(',', '.');
+                const counted = raw === '' ? null : Number(raw);
+                const diff = counted === null ? null : Math.round((qty - counted) * 100) / 100;
+                return (
+                    <div key={product.id} className="p-3 flex items-center gap-3">
+                        <div className="w-10 h-10 bg-white shadow-sm border border-gray-100 rounded-lg flex items-center justify-center text-xl shrink-0">{product.iconUrl}</div>
+                        <div className="flex-1 min-w-0">
+                            <p className="font-bold text-gray-800 text-sm truncate">{product.name}</p>
+                            <p className="text-xs text-gray-400 font-medium">Atual: <span className="font-black text-slate-700">{qty} {unit}</span></p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={countQty[product.id] || ''}
+                                placeholder="0"
+                                onChange={e => setCountQty(prev => ({ ...prev, [product.id]: e.target.value }))}
+                                className="w-20 text-right font-black bg-slate-50 border-2 border-slate-100 rounded-lg px-2 py-2 text-base outline-none focus:border-mrts-blue transition"
+                            />
+                            <div className="w-12 text-center">
+                                {diff === null ? (
+                                    <span className="text-xs text-slate-300 font-medium">—</span>
+                                ) : (
+                                    <span className={`text-sm font-black ${diff === 0 ? 'text-emerald-500' : diff > 0 ? 'text-red-500' : 'text-amber-500'}`}>
+                                        {diff > 0 ? '+' : ''}{diff}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })}
+            {products.filter((p: any) => p.isActive !== false).length === 0 && (
+                <div className="p-8 text-center text-gray-500 font-medium">Nenhum produto localizado.</div>
+            )}
           </div>
 
           <div className="p-4 border-t border-gray-100 bg-slate-50">
