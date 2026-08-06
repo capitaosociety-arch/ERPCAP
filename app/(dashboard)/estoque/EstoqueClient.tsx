@@ -451,22 +451,22 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                 setNfModalOpen(true);
                 setParsedNfData(null);
                 setNfFile(null);
-            }} className="px-5 py-2 rounded-xl text-sm font-bold bg-mrts-blue text-white shadow-sm transition flex items-center gap-2 hover:bg-mrts-hover hover:scale-105 transform cursor-pointer relative">
-                <Camera size={18}/> Ler Nota por Foto
+            }} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-mrts-blue text-white shadow-sm transition flex items-center gap-1.5 hover:bg-mrts-hover hover:scale-105 transform cursor-pointer relative">
+                <Camera size={14}/> Ler Nota por Foto
             </button>
 
-            <div className="flex overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-200 p-1 hide-scrollbar">
-                <button onClick={() => setFilter('ALL')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 whitespace-nowrap ${filter === 'ALL' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
-                    <Filter size={16}/> Produtos
+            <div className="flex overflow-x-auto bg-white rounded-xl shadow-sm border border-gray-200 p-0.5 hide-scrollbar">
+                <button onClick={() => setFilter('ALL')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${filter === 'ALL' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                    <Filter size={14}/> Produtos
                 </button>
-                <button onClick={() => setFilter('LOW')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 whitespace-nowrap ${filter === 'LOW' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
-                    <AlertCircle size={16}/> Baixo
+                <button onClick={() => setFilter('LOW')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${filter === 'LOW' ? 'bg-orange-500 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                    <AlertCircle size={14}/> Baixo
                 </button>
-                <button onClick={() => setFilter('HISTORY')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 whitespace-nowrap ${filter === 'HISTORY' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
-                    <PackagePlus size={16}/> Lançamentos (NF)
+                <button onClick={() => setFilter('HISTORY')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${filter === 'HISTORY' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                    <PackagePlus size={14}/> Lançamentos (NF)
                 </button>
-                <button onClick={() => setFilter('COUNT')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 whitespace-nowrap ${filter === 'COUNT' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
-                    <ClipboardList size={16}/> Contagem EST.
+                <button onClick={() => setFilter('COUNT')} className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${filter === 'COUNT' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                    <ClipboardList size={14}/> Contagem EST.
                 </button>
             </div>
         </div>
