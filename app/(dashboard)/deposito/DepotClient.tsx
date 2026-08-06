@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useTransition } from 'react';
-import { Search, Warehouse, ArrowRightLeft, PackagePlus, AlertTriangle, X, Check, Box, Clock, ShieldCheck, ThumbsDown, Camera, Edit, RefreshCw, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, AlertCircle, Upload, Plus, CalendarRange, ClipboardList } from 'lucide-react';
+import { Search, Warehouse, ArrowRightLeft, PackagePlus, AlertTriangle, X, Check, Box, Clock, ShieldCheck, ThumbsDown, Camera, Edit, RefreshCw, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, AlertCircle, Upload, Plus, CalendarRange, ClipboardList, Sheet } from 'lucide-react';
 import { addDepotStock, requestTransfer, authorizeTransfer, rejectTransfer, adjustDepotStockLoss, directTransfer, updateDepotMinStock, registerBatchDepotStockMovement } from '../../actions/depot';
 import { quickCreateProductFromInvoice } from '../../actions/products';
 import { saveStockCounts } from '../../actions/stock-count';
+import { downloadExcel } from '../../../lib/excel-export';
 
 export default function DepotClient({ 
     initialInventory, 
@@ -58,13 +59,33 @@ export default function DepotClient({
         if (items.length === 0) return alert('Informe a contagem de pelo menos um produto.');
         startTransition(async () => {
             try {
-                const res = await saveStockCounts(countDate, items);
+                const res = await saveStockCounts(countDate, items, 'DEPOT');
                 if (res.success) {
                     alert(`Contagem de ${res.saved} produto(s) salva para ${countDate}.`);
                     window.location.reload();
                 }
             } catch (e: any) { alert(e.message || 'Erro ao salvar contagem.'); }
         });
+    };
+
+    const handleDownloadCountExcel = () => {
+        const rows = initialInventory
+            .filter(p => p.isActive !== false)
+            .map(p => {
+                const depotQty = p.depotStock?.quantity || 0;
+                const raw = (countQty[p.id] || '').replace(',', '.');
+                const counted = raw === '' ? null : Number(raw);
+                const diff = counted === null ? null : Math.round((depotQty - counted) * 100) / 100;
+                return {
+                    "Produto": p.name || 'Sem nome',
+                    "Categoria": p.category?.name || 'Vários',
+                    "Volume Matriz": depotQty,
+                    "Contagem": counted ?? "",
+                    "Diferença": diff ?? "",
+                    "Unidade": p.unit || 'UN'
+                };
+            });
+        downloadExcel(rows, `Contagem_Matriz_${countDate}`, 'Contagem');
     };
 
     // Modals
@@ -410,6 +431,9 @@ export default function DepotClient({
                                 </div>
                                 <div className="flex items-center gap-3">
                                     <input type="date" value={countDate} onChange={e => switchCountDate(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-mrts-blue"/>
+                                    <button onClick={handleDownloadCountExcel} className="px-4 py-2 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 transition flex items-center gap-2">
+                                        <Sheet size={16}/> Baixar Excel
+                                    </button>
                                     <button disabled={isPending} onClick={handleSaveCount} className="px-4 py-2 rounded-xl text-sm font-bold bg-mrts-blue text-white shadow-lg hover:bg-blue-600 transition flex items-center gap-2 disabled:opacity-50">
                                         {isPending ? <RefreshCw size={16} className="animate-spin"/> : <Check size={16}/>} Salvar Contagem
                                     </button>

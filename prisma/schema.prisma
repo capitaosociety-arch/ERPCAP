@@ -402,14 +402,16 @@ model TransferRequest {
 model StockCount {
   id        String   @id @default(cuid())
   productId String
+  location  String   @default("DEPOT") // DEPOT (Matriz) ou BALCAO
   date      String   // YYYY-MM-DD (dia da contagem)
   quantity  Float    // Quantidade contada fisicamente
   createdAt DateTime @default(now())
 
   product   Product  @relation(fields: [productId], references: [id])
 
-  @@unique([productId, date])
+  @@unique([productId, date, location])
   @@index([date])
   @@index([productId])
+  @@index([location])
 }
 

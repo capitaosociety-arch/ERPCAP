@@ -189,9 +189,9 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
         "Preço Venda (R$)": p.price || 0,
         "Lucro (%)": profitPercent.toFixed(2) + "%",
         "Estoque Atual": p.stock?.quantity || 0,
-        "Volume Matriz": p.depotStock?.quantity || 0,
+        "Quantidade Atual (Balcão)": p.stock?.quantity || 0,
         "Contagem": count == null ? "" : count,
-        "Diferença": count == null ? "" : Math.round(((p.depotStock?.quantity || 0) - count) * 100) / 100,
+        "Diferença": count == null ? "" : Math.round(((p.stock?.quantity || 0) - count) * 100) / 100,
         "Unidade": p.unit || "UN",
         "Status": p.isActive ? "Ativo" : "Inativo"
       };
@@ -308,7 +308,7 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                   </td>
                   <td className="p-4">
                     {(() => {
-                      const volume = product.depotStock?.quantity || 0;
+                      const volume = product.stock?.quantity || 0;
                       const count = product.stockCounts?.[0]?.quantity;
                       if (count == null) return <span className="text-xs text-slate-300 font-medium">—</span>;
                       const diff = Math.round((volume - count) * 100) / 100;

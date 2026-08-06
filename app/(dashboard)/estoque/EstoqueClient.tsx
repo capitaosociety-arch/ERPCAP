@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useTransition, useMemo } from 'react';
-import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search, Upload, Plus } from 'lucide-react';
+import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search, Upload, Plus, ClipboardList, Sheet } from 'lucide-react';
 import { registerStockMovement, updateMinStock, registerBatchStockMovement } from '../../actions/stock';
 import { parseInvoiceImage } from '../../actions/invoice-ai';
 import { quickCreateProductFromInvoice } from '../../actions/products';
+import { saveStockCounts } from '../../actions/stock-count';
+import { downloadExcel } from '../../../lib/excel-export';
 
 interface Product {
   id: string;
@@ -22,10 +24,70 @@ interface NfItem {
   preco_unitario: number;
 }
 
-export default function EstoqueClient({ initialProducts }: { initialProducts: Product[] }) {
+export default function EstoqueClient({ initialProducts, initialStockCounts = [] }: { initialProducts: Product[]; initialStockCounts?: any[] }) {
   const [products, setProducts] = useState<Product[]>(initialProducts || []);
-  const [filter, setFilter] = useState('ALL'); // ALL, LOW, HISTORY
+  const [filter, setFilter] = useState('ALL'); // ALL, LOW, HISTORY, COUNT
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Contagem diária de estoque (Balcão)
+  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
+  const [countDate, setCountDate] = useState<string>(todayStr);
+  const [countQty, setCountQty] = useState<Record<string, string>>(() => {
+      const map: Record<string, string> = {};
+      for (const c of initialStockCounts) {
+          if (c.date === todayStr) map[c.productId] = String(c.quantity);
+      }
+      return map;
+  });
+  const switchCountDate = (d: string) => {
+      setCountDate(d);
+      const map: Record<string, string> = {};
+      for (const c of initialStockCounts) {
+          if (c.date === d) map[c.productId] = String(c.quantity);
+      }
+      setCountQty(map);
+  };
+
+  const handleSaveCount = () => {
+      const items: { productId: string; quantity: number }[] = [];
+      for (const p of products) {
+          if ((p as any).isActive === false) continue;
+          const raw = (countQty[p.id] || '').replace(',', '.');
+          if (raw !== '' && Number.isFinite(Number(raw)) && Number(raw) >= 0) {
+              items.push({ productId: p.id, quantity: Number(raw) });
+          }
+      }
+      if (items.length === 0) return alert('Informe a contagem de pelo menos um produto.');
+      startTransition(async () => {
+          try {
+              const res = await saveStockCounts(countDate, items, 'BALCAO');
+              if (res.success) {
+                  alert(`Contagem de ${res.saved} produto(s) salva para ${countDate}.`);
+                  window.location.reload();
+              }
+          } catch (e: any) { alert(e.message || 'Erro ao salvar contagem.'); }
+      });
+  };
+
+  const handleDownloadCountExcel = () => {
+      const rows = products
+          .filter((p: any) => p.isActive !== false)
+          .map((p: any) => {
+              const qty = p.stock?.quantity || 0;
+              const raw = (countQty[p.id] || '').replace(',', '.');
+              const counted = raw === '' ? null : Number(raw);
+              const diff = counted === null ? null : Math.round((qty - counted) * 100) / 100;
+              return {
+                  "Produto": p.name || 'Sem nome',
+                  "Categoria": p.category?.name || 'Geral',
+                  "Quantidade Atual": qty,
+                  "Contagem": counted ?? "",
+                  "Diferença": diff ?? "",
+                  "Unidade": p.stock?.unit || p.unit || "UN"
+              };
+          });
+      downloadExcel(rows, `Contagem_Balcao_${countDate}`, 'Contagem');
+  };
   
   // Modals
   const [isMovementModalOpen, setMovementModalOpen] = useState(false);
@@ -386,10 +448,99 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
                 <button onClick={() => setFilter('HISTORY')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 whitespace-nowrap ${filter === 'HISTORY' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
                     <PackagePlus size={16}/> Lançamentos (NF)
                 </button>
+                <button onClick={() => setFilter('COUNT')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 whitespace-nowrap ${filter === 'COUNT' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+                    <ClipboardList size={16}/> Contagem EST.
+                </button>
             </div>
         </div>
       </div>
 
+      {filter === 'COUNT' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-4 border-b border-gray-100 bg-slate-50 flex flex-col md:flex-row gap-3 justify-between items-start md:items-center">
+            <div className="flex items-center gap-3">
+              <ClipboardList className="text-mrts-blue" size={18}/>
+              <div>
+                <h3 className="font-bold text-slate-800 text-sm uppercase">Contagem Diária de Estoque (Balcão)</h3>
+                <p className="text-[10px] text-slate-500 font-medium">Registre a quantidade contada fisicamente. Não altera o estoque real.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <input type="date" value={countDate} onChange={e => switchCountDate(e.target.value)} className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-mrts-blue"/>
+              <button onClick={handleDownloadCountExcel} className="px-4 py-2 rounded-xl text-sm font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-100 transition flex items-center gap-2">
+                <Sheet size={16}/> Baixar Excel
+              </button>
+              <button disabled={isPending} onClick={handleSaveCount} className="px-4 py-2 rounded-xl text-sm font-bold bg-mrts-blue text-white shadow-lg hover:bg-blue-600 transition flex items-center gap-2 disabled:opacity-50">
+                {isPending ? <RefreshCw size={16} className="animate-spin"/> : <Check size={16}/>} Salvar Contagem
+              </button>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse whitespace-nowrap">
+              <thead>
+                <tr className="bg-gray-50/80 border-b border-gray-100 text-xs uppercase text-gray-500 tracking-wider">
+                  <th className="p-4 font-bold">Produto</th>
+                  <th className="p-4 font-bold text-right">Quantidade Atual</th>
+                  <th className="p-4 font-bold text-right">Contagem</th>
+                  <th className="p-4 font-bold text-center">Diferença</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {products.filter((p: any) => p.isActive !== false).map((product: any) => {
+                    const qty = product.stock?.quantity || 0;
+                    const unit = product.stock?.unit || product.unit || "UN";
+                    const raw = (countQty[product.id] || '').replace(',', '.');
+                    const counted = raw === '' ? null : Number(raw);
+                    const diff = counted === null ? null : Math.round((qty - counted) * 100) / 100;
+                    return (
+                      <tr key={product.id} className="hover:bg-blue-50/40 transition">
+                          <td className="p-4">
+                              <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-white shadow-sm border border-gray-100 rounded-lg flex items-center justify-center text-xl shrink-0">{product.iconUrl}</div>
+                                  <div>
+                                      <p className="font-bold text-gray-800 text-sm line-clamp-1">{product.name}</p>
+                                      <p className="text-xs text-gray-400 font-medium">{product.category?.name || "Geral"}</p>
+                                  </div>
+                              </div>
+                          </td>
+                          <td className="p-4 text-right text-base font-black text-slate-800">
+                              {qty} <span className="text-xs font-medium uppercase ml-0.5 opacity-70">{unit}</span>
+                          </td>
+                          <td className="p-4 text-right">
+                              <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={countQty[product.id] || ''}
+                                  placeholder="0"
+                                  onChange={e => setCountQty(prev => ({ ...prev, [product.id]: e.target.value }))}
+                                  className="w-24 text-right font-black bg-slate-50 border-2 border-slate-100 rounded-lg px-2 py-1.5 outline-none focus:border-mrts-blue transition"
+                              />
+                          </td>
+                          <td className="p-4 text-center">
+                              {diff === null ? (
+                                  <span className="text-xs text-slate-300 font-medium">—</span>
+                              ) : (
+                                  <span className={`text-sm font-black ${diff === 0 ? 'text-emerald-500' : diff > 0 ? 'text-red-500' : 'text-amber-500'}`}>
+                                      {diff > 0 ? '+' : ''}{diff}
+                                  </span>
+                              )}
+                          </td>
+                      </tr>
+                    )
+                })}
+                {products.filter((p: any) => p.isActive !== false).length === 0 && (
+                    <tr>
+                        <td colSpan={4} className="p-8 text-center text-gray-500 font-medium">Nenhum produto localizado.</td>
+                    </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {filter !== 'COUNT' && (
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         {filter !== 'HISTORY' ? (
           <div className="overflow-x-auto">
@@ -517,6 +668,7 @@ export default function EstoqueClient({ initialProducts }: { initialProducts: Pr
           </div>
         )}
       </div>
+      )}
 
       {/* MODAL: MOVIMENTAÇÃO MANUAL */}
       {isMovementModalOpen && selectedProduct && (

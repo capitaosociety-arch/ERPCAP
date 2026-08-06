@@ -19,13 +19,16 @@ async function verifyAuth() {
 }
 
 const validDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d);
+const validLocation = (l: string) => l === 'DEPOT' || l === 'BALCAO';
 
 // Salva a contagem diária de estoque (informativa - NÃO altera o estoque real)
 export async function saveStockCounts(
     dateStr: string,
-    items: { productId: string; quantity: number }[]
+    items: { productId: string; quantity: number }[],
+    location: 'DEPOT' | 'BALCAO' = 'DEPOT'
 ) {
     if (!validDate(dateStr)) throw new Error('Data inválida.');
+    if (!validLocation(location)) throw new Error('Local inválido.');
     if (!items || items.length === 0) throw new Error('Nenhum item informado.');
 
     await verifyAuth();
@@ -35,27 +38,30 @@ export async function saveStockCounts(
     await prisma.$transaction(async (tx) => {
         for (const item of cleanItems) {
             await tx.stockCount.upsert({
-                where: { productId_date: { productId: item.productId, date: dateStr } },
+                where: { productId_date_location: { productId: item.productId, date: dateStr, location } },
                 update: { quantity: item.quantity },
-                create: { productId: item.productId, date: dateStr, quantity: item.quantity }
+                create: { productId: item.productId, location, date: dateStr, quantity: item.quantity }
             });
         }
     });
 
-    await createAuditLog("Contagem de Estoque", `Contagem diária registrada para ${cleanItems.length} produto(s) no dia ${dateStr}.`);
+    const locLabel = location === 'BALCAO' ? 'Balcão' : 'Matriz';
+    await createAuditLog("Contagem de Estoque", `Contagem diária registrada para ${cleanItems.length} produto(s) no ${locLabel} no dia ${dateStr}.`);
 
     revalidatePath('/deposito');
+    revalidatePath('/estoque');
     revalidatePath('/produtos');
     return { success: true, saved: cleanItems.length };
 }
 
 // Lista as contagens de um dia específico
-export async function getStockCountsForDate(dateStr: string) {
+export async function getStockCountsForDate(dateStr: string, location: 'DEPOT' | 'BALCAO' = 'DEPOT') {
     await verifyAuth();
     if (!validDate(dateStr)) throw new Error('Data inválida.');
+    if (!validLocation(location)) throw new Error('Local inválido.');
 
     return prisma.stockCount.findMany({
-        where: { date: dateStr },
-        select: { productId: true, quantity: true, date: true }
+        where: { date: dateStr, location },
+        select: { productId: true, quantity: true, date: true, location: true }
     });
 }

@@ -45,8 +45,10 @@ export default async function DepotPage() {
         orderBy: { date: 'desc' }
     });
 
-    // Carregar Contagens Diárias de Estoque
-    const stockCounts = await prisma.stockCount.findMany();
+    // Carregar Contagens Diárias de Estoque (Matriz)
+    const stockCounts = await prisma.stockCount.findMany({
+        where: { location: 'DEPOT' }
+    });
 
     return <DepotClient 
         initialInventory={inventory} 
