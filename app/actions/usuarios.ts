@@ -98,7 +98,8 @@ export async function toggleUserPermission(id: string, field: string) {
         permCustomers: "Clientes",
         permFinance: "Financeiro",
         permUsers: "Usuários",
-        permDepot: "Depósito"
+        permDepot: "Depósito",
+        permInteligencia: "Central de Inteligência"
     };
 
     const action = newValue ? "CONCEDIDA" : "REVOGADA";

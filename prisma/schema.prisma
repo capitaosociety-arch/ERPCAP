@@ -25,6 +25,7 @@ model User {
   permFinance     Boolean @default(false)
   permUsers       Boolean @default(false)
   permDepot       Boolean @default(false)
+  permInteligencia Boolean @default(false)
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

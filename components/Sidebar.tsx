@@ -1,10 +1,11 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, ShoppingCart, Coffee, Box, Users, DollarSign, Settings, FileText, X, Warehouse, Calendar } from 'lucide-react';
+import { LayoutDashboard, ShoppingCart, Coffee, Box, Users, DollarSign, Settings, FileText, X, Warehouse, Calendar, BrainCircuit } from 'lucide-react';
 
 const MENU_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permKey: 'permDashboard' },
+  { href: '/inteligencia', label: 'Central de Inteligência', icon: BrainCircuit, permKey: 'permInteligencia' },
   { href: '/pdv', label: 'PDV', icon: ShoppingCart, permKey: 'permPDV' },
   { href: '/mesas', label: 'Comandas', icon: Coffee, permKey: 'permComandas' },
   { href: '/produtos', label: 'Produtos', icon: Box, permKey: 'permProducts' },
