@@ -36,15 +36,13 @@ export async function saveStockCounts(
 
         const cleanItems = items.filter(i => i.productId && Number.isFinite(i.quantity) && i.quantity >= 0);
 
-        await prisma.$transaction(async (tx) => {
-            for (const item of cleanItems) {
-                await tx.stockCount.upsert({
-                    where: { productId_date_location: { productId: item.productId, date: dateStr, location } },
-                    update: { quantity: item.quantity },
-                    create: { productId: item.productId, location, date: dateStr, quantity: item.quantity }
-                });
-            }
-        });
+        for (const item of cleanItems) {
+            await prisma.stockCount.upsert({
+                where: { productId_date_location: { productId: item.productId, date: dateStr, location } },
+                update: { quantity: item.quantity },
+                create: { productId: item.productId, location, date: dateStr, quantity: item.quantity }
+            });
+        }
 
         const locLabel = location === 'BALCAO' ? 'Balcão' : 'Matriz';
         await createAuditLog("Contagem de Estoque", `Contagem diária registrada para ${cleanItems.length} produto(s) no ${locLabel} no dia ${dateStr}.`);
