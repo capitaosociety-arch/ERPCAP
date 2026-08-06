@@ -79,6 +79,8 @@ export default function DepotClient({
                 if (res.success) {
                     alert(`Contagem de ${res.saved} produto(s) salva para ${countDate}.`);
                     window.location.reload();
+                } else {
+                    alert((res as any).error || 'Erro ao salvar contagem.');
                 }
             } catch (e: any) { alert(e.message || 'Erro ao salvar contagem.'); }
         });

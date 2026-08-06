@@ -27,31 +27,36 @@ export async function saveStockCounts(
     items: { productId: string; quantity: number }[],
     location: 'DEPOT' | 'BALCAO' = 'DEPOT'
 ) {
-    if (!validDate(dateStr)) throw new Error('Data inválida.');
-    if (!validLocation(location)) throw new Error('Local inválido.');
-    if (!items || items.length === 0) throw new Error('Nenhum item informado.');
+    try {
+        if (!validDate(dateStr)) throw new Error('Data inválida.');
+        if (!validLocation(location)) throw new Error('Local inválido.');
+        if (!items || items.length === 0) throw new Error('Nenhum item informado.');
 
-    await verifyAuth();
+        await verifyAuth();
 
-    const cleanItems = items.filter(i => i.productId && Number.isFinite(i.quantity) && i.quantity >= 0);
+        const cleanItems = items.filter(i => i.productId && Number.isFinite(i.quantity) && i.quantity >= 0);
 
-    await prisma.$transaction(async (tx) => {
-        for (const item of cleanItems) {
-            await tx.stockCount.upsert({
-                where: { productId_date_location: { productId: item.productId, date: dateStr, location } },
-                update: { quantity: item.quantity },
-                create: { productId: item.productId, location, date: dateStr, quantity: item.quantity }
-            });
-        }
-    });
+        await prisma.$transaction(async (tx) => {
+            for (const item of cleanItems) {
+                await tx.stockCount.upsert({
+                    where: { productId_date_location: { productId: item.productId, date: dateStr, location } },
+                    update: { quantity: item.quantity },
+                    create: { productId: item.productId, location, date: dateStr, quantity: item.quantity }
+                });
+            }
+        });
 
-    const locLabel = location === 'BALCAO' ? 'Balcão' : 'Matriz';
-    await createAuditLog("Contagem de Estoque", `Contagem diária registrada para ${cleanItems.length} produto(s) no ${locLabel} no dia ${dateStr}.`);
+        const locLabel = location === 'BALCAO' ? 'Balcão' : 'Matriz';
+        await createAuditLog("Contagem de Estoque", `Contagem diária registrada para ${cleanItems.length} produto(s) no ${locLabel} no dia ${dateStr}.`);
 
-    revalidatePath('/deposito');
-    revalidatePath('/estoque');
-    revalidatePath('/produtos');
-    return { success: true, saved: cleanItems.length };
+        revalidatePath('/deposito');
+        revalidatePath('/estoque');
+        revalidatePath('/produtos');
+        return { success: true, saved: cleanItems.length };
+    } catch (error: any) {
+        console.error("ERRO_SAVE_STOCK_COUNT:", error);
+        return { success: false, error: error?.message || 'Erro ao salvar contagem.' };
+    }
 }
 
 // Lista as contagens de um dia específico
