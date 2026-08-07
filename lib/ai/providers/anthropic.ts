@@ -61,8 +61,14 @@ export class AnthropicProvider implements AIProvider {
       if (res.status === 401 || res.status === 403) {
         throw new AIProviderError('NO_KEY', 'Chave do Claude inválida ou sem permissão.');
       }
-      if (res.status === 404 || res.status === 400) {
+      if (res.status === 404) {
         throw new AIProviderError('NOT_FOUND', `Modelo "${this.model}" não encontrado para o provedor Claude.`);
+      }
+      if (res.status === 400 || res.status === 402) {
+        throw new AIProviderError('UNKNOWN', `Claude rejeitou a requisição: ${msg}`);
+      }
+      if (res.status === 529) {
+        throw new AIProviderError('RATE_LIMIT', `Claude indisponível no momento: ${msg}`);
       }
       throw new AIProviderError('UNKNOWN', `Erro na API do Claude: ${msg}`);
     }

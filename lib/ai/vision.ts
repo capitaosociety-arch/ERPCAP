@@ -31,6 +31,9 @@ export async function visionWithFallback(prompt: string, image: AIVisionImage): 
   }
 
   if (provider.id !== 'google') {
+    if (image.mimeType === 'application/pdf') {
+      throw new AIProviderError('UNSUPPORTED', 'O provedor de IA configurado não aceita PDF na leitura de notas. Use uma imagem (JPG/PNG).');
+    }
     return provider.vision({ prompt, image });
   }
 
