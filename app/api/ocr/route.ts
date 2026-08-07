@@ -1,71 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabaseAdmin } from "@/lib/supabase";
+import { isAIEnabled, extractJson } from "@/lib/ai/provider";
+import { visionWithFallback } from "@/lib/ai/vision";
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-// Modelos ordenados por prioridade (mais estável primeiro)
-const MODELS_FALLBACK = [
-    "gemini-2.5-flash-preview-04-17", // Preview datado de Abril 2026 - confirmado funcional
-    "gemini-2.5-flash",               // Versão estável 2.5
-    "gemini-2.5-pro",                 // Pro 2.5 (maior cota de entrada)
-    "gemini-2.5-flash-lite",          // Lite sem data de preview
-    "gemini-1.5-pro-latest",          // Fallback legado Pro
-    "gemini-1.5-flash-002",           // Variante 002 legada
-];
-
-// genAI is instantiated lazily inside functions to avoid build-time errors
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Tenta gerar conteúdo com retry automático e fallback de modelos
-async function generateWithRetry(buffer: Buffer, mimeType: string, prompt: string): Promise<string> {
-    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
-    for (let modelIdx = 0; modelIdx < MODELS_FALLBACK.length; modelIdx++) {
-        const modelName = MODELS_FALLBACK[modelIdx];
-        
-        for (let attempt = 1; attempt <= 3; attempt++) {
-            try {
-                console.log(`Tentando modelo: ${modelName}, tentativa ${attempt}`);
-                const model = genAI.getGenerativeModel({ model: modelName });
-                const inlineData = { data: buffer.toString("base64"), mimeType };
-                const result = await model.generateContent([prompt, { inlineData }]);
-                return result.response.text();
-            } catch (err: any) {
-                const msg = err.message || "";
-                const isRateLimit = msg.includes('RESOURCE_EXHAUSTED') || msg.includes('quota') || msg.includes('429');
-                const isNotFound = msg.includes('404') || msg.includes('not found');
-                
-                if (isNotFound) {
-                    // Modelo não existe, tentar o próximo imediatamente
-                    console.warn(`Modelo ${modelName} não encontrado, tentando próximo...`);
-                    break;
-                }
-                
-                if (isRateLimit && attempt < 3) {
-                    // Esperar progressivamente antes de tentar novamente
-                    const waitMs = attempt * 3000; // 3s, 6s
-                    console.warn(`Rate limit no modelo ${modelName}. Aguardando ${waitMs}ms...`);
-                    await sleep(waitMs);
-                    continue;
-                }
-                
-                if (attempt === 3 || !isRateLimit) {
-                    // Se foi o último attempt ou não é rate limit, tentar próximo modelo
-                    console.warn(`Falha no modelo ${modelName}:`, msg);
-                    break;
-                }
-            }
-        }
-    }
-    
-    throw new Error("Todos os modelos de IA falharam. Verifique sua chave de API ou tente novamente em alguns minutos.");
-}
-
 export async function POST(req: NextRequest) {
-    const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "";
-    if (!apiKey) {
+    if (!isAIEnabled()) {
         return NextResponse.json({ success: false, error: "Chave GOOGLE_API_KEY não configurada!" }, { status: 500 });
     }
 
@@ -125,23 +67,12 @@ export async function POST(req: NextRequest) {
         Retorne APENAS o JSON puro. Não inclua Markdown.`;
 
         // Chamar IA com retry automático e fallback de modelos
-        const responseText = await generateWithRetry(buffer, file.type, prompt);
-        
-        const extractJson = (text: string) => {
-            const start = text.indexOf('{');
-            const end = text.lastIndexOf('}');
-            if (start !== -1 && end !== -1) {
-                return text.substring(start, end + 1);
-            }
-            return text;
-        };
+        const responseText = await visionWithFallback(prompt, { mimeType: file.type, data: buffer.toString("base64") });
 
-        const cleanJsonStr = extractJson(responseText.replace(/```json/g, "").replace(/```/g, "").trim());
-        
         let data;
         try {
-            data = JSON.parse(cleanJsonStr);
-        } catch (parseError) {
+            data = extractJson(responseText);
+        } catch {
             console.error("Erro ao processar JSON da IA:", responseText);
             throw new Error("A IA retornou um formato inválido. Tente tirar uma foto mais nítida.");
         }

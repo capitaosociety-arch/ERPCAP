@@ -8,6 +8,7 @@ import {
   TrendingUp, TrendingDown, Minus, OctagonAlert, BrainCircuit
 } from 'lucide-react';
 import { getIntelligenceReport, type Analise, type IntelligenceReport, type Secao } from '../../actions/inteligencia';
+import CopilotClient, { type CopilotAccess } from './CopilotClient';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 type PeriodoKey = '7d' | '30d' | '90d' | 'month';
@@ -74,11 +75,14 @@ function money(v: number) {
 
 export default function InteligenciaClient({
   initialReport,
-  initialError
+  initialError,
+  copilot
 }: {
   initialReport: IntelligenceReport | null;
   initialError?: string;
+  copilot: CopilotAccess;
 }) {
+  const [tab, setTab] = useState<'analises' | 'copiloto'>('analises');
   const [periodo, setPeriodo] = useState<PeriodoKey>('30d');
   const [report, setReport] = useState<IntelligenceReport | null>(initialReport);
   const [error, setError] = useState<string | undefined>(initialError);
@@ -139,6 +143,26 @@ export default function InteligenciaClient({
         </div>
       </div>
 
+      {/* Abas */}
+      <div className="flex items-center gap-2 mb-6 bg-white rounded-2xl border border-gray-100 p-1.5 shadow-sm w-fit">
+        <button
+          onClick={() => setTab('analises')}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${tab === 'analises' ? 'bg-slate-900 text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}
+        >
+          Análises por regras
+        </button>
+        <button
+          onClick={() => setTab('copiloto')}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${tab === 'copiloto' ? 'bg-mrts-blue text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}
+        >
+          <BrainCircuit size={15} /> Copiloto IA
+        </button>
+      </div>
+
+      {tab === 'copiloto' && <CopilotClient access={copilot} />}
+
+      {tab === 'analises' && (
+      <div>
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl p-4 mb-6 font-medium text-sm">
           {error}
@@ -319,6 +343,8 @@ export default function InteligenciaClient({
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center text-gray-400 font-medium">
           Nenhum dado disponível para exibição.
         </div>
+      )}
+      </div>
       )}
     </div>
   );

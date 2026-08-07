@@ -1,18 +1,15 @@
 'use server'
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
-
-// genAI is instantiated lazily inside functions to avoid build-time errors
+import { createAIProvider, extractJson } from "../../lib/ai/provider";
 
 export async function processProductsWithAI(rawData: any[]) {
     if (!rawData || rawData.length === 0) {
         throw new Error("Nenhum dado encontrado na planilha.");
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+    const ai = createAIProvider();
 
     // Preparar dados para a IA (enviar apenas uma amostra significativa para mapeamento ou o lote todo se pequeno)
     const sample = rawData.slice(0, 100); 
@@ -34,21 +31,9 @@ export async function processProductsWithAI(rawData: any[]) {
     - Seja rigoroso com os tipos de dados.`;
 
     try {
-        const result = await model.generateContent(prompt);
-        const responseText = result.response.text();
-        
-        // Extração de JSON robusta
-        const extractJson = (text: string) => {
-            const start = text.indexOf('[');
-            const end = text.lastIndexOf(']');
-            if (start !== -1 && end !== -1) {
-                return text.substring(start, end + 1);
-            }
-            return text;
-        };
-
-        const cleanJson = extractJson(responseText.replace(/```json/g, "").replace(/```/g, "").trim());
-        return { success: true, data: JSON.parse(cleanJson) };
+        const res = await ai.chat({ system: '', messages: [{ role: 'user', content: prompt }] });
+        const responseText = res.text || '';
+        return { success: true, data: extractJson(responseText) };
     } catch (error: any) {
         console.error("Erro no processamento da IA para Excel:", error);
         throw new Error("Não foi possível interpretar a planilha com IA.");
