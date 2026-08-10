@@ -221,7 +221,7 @@ export default function PDVClient({ products, services = [], categories, user, o
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-[85vh] gap-6 animate-in fade-in duration-500 relative">
+    <div className="flex flex-col lg:flex-row lg:h-[85vh] gap-4 lg:gap-6 animate-in fade-in duration-500 relative">
       
       {success && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-green-500 text-white px-8 py-4 rounded-full font-bold shadow-2xl flex items-center gap-3 z-50 animate-in slide-in-from-top-10 border-4 border-white/20">
@@ -253,9 +253,9 @@ export default function PDVClient({ products, services = [], categories, user, o
       )}
 
       {/* Esquerda: Menu do Catálogo PDV Rápido */}
-      <div className="flex-1 flex flex-col gap-4 overflow-hidden border border-gray-100 bg-white p-4 rounded-3xl shadow-sm">
+      <div className="flex-1 flex flex-col gap-3 lg:gap-4 overflow-hidden border border-gray-100 bg-white p-3 sm:p-4 rounded-3xl shadow-sm min-w-0">
         
-        <div className="flex gap-2 w-full p-2 bg-gray-50 rounded-2xl items-center mb-2">
+        <div className="flex gap-2 w-full p-1.5 sm:p-2 bg-gray-50 rounded-2xl items-center mb-1 lg:mb-2">
            <Search size={20} className="text-gray-400 ml-2 shrink-0"/>
            <input 
             type="text" 
@@ -266,37 +266,37 @@ export default function PDVClient({ products, services = [], categories, user, o
            />
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-2 shrink-0 hide-scrollbar">
+        <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1.5 lg:pb-2 shrink-0 hide-scrollbar">
           <button 
             onClick={() => setActiveCat(null)}
-            className={`px-5 py-2 rounded-xl transition font-bold text-sm whitespace-nowrap shadow-sm ${!activeCat ? 'bg-slate-900 text-white' : 'bg-gray-100 text-slate-700 hover:bg-gray-200'}`}
+            className={`px-3.5 sm:px-5 py-2 rounded-xl transition font-bold text-xs sm:text-sm whitespace-nowrap shadow-sm ${!activeCat ? 'bg-slate-900 text-white' : 'bg-gray-100 text-slate-700 hover:bg-gray-200'}`}
           >
             Todos
           </button>
           {virtualCategories.map((c: any) => (
             <button 
               key={c.id} onClick={() => setActiveCat(c.id)}
-              className={`px-5 py-2 rounded-xl transition font-bold text-sm whitespace-nowrap shadow-sm ${activeCat === c.id ? 'bg-slate-900 text-white' : 'bg-gray-100 text-slate-700 hover:bg-gray-200'}`}
+              className={`px-3.5 sm:px-5 py-2 rounded-xl transition font-bold text-xs sm:text-sm whitespace-nowrap shadow-sm ${activeCat === c.id ? 'bg-slate-900 text-white' : 'bg-gray-100 text-slate-700 hover:bg-gray-200'}`}
             >
               {c.name}
             </button>
           ))}
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto pr-2 pb-10">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 sm:gap-4 lg:overflow-y-auto lg:pr-2 pb-4 sm:pb-6 lg:pb-10">
           {filteredProducts.length === 0 ? (
               <div className="col-span-full py-10 text-center text-gray-400 font-bold">Nenhum produto cadastrado com estoque &gt; 0.</div>
           ) : filteredProducts.map((product: any) => (
-            <div key={product.id} onClick={() => addItem(product)} className="bg-slate-50 p-4 rounded-2xl cursor-pointer border-2 border-transparent hover:border-mrts-blue hover:shadow-lg transition transform hover:-translate-y-1 group relative">
-               <span className="absolute top-2 right-2 bg-mrts-blue text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-sm">
+            <div key={product.id} onClick={() => addItem(product)} className="bg-slate-50 p-2.5 sm:p-4 rounded-2xl cursor-pointer border-2 border-transparent hover:border-mrts-blue hover:shadow-lg transition transform hover:-translate-y-1 group relative">
+               <span className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 bg-mrts-blue text-white text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded-md shadow-sm">
                  {product.isService ? 'SERVIÇO' : `ESTOQUE ${product.stock?.quantity}`}
                </span>
-              <div className="w-full h-20 bg-white rounded-xl mb-3 flex items-center justify-center text-4xl shadow-sm group-hover:bg-blue-50 transition">
+              <div className="w-full h-14 sm:h-20 bg-white rounded-xl mb-2 sm:mb-3 flex items-center justify-center text-3xl sm:text-4xl shadow-sm group-hover:bg-blue-50 transition">
                 {product.iconUrl || '🛍️'}
               </div>
-              <h3 className="font-bold text-slate-800 text-sm line-clamp-2 leading-tight">{product.name}</h3>
-              <p className="text-mrts-blue font-black mt-2 text-lg tracking-tight">
-                <span className="text-xs">R$</span> {product.price.toFixed(2).replace('.', ',')}
+              <h3 className="font-bold text-slate-800 text-xs sm:text-sm line-clamp-2 leading-tight">{product.name}</h3>
+              <p className="text-mrts-blue font-black mt-1.5 sm:mt-2 text-base sm:text-lg tracking-tight">
+                <span className="text-[10px] sm:text-xs">R$</span> {product.price.toFixed(2).replace('.', ',')}
               </p>
             </div>
           ))}
@@ -304,56 +304,56 @@ export default function PDVClient({ products, services = [], categories, user, o
       </div>
 
       {/* Direita: Carrinho do Caixa Rápido */}
-      <div className="w-full lg:w-[420px] bg-white border border-gray-100 rounded-3xl flex flex-col shadow-xl shrink-0">
-        <div className="p-5 border-b border-gray-100 bg-mrts-blue rounded-t-3xl text-white flex justify-between items-center shadow-inner">
+      <div className="w-full lg:w-[420px] bg-white border border-gray-100 rounded-3xl flex flex-col shadow-xl shrink-0 min-w-0">
+        <div className="p-3.5 sm:p-5 border-b border-gray-100 bg-mrts-blue rounded-t-3xl text-white flex justify-between items-center shadow-inner">
           <div>
-              <h2 className="font-black text-xl flex items-center gap-2"><ShoppingCart size={22}/> Balcão Livre</h2>
-              <p className="text-xs text-blue-100 mt-1 uppercase font-bold tracking-widest">{user?.name}</p>
+              <h2 className="font-black text-lg sm:text-xl flex items-center gap-2"><ShoppingCart size={20} className="sm:size-[22px]"/> Balcão Livre</h2>
+              <p className="text-[10px] sm:text-xs text-blue-100 mt-0.5 sm:mt-1 uppercase font-bold tracking-widest">{user?.name}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
               {cart.length > 0 && (
-                  <button onClick={() => setCart([])} className="bg-white/20 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm" title="Limpar carrinho e cancelar venda">
+                  <button onClick={() => setCart([])} className="bg-white/20 hover:bg-red-500 text-white px-2.5 sm:px-3 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold transition flex items-center gap-1.5 shadow-sm" title="Limpar carrinho e cancelar venda">
                      <X size={14} strokeWidth={3}/> Cancelar
                   </button>
               )}
-              <button onClick={handleOpenCloseModal} className="bg-blue-900/40 hover:bg-slate-900 border border-white/10 hover:border-transparent text-white px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+              <button onClick={handleOpenCloseModal} className="bg-blue-900/40 hover:bg-slate-900 border border-white/10 hover:border-transparent text-white px-2.5 sm:px-3 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
                  <Lock size={14}/> Fechar Turno
               </button>
           </div>
         </div>
         
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50/50">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5 sm:space-y-3 bg-gray-50/50">
           {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-gray-300 gap-3 border-2 border-dashed border-gray-200 rounded-2xl">
+            <div className="h-full flex flex-col items-center justify-center text-gray-300 gap-3 border-2 border-dashed border-gray-200 rounded-2xl min-h-[120px]">
               <ShoppingCart size={48} className="text-gray-200" />
               <p className="text-sm font-bold text-gray-400">Passe os produtos para iniciar</p>
             </div>
           ) : (
             cart.map((item) => (
-              <div key={item.product.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-100 shadow-sm transition hover:shadow-md">
+              <div key={item.product.id} className="flex justify-between items-center bg-white p-2.5 sm:p-3 rounded-xl border border-gray-100 shadow-sm transition hover:shadow-md">
                 
-                <div className="w-10 h-10 bg-slate-50 rounded-lg flex justify-center items-center mr-3 shrink-0 text-gray-500 font-bold border border-gray-100">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-50 rounded-lg flex justify-center items-center mr-2 sm:mr-3 shrink-0 text-gray-500 font-bold border border-gray-100">
                   {item.quantity}x
                 </div>
 
-                <div className="flex-1 min-w-0 pr-2">
-                  <p className="font-bold text-slate-800 text-sm truncate">{item.product.name}</p>
-                  <p className="text-xs font-semibold text-mrts-blue mt-0.5">R$ {item.product.price.toFixed(2).replace('.',',')}</p>
+                <div className="flex-1 min-w-0 pr-1.5 sm:pr-2">
+                  <p className="font-bold text-slate-800 text-xs sm:text-sm truncate">{item.product.name}</p>
+                  <p className="text-[11px] sm:text-xs font-semibold text-mrts-blue mt-0.5">R$ {item.product.price.toFixed(2).replace('.',',')}</p>
                 </div>
                 
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg px-1 py-0.5">
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                  <div className="flex items-center gap-0.5 sm:gap-1 bg-gray-50 border border-gray-200 rounded-lg px-1 py-0.5">
                     <button onClick={() => updateCartQty(item.product.id, -(item.product.allowFractional ? 0.5 : 1))} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-white hover:bg-red-400 rounded transition" title="Diminuir quantidade">
                       <Minus size={13} strokeWidth={3} />
                     </button>
-                    <span className="w-8 text-center font-black text-slate-800 text-xs">{item.quantity}</span>
+                    <span className="w-7 sm:w-8 text-center font-black text-slate-800 text-xs">{item.quantity}</span>
                     <button onClick={() => updateCartQty(item.product.id, (item.product.allowFractional ? 0.5 : 1))} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-white hover:bg-green-500 rounded transition" title="Aumentar quantidade">
                       <Plus size={13} strokeWidth={3} />
                     </button>
                   </div>
-                  <span className="font-black text-slate-800 text-sm">R$ {(item.quantity * item.product.price).toFixed(2).replace('.',',')}</span>
-                  <button onClick={() => removeItem(item.product.id)} className="text-red-400 hover:text-white bg-red-50 hover:bg-red-500 p-2 rounded-lg transition shadow-sm" title="Remover">
-                    <X size={16} strokeWidth={3}/>
+                  <span className="font-black text-slate-800 text-xs sm:text-sm">R$ {(item.quantity * item.product.price).toFixed(2).replace('.',',')}</span>
+                  <button onClick={() => removeItem(item.product.id)} className="text-red-400 hover:text-white bg-red-50 hover:bg-red-500 p-1.5 sm:p-2 rounded-lg transition shadow-sm" title="Remover">
+                    <X size={15} strokeWidth={3}/>
                   </button>
                 </div>
               </div>
@@ -361,21 +361,21 @@ export default function PDVClient({ products, services = [], categories, user, o
           )}
         </div>
 
-        <div className="p-6 bg-white rounded-b-3xl border-t-2 border-dashed border-gray-200 shadow-[0_-10px_30px_rgba(0,0,0,0.03)] z-10 relative">
-          <div className="flex justify-between text-gray-500 mb-2 font-medium text-sm">
+        <div className="p-4 sm:p-6 bg-white rounded-b-3xl border-t-2 border-dashed border-gray-200 shadow-[0_-10px_30px_rgba(0,0,0,0.03)] z-10 relative">
+          <div className="flex justify-between text-gray-500 mb-1.5 sm:mb-2 font-medium text-xs sm:text-sm">
             <span>Volume Lançado</span>
             <span>{cart.reduce((mem, it)=> mem + it.quantity,0)} un</span>
           </div>
-          <div className="flex justify-between text-3xl font-black text-slate-800 mb-6 py-2">
+          <div className="flex justify-between text-2xl sm:text-3xl font-black text-slate-800 mb-4 sm:mb-6 py-1 sm:py-2">
             <span>R$</span>
             <span className="text-mrts-blue">{total.toFixed(2).replace('.', ',')}</span>
           </div>
           <button 
             onClick={finalize} 
             disabled={isPending || cart.length === 0}
-            className="w-full bg-slate-900 text-white py-4 rounded-xl font-black text-lg shadow-xl shadow-slate-900/30 hover:bg-slate-800 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none flex items-center justify-center gap-2"
+            className="w-full bg-slate-900 text-white py-3.5 sm:py-4 rounded-xl font-black text-base sm:text-lg shadow-xl shadow-slate-900/30 hover:bg-slate-800 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none flex items-center justify-center gap-2"
           >
-            {isPending ? 'GERANDO ACERTO...' : <><Receipt size={22}/> IR PARA O PAGAMENTO</>}
+            {isPending ? 'GERANDO ACERTO...' : <><Receipt size={20} className="sm:size-[22px]"/> IR PARA O PAGAMENTO</>}
           </button>
         </div>
       </div>
