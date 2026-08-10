@@ -532,7 +532,7 @@ export default function DepotClient({
                                                 {product.iconUrl ? <img src={product.iconUrl} className="w-6 h-6" /> : <Box size={20} className="text-slate-300"/>}
                                             </div>
                                             <div className="flex-1 min-w-0">
-                                                <p className="font-bold text-slate-800 text-sm truncate">{product.name || 'Sem nome'}</p>
+                                                <p className="font-bold text-slate-800 text-[11px] leading-tight">{product.name || 'Sem nome'}</p>
                                                 <p className="text-xs text-gray-400 font-medium">Volume Matriz: <span className="font-black text-slate-700">{depotQty.toFixed(2).replace(/\.00$/, '')} {product.unit}</span></p>
                                             </div>
                                             <div className="flex items-center gap-2 shrink-0">

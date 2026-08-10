@@ -568,7 +568,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                     <div key={product.id} className="p-3 flex items-center gap-3">
                         <div className="w-10 h-10 bg-white shadow-sm border border-gray-100 rounded-lg flex items-center justify-center text-xl shrink-0">{product.iconUrl}</div>
                         <div className="flex-1 min-w-0">
-                            <p className="font-bold text-gray-800 text-sm truncate">{product.name}</p>
+                            <p className="font-bold text-gray-800 text-[11px] leading-tight">{product.name}</p>
                             <p className="text-xs text-gray-400 font-medium">Atual: <span className="font-black text-slate-700">{qty} {unit}</span></p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
