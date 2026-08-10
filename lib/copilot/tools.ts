@@ -625,6 +625,168 @@ const resumoTool: CopilotTool = {
 };
 
 // ---------------------------------------------------------------------------
+// 10. sessoes_caixa
+// ---------------------------------------------------------------------------
+
+const sessoesTool: CopilotTool = {
+  name: 'sessoes_caixa',
+  description: 'Sessões de caixa do período: por turno, soma das formas de pagamento (Dinheiro/Pix/Débito/Crédito), fundo de troco, saldo final, auditoria de vendas e física. Permite somar quanto entrou em cada método em um período.',
+  parameters: {
+    type: 'object',
+    properties: {
+      periodo: { type: 'string', enum: ['month', '7d', '30d', '90d'], description: 'month = mês atual (padrão)' }
+    }
+  },
+  requiredPerm: 'permFinance',
+  async execute(ctx, args) {
+    if (!isAdmin(ctx) && !ctx.user.permFinance) return deny();
+    const P = parsePeriodo(args);
+
+    const sessions = await prisma.cashRegister.findMany({
+      where: { openedAt: { gte: P.from, lte: P.to } },
+      orderBy: { openedAt: 'desc' },
+      include: {
+        user: { select: { name: true } },
+        payments: { include: { order: { include: { items: { where: { status: 'ACTIVE' } } } } } }
+      }
+    });
+
+    const porSessao = sessions.map(s => {
+      const byMethod = (s.payments || []).reduce((acc: any, p: any) => {
+        acc[p.method] = (acc[p.method] || 0) + p.amount;
+        return acc;
+      }, { CASH: 0, PIX: 0, DEBIT: 0, CREDIT: 0 });
+
+      const uniqueOrdersMap = new Map();
+      (s.payments || []).forEach((p: any) => {
+        if (p.order && !uniqueOrdersMap.has(p.order.id)) uniqueOrdersMap.set(p.order.id, p.order);
+      });
+      const uniqueOrders = Array.from(uniqueOrdersMap.values());
+      const totalGrossSold = uniqueOrders.reduce((acc: number, o: any) =>
+        acc + (o.items?.reduce((sum: number, it: any) => sum + it.subtotal, 0) || 0), 0);
+      const totalDiscounts = uniqueOrders.reduce((acc: number, o: any) => acc + (o.discount || 0), 0);
+      const totalPaymentsReceived = (s.payments || []).reduce((acc: number, p: any) => acc + p.amount, 0);
+      const auditVendas = (totalGrossSold - totalDiscounts) - totalPaymentsReceived;
+      const expectedCash = s.openingBal + (byMethod.CASH || 0);
+      const auditFisico = s.closingBal !== null ? s.closingBal - expectedCash : 0;
+
+      return {
+        operador: s.user?.name || '—',
+        status: s.status === 'OPEN' ? 'Aberto' : 'Fechado',
+        abertura: s.openedAt.toLocaleString('pt-BR'),
+        fechamento: s.closedAt ? s.closedAt.toLocaleString('pt-BR') : 'Em curso',
+        pagamentos: {
+          dinheiro: round2(byMethod.CASH),
+          pix: round2(byMethod.PIX),
+          debito: round2(byMethod.DEBIT),
+          credito: round2(byMethod.CREDIT)
+        },
+        fundoTroco: round2(s.openingBal),
+        saldoFinal: s.closingBal !== null ? round2(s.closingBal) : null,
+        auditoriaVendas: round2(auditVendas),
+        auditoriaFisica: s.closingBal !== null ? round2(auditFisico) : null
+      };
+    });
+
+    const total = porSessao.reduce((acc: any, s: any) => {
+      acc.dinheiro += s.pagamentos.dinheiro;
+      acc.pix += s.pagamentos.pix;
+      acc.debito += s.pagamentos.debito;
+      acc.credito += s.pagamentos.credito;
+      return acc;
+    }, { dinheiro: 0, pix: 0, debito: 0, credito: 0 });
+
+    return ok({
+      periodo: P.label,
+      totalSessoes: sessions.length,
+      totalPorForma: { dinheiro: round2(total.dinheiro), pix: round2(total.pix), debito: round2(total.debito), credito: round2(total.credito) },
+      porSessao
+    }, {
+      periodo: P.label,
+      origem: ['CashRegister', 'Payment', 'OrderItem'],
+      nota: 'Regime de caixa. Auditorias: vendas = (bruto − descontos) − pago; física = saldo final − (fundo de troco + dinheiro).'
+    });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// 11. estoque
+// ---------------------------------------------------------------------------
+
+const estoqueTool: CopilotTool = {
+  name: 'estoque',
+  description: 'Visão de estoque: saldo atual por produto no balcão e no depósito, produtos abaixo do mínimo (alerta de reposição) e resumo de movimentações (entradas, vendas, perdas, transferências) em um período.',
+  parameters: {
+    type: 'object',
+    properties: {
+      periodo: { type: 'string', enum: ['month', '7d', '30d', '90d'], description: 'month = mês atual (padrão)' },
+      abaixoMinimo: { type: 'boolean', description: 'true = retornar somente produtos abaixo do mínimo (alerta de reposição)' }
+    }
+  },
+  requiredPerm: 'permStock',
+  async execute(ctx, args) {
+    if (!isAdmin(ctx) && !ctx.user.permStock) return deny();
+    const P = parsePeriodo(args);
+    const abaixoMinimo = args.abaixoMinimo === true;
+
+    const [stocks, depotStocks, stockMovs, depotMovs] = await Promise.all([
+      prisma.stock.findMany({ include: { product: { select: { name: true, unit: true } } } }),
+      prisma.depotStock.findMany({ include: { product: { select: { name: true, unit: true } } } }),
+      prisma.stockMovement.findMany({
+        where: { date: { gte: P.from, lte: P.to } },
+        select: { type: true, quantity: true }
+      }),
+      prisma.depotMovement.findMany({
+        where: { date: { gte: P.from, lte: P.to } },
+        select: { type: true, quantity: true }
+      })
+    ]);
+
+    const saldoBalcao = stocks.map(s => ({
+      produto: s.product?.name || '—',
+      quantidade: round2(s.quantity),
+      minimo: round2(s.minQuantity),
+      unidade: s.unit
+    })).sort((a, b) => a.quantidade - b.quantidade);
+
+    const saldoDeposito = depotStocks.map(s => ({
+      produto: s.product?.name || '—',
+      quantidade: round2(s.quantity),
+      minimo: round2(s.minQuantity),
+      unidade: s.unit
+    })).sort((a, b) => a.quantidade - b.quantidade);
+
+    const abaixo = [...saldoBalcao, ...saldoDeposito]
+      .filter(s => s.quantidade <= s.minimo)
+      .sort((a, b) => a.quantidade - b.quantidade);
+
+    const resumoBalcao = { IN: 0, OUT_SALE: 0, OUT_MANUAL: 0, LOSS: 0 };
+    stockMovs.forEach(m => {
+      if (m.type in resumoBalcao) resumoBalcao[m.type as keyof typeof resumoBalcao] = round2(resumoBalcao[m.type as keyof typeof resumoBalcao] + m.quantity);
+    });
+    const resumoDeposito = { IN: 0, OUT_TRANSFER: 0, LOSS: 0 };
+    depotMovs.forEach(m => {
+      if (m.type in resumoDeposito) resumoDeposito[m.type as keyof typeof resumoDeposito] = round2(resumoDeposito[m.type as keyof typeof resumoDeposito] + m.quantity);
+    });
+
+    return ok({
+      periodo: P.label,
+      totalProdutosBalcao: saldoBalcao.length,
+      totalProdutosDeposito: saldoDeposito.length,
+      saldoBalcao: abaixoMinimo ? saldoBalcao.filter(s => s.quantidade <= s.minimo) : saldoBalcao,
+      saldoDeposito: abaixoMinimo ? saldoDeposito.filter(s => s.quantidade <= s.minimo) : saldoDeposito,
+      abaixoDoMinimo: abaixo,
+      totalAbaixoDoMinimo: abaixo.length,
+      movimentacoesPeriodo: { balcao: resumoBalcao, deposito: resumoDeposito }
+    }, {
+      periodo: P.label,
+      origem: ['Stock', 'DepotStock', 'StockMovement', 'DepotMovement'],
+      nota: 'Saldo atual (posição em tempo real). Movimentações somadas no período por tipo; transferências depósito→balcão contam como OUT_TRANSFER no depósito e IN no balcão.'
+    });
+  }
+};
+
+// ---------------------------------------------------------------------------
 // Registro
 // ---------------------------------------------------------------------------
 
@@ -637,5 +799,7 @@ export const COPILOT_TOOLS: CopilotTool[] = [
   horariosTool,
   contasTool,
   previsaoTool,
-  resumoTool
+  resumoTool,
+  sessoesTool,
+  estoqueTool
 ];
