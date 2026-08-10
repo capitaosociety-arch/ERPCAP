@@ -57,3 +57,56 @@
     animation: shake 0.2s ease-in-out 0s 2;
   }
 }
+
+/* ============================================================
+   MOBILE: modais/cards mais densos — menos espaço nas laterais,
+   letras e espaçamentos menores, menos barras de rolagem
+   ============================================================ */
+@media (max-width: 640px) {
+  /* Overlay de modais centralizados: menos margem nas laterais */
+  [class~="fixed"][class~="inset-0"][class~="p-4"] {
+    padding: 0.5rem !important;
+  }
+
+  /* Card do modal: cantos menos arredondados */
+  [class~="fixed"][class~="inset-0"][class~="p-4"] > * {
+    border-radius: 1.15rem !important;
+  }
+
+  /* Paddings internos dos cards */
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="p-6"] { padding: 1rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="p-5"] { padding: 0.75rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="p-4"] { padding: 0.75rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="p-8"] { padding: 1.25rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="px-5"] { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="px-6"] { padding-left: 1rem !important; padding-right: 1rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="py-4"] { padding-top: 0.75rem !important; padding-bottom: 0.75rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="py-5"] { padding-top: 0.85rem !important; padding-bottom: 0.85rem !important; }
+
+  /* Espaço vertical entre blocos (boxes) */
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="space-y-8"] > :not(:last-child) { margin-bottom: 1.1rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="space-y-6"] > :not(:last-child) { margin-bottom: 0.9rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="space-y-5"] > :not(:last-child) { margin-bottom: 0.8rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="space-y-4"] > :not(:last-child) { margin-bottom: 0.65rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="space-y-3"] > :not(:last-child) { margin-bottom: 0.5rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="space-y-2"] > :not(:last-child) { margin-bottom: 0.35rem !important; }
+
+  /* Gaps de grids/formulários */
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="gap-5"] { gap: 0.9rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="gap-4"] { gap: 0.7rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="gap-3"] { gap: 0.55rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="gap-2"] { gap: 0.4rem !important; }
+
+  /* Margens verticais */
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="mb-8"] { margin-bottom: 1.25rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="mb-6"] { margin-bottom: 1rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="mb-5"] { margin-bottom: 0.9rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="mt-6"] { margin-top: 1.1rem !important; }
+
+  /* Tipografia de títulos e valores */
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="text-4xl"] { font-size: 1.7rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="text-3xl"] { font-size: 1.45rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="text-2xl"] { font-size: 1.2rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="text-xl"] { font-size: 1.02rem !important; }
+  [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="text-lg"] { font-size: 0.98rem !important; }
+}

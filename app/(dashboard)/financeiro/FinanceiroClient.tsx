@@ -702,6 +702,9 @@ export default function FinanceiroClient({ payload }: any) {
                                                 <div className="flex flex-col">
                                                     <span className="font-bold text-slate-800 text-sm">{e.description}</span>
                                                     <span className="text-[10px] text-gray-400 font-bold uppercase">{e.category} {e.installmentNum ? `| Parc. ${e.installmentNum}/${e.installmentTotal}` : ''}</span>
+                                                    {e.notes && (
+                                                        <span className="mt-1 text-[11px] text-slate-500 italic max-w-[240px] whitespace-normal leading-snug" title={e.notes}>📝 {e.notes}</span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="p-4">
@@ -725,6 +728,9 @@ export default function FinanceiroClient({ payload }: any) {
                                                 <div className="flex flex-col">
                                                     <span className="text-xs font-bold text-slate-600 uppercase">{e.method || '-'}</span>
                                                     <span className="text-[10px] text-gray-400 font-medium">Ref: {e.reference || '-'}</span>
+                                                    {e.status === 'PAID' && e.paymentDate && (
+                                                        <span className="text-[10px] text-emerald-600 font-bold mt-0.5">Pago em: {new Date(e.paymentDate).toLocaleDateString('pt-BR')}</span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="p-4">

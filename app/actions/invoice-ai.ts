@@ -1,13 +1,11 @@
 'use server'
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabaseAdmin } from "@/lib/supabase";
-
-// genAI is instantiated lazily inside functions to avoid build-time errors
+import { isAIEnabled, extractJson } from "@/lib/ai/provider";
+import { visionWithFallback } from "@/lib/ai/vision";
 
 export async function parseInvoiceImage(formData: FormData) {
-    const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "";
-    if (!apiKey) {
+    if (!isAIEnabled()) {
         throw new Error("API Key do Gemini não configurada!");
     }
 
@@ -38,18 +36,7 @@ export async function parseInvoiceImage(formData: FormData) {
 
         const imageUrl = publicUrlData?.publicUrl || null;
 
-        // 2. Processar a imagem com IA (Gemini 1.5 Flash - Estável)
-        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "");
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        
-        // Converter file para o formato Gemini
-        const mimeType = file.type;
-        const inlineData = {
-            data: buffer.toString("base64"),
-            mimeType
-        };
-
-        // 3. Prompt para extrair dados (Sincronizado)
+        // 2. Processar a imagem com a camada de IA (retry + fallback de modelos)
         const prompt = `Extraia os dados desta nota fiscal para um JSON rigoroso com: 
         fornecedor, 
         cnpj, 
@@ -59,29 +46,12 @@ export async function parseInvoiceImage(formData: FormData) {
         e uma lista de 'produtos' (nome, quantidade, preco_unitario). 
         Retorne APENAS o JSON puro. Não inclua Markdown.`;
 
-        const result = await model.generateContent([
-            prompt,
-            { inlineData }
-        ]);
+        const responseText = await visionWithFallback(prompt, { mimeType: file.type, data: buffer.toString("base64") });
 
-        const responseText = result.response.text();
-        
-        // Função robusta para extrair apenas o objeto JSON
-        const extractJson = (text: string) => {
-            const start = text.indexOf('{');
-            const end = text.lastIndexOf('}');
-            if (start !== -1 && end !== -1) {
-                return text.substring(start, end + 1);
-            }
-            return text;
-        };
-
-        const cleanJsonStr = extractJson(responseText.replace(/```json/g, "").replace(/```/g, "").trim());
-        
         let resData;
         try {
-            resData = JSON.parse(cleanJsonStr);
-        } catch (parseError) {
+            resData = extractJson(responseText);
+        } catch {
             console.error("Erro ao processar JSON da IA:", responseText);
             throw new Error("A IA retornou um formato inválido. Tente novamente.");
         }

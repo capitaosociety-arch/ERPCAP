@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react';
-import { Trash2, Plus, Search, Shield, User as UserIcon, X, Check, Lock, Unlock, Phone, Mail, Edit2, LayoutDashboard, ShoppingCart, Coffee, Box, FileText, Users, DollarSign, Settings, Warehouse, BrainCircuit } from 'lucide-react';
+import { Trash2, Plus, Search, Shield, User as UserIcon, X, Check, Lock, Unlock, Phone, Mail, Edit2, LayoutDashboard, ShoppingCart, Coffee, Box, FileText, Users, DollarSign, Settings, Warehouse, BrainCircuit, Sparkles } from 'lucide-react';
 import { createUser, toggleUserStatus, updateUserRole, updateUserDetails, toggleUserPermission, deleteUser } from '../../../app/actions/usuarios';
 export default function UsuariosClient({ initialUsers }: { initialUsers: any[] }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -85,6 +85,7 @@ export default function UsuariosClient({ initialUsers }: { initialUsers: any[] }
       { key: 'permDepot', label: 'Depósito Matriz', icon: Warehouse },
       { key: 'permUsers', label: 'Equipe', icon: Settings },
       { key: 'permInteligencia', label: 'Central de Inteligência', icon: BrainCircuit },
+      { key: 'permCopilot', label: 'Copiloto IA', icon: Sparkles },
     ];
 
     const filtered = initialUsers.filter(u => u.name.toLowerCase().includes(search.toLowerCase()) || (u.email && u.email.toLowerCase().includes(search.toLowerCase())));
