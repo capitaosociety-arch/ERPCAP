@@ -45,6 +45,7 @@ export default function FinanceiroClient({ payload }: any) {
     const [billFrom, setBillFrom] = useState('');
     const [billTo, setBillTo] = useState('');
     const [editingEntry, setEditingEntry] = useState<any>(null);
+    const [viewingEntry, setViewingEntry] = useState<any>(null);
 
     // Filtros de Data
     const [dateFrom, setDateFrom] = useState(searchParams.get('from') || '');
@@ -750,6 +751,12 @@ export default function FinanceiroClient({ payload }: any) {
                                             </td>
                                             <td className="p-4 px-6 text-right">
                                                 <div className="flex justify-end gap-2">
+                                                    <button
+                                                        onClick={() => setViewingEntry(e)}
+                                                        className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition" title="Ver detalhes do lançamento"
+                                                    >
+                                                        <Eye size={18} />
+                                                    </button>
                                                     <button
                                                         onClick={() => setEditingEntry({
                                                             id: e.id,
@@ -1467,6 +1474,105 @@ export default function FinanceiroClient({ payload }: any) {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL DETALHES DO LANÇAMENTO (CONTA A PAGAR/RECEBER) */}
+            {viewingEntry && (
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl animate-in zoom-in-95 overflow-hidden border border-gray-100 max-h-[90vh] flex flex-col">
+                        <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-slate-900 text-white">
+                            <h2 className="text-base sm:text-lg font-black flex items-center gap-2">
+                                <Eye size={20} className="text-mrts-blue" /> Detalhes do Lançamento
+                            </h2>
+                            <button onClick={() => setViewingEntry(null)} className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full transition">
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+
+                        <div className="p-5 space-y-3 overflow-y-auto bg-slate-50">
+                            <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Descrição</p>
+                                <p className="font-bold text-slate-800">{viewingEntry.description}</p>
+                                <p className="text-[11px] text-gray-500 mt-1">
+                                    <span className="font-black uppercase">{viewingEntry.category}</span>
+                                    {viewingEntry.installmentNum ? ` | Parcela ${viewingEntry.installmentNum}/${viewingEntry.installmentTotal}` : ''}
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Tipo</p>
+                                    <p className={`text-sm font-black ${viewingEntry.type === 'PAYABLE' ? 'text-red-500' : 'text-emerald-500'}`}>
+                                        {viewingEntry.type === 'PAYABLE' ? 'Conta a Pagar (Saída)' : 'Conta a Receber (Entrada)'}
+                                    </p>
+                                </div>
+                                <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Valor</p>
+                                    <p className={`text-xl font-black ${viewingEntry.type === 'PAYABLE' ? 'text-red-500' : 'text-emerald-500'}`}>
+                                        {viewingEntry.type === 'PAYABLE' ? '-' : '+'} R$ {Number(viewingEntry.amount || 0).toFixed(2).replace('.', ',')}
+                                    </p>
+                                </div>
+                                <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Vencimento</p>
+                                    <p className="text-sm font-bold text-slate-700">{new Date(viewingEntry.dueDate).toLocaleDateString('pt-BR')}</p>
+                                </div>
+                                <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Status</p>
+                                    {viewingEntry.status === 'PAID' ? (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg"><CheckCircle size={12} /> Pago</span>
+                                    ) : viewingEntry.status === 'CANCELED' ? (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">Cancelado</span>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase text-orange-500 bg-orange-50 px-2 py-1 rounded-lg"><AlertCircle size={12} /> Pendente</span>
+                                    )}
+                                </div>
+                                <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Forma de Pagamento</p>
+                                    <p className="text-sm font-bold text-slate-700 uppercase">{viewingEntry.method || '-'}</p>
+                                </div>
+                                <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Mês de Referência</p>
+                                    <p className="text-sm font-bold text-slate-700">{viewingEntry.reference || '-'}</p>
+                                </div>
+                                {viewingEntry.paymentDate && (
+                                    <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Pago em</p>
+                                        <p className="text-sm font-bold text-emerald-600">{new Date(viewingEntry.paymentDate).toLocaleDateString('pt-BR')}</p>
+                                    </div>
+                                )}
+                                <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Lançado em</p>
+                                    <p className="text-sm font-bold text-slate-700">{new Date(viewingEntry.createdAt).toLocaleString('pt-BR')}</p>
+                                </div>
+                            </div>
+
+                            <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Observações</p>
+                                {viewingEntry.notes ? (
+                                    <p className="text-sm font-medium text-slate-700 italic whitespace-pre-wrap leading-relaxed">&quot;{viewingEntry.notes}&quot;</p>
+                                ) : (
+                                    <p className="text-sm text-gray-400 italic">Nenhuma observação registrada.</p>
+                                )}
+                            </div>
+
+                            {viewingEntry.updatedAt && new Date(viewingEntry.updatedAt).getTime() !== new Date(viewingEntry.createdAt).getTime() && (
+                                <p className="text-[10px] text-gray-400 font-medium text-center">Última atualização: {new Date(viewingEntry.updatedAt).toLocaleString('pt-BR')}</p>
+                            )}
+                        </div>
+
+                        <div className="p-4 border-t border-gray-100 bg-slate-50 flex gap-3">
+                            <button onClick={() => setViewingEntry(null)} className="flex-1 bg-white text-gray-500 font-bold py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 transition text-sm">
+                                Fechar
+                            </button>
+                            <button
+                                onClick={() => { setEditingEntry({ id: viewingEntry.id, description: viewingEntry.description, type: viewingEntry.type, amount: String(viewingEntry.amount), dueDate: new Date(viewingEntry.dueDate).toLocaleDateString('sv-SE'), category: viewingEntry.category, notes: viewingEntry.notes || '', method: viewingEntry.method || 'PIX', reference: viewingEntry.reference || '' }); setViewingEntry(null); }}
+                                className="flex-[2] bg-slate-900 text-white font-black py-2.5 rounded-xl hover:bg-slate-800 shadow-xl shadow-slate-900/20 transition text-sm flex items-center justify-center gap-2"
+                            >
+                                <Edit2 size={16} /> Editar Lançamento
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition, useMemo } from 'react';
-import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search, Upload, Plus, ClipboardList, Sheet, CalendarRange } from 'lucide-react';
+import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search, Upload, Plus, ClipboardList, Sheet, CalendarRange, Eye } from 'lucide-react';
 import { registerStockMovement, updateMinStock, registerBatchStockMovement } from '../../actions/stock';
 import { parseInvoiceImage } from '../../actions/invoice-ai';
 import { quickCreateProductFromInvoice } from '../../actions/products';
@@ -140,6 +140,8 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
   const [mobileTab, setMobileTab] = useState<'data' | 'photo'>('data'); // Mobile: aba ativa
 
   const [isPending, startTransition] = useTransition();
+
+  const [viewingMovement, setViewingMovement] = useState<any>(null);
 
   const handleDownloadImage = async () => {
     if (!nfImageUrl || typeof window === 'undefined') return;
@@ -738,6 +740,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                   <th className="p-4 font-bold text-right">Qtd</th>
                   <th className="p-4 font-bold">Observações</th>
                   <th className="p-4 font-bold">Anexo</th>
+                  <th className="p-4 font-bold text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -779,11 +782,16 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                               </a>
                           ) : '-'}
                       </td>
+                      <td className="p-4 text-right">
+                          <button onClick={() => setViewingMovement(mov)} className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition" title="Ver detalhes do lançamento">
+                              <Eye size={16} />
+                          </button>
+                      </td>
                   </tr>
                 ))}
                 {allMovements.length === 0 && (
                     <tr>
-                        <td colSpan={7} className="p-8 text-center text-gray-500 font-medium">Nenhum lançamento no histórico.</td>
+                        <td colSpan={8} className="p-8 text-center text-gray-500 font-medium">Nenhum lançamento no histórico.</td>
                     </tr>
                 )}
               </tbody>
@@ -858,6 +866,82 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
 
                     <button disabled={isPending} onClick={handleSaveMovement} className={`w-full mt-4 text-white font-bold py-4 rounded-xl transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 ${type==='IN' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-orange-500 hover:bg-orange-600'}`}>
                         {isPending ? 'Lançando...' : 'Confirmar Lançamento'}
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* MODAL: DETALHES DO LANÇAMENTO (NOTA) */}
+      {viewingMovement && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[85] flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl animate-in zoom-in-95 overflow-hidden border border-gray-100 max-h-[90vh] flex flex-col">
+                <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-slate-900 text-white">
+                    <h2 className="text-base sm:text-lg font-black flex items-center gap-2">
+                        <Eye size={20} className="text-mrts-blue" /> Detalhes do Lançamento
+                    </h2>
+                    <button onClick={() => setViewingMovement(null)} className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full transition">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="p-5 space-y-3 overflow-y-auto bg-slate-50">
+                    <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Produto</p>
+                        <p className="font-bold text-slate-800">{viewingMovement.product?.name}</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Tipo</p>
+                            {viewingMovement.type === 'IN' ? (
+                                <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-black uppercase">Entrada</span>
+                            ) : viewingMovement.type === 'OUT_SALE' ? (
+                                <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-black uppercase">Venda</span>
+                            ) : (
+                                <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-black uppercase">Saída/Perda</span>
+                            )}
+                        </div>
+                        <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Data do Lançamento</p>
+                            <p className="text-sm font-bold text-slate-700">{new Date(viewingMovement.date).toLocaleString('pt-BR')}</p>
+                        </div>
+                        <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Quantidade</p>
+                            <p className={`text-xl font-black ${viewingMovement.type === 'IN' ? 'text-emerald-500' : 'text-orange-500'}`}>
+                                {viewingMovement.type === 'IN' ? '+' : '-'}{viewingMovement.quantity}
+                            </p>
+                        </div>
+                        <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Custo Unitário (R$)</p>
+                            <p className="text-sm font-bold text-slate-700">{viewingMovement.unitCost != null ? Number(viewingMovement.unitCost).toFixed(2).replace('.', ',') : '-'}</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Documento / Nota</p>
+                        <p className="text-sm font-bold text-slate-700">{viewingMovement.document || '-'}</p>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Observações</p>
+                        {viewingMovement.notes ? (
+                            <p className="text-sm font-medium text-slate-700 italic whitespace-pre-wrap leading-relaxed">&quot;{viewingMovement.notes}&quot;</p>
+                        ) : (
+                            <p className="text-sm text-gray-400 italic">Nenhuma observação registrada.</p>
+                        )}
+                    </div>
+
+                    {viewingMovement.imageUrl && (
+                        <a href={viewingMovement.imageUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-700 rounded-xl font-bold text-xs hover:bg-blue-100 transition border border-blue-200">
+                            <Camera size={14}/> Abrir Nota Fiscal (Anexo)
+                        </a>
+                    )}
+                </div>
+
+                <div className="p-4 border-t border-gray-100 bg-slate-50">
+                    <button onClick={() => setViewingMovement(null)} className="w-full bg-white text-gray-500 font-bold py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 transition text-sm">
+                        Fechar
                     </button>
                 </div>
             </div>
