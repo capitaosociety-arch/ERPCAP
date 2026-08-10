@@ -125,14 +125,50 @@ export default function FinanceiroClient({ payload }: any) {
             },
             {
                 sheetName: 'Sessões de Caixa',
-                data: cashRegisters.map((c: any) => ({
-                    'ID': c.id,
-                    'Operador': c.user?.name || 'N/A',
-                    'Abertura': new Date(c.openedAt).toLocaleString('pt-BR'),
-                    'Fechamento': c.closedAt ? new Date(c.closedAt).toLocaleString('pt-BR') : 'Aberto',
-                    'Saldo Inicial': c.openingBalance,
-                    'Saldo Final Esperado': c.closingBalance || 'N/A'
-                }))
+                data: cashRegisters.map((c: any) => {
+                    const r2 = (v: any) => Math.round((Number(v || 0)) * 100) / 100;
+
+                    const byMethod = (c.payments || []).reduce((acc: any, p: any) => {
+                        acc[p.method] = (acc[p.method] || 0) + p.amount;
+                        return acc;
+                    }, { CASH: 0, PIX: 0, DEBIT: 0, CREDIT: 0 });
+
+                    const uniqueOrdersMap = new Map();
+                    (c.payments || []).forEach((p: any) => {
+                        if (p.order && !uniqueOrdersMap.has(p.order.id)) {
+                            uniqueOrdersMap.set(p.order.id, p.order);
+                        }
+                    });
+                    const uniqueOrders = Array.from(uniqueOrdersMap.values());
+
+                    const totalGrossSold = uniqueOrders.reduce((acc, order) => {
+                        const itemsSum = order.items?.reduce((sum: number, it: any) => sum + it.subtotal, 0) || 0;
+                        return acc + itemsSum;
+                    }, 0);
+                    const totalDiscounts = uniqueOrders.reduce((acc, order) => acc + (order.discount || 0), 0);
+                    const totalPaymentsReceived = (c.payments || []).reduce((acc: number, p: any) => acc + p.amount, 0);
+
+                    const auditVendas = (totalGrossSold - totalDiscounts) - totalPaymentsReceived;
+
+                    const expectedCash = c.openingBal + (byMethod.CASH || 0);
+                    const auditFisico = c.closingBal !== null ? c.closingBal - expectedCash : 0;
+
+                    return {
+                        'ID': c.id,
+                        'Operador': c.user?.name || 'N/A',
+                        'Status': c.status === 'OPEN' ? 'Aberto' : 'Fechado',
+                        'Abertura': c.openedAt ? new Date(c.openedAt).toLocaleString('pt-BR') : '',
+                        'Fechamento': c.closedAt ? new Date(c.closedAt).toLocaleString('pt-BR') : 'Em curso',
+                        'Dinheiro': r2(byMethod.CASH),
+                        'PIX': r2(byMethod.PIX),
+                        'Débito': r2(byMethod.DEBIT),
+                        'Crédito': r2(byMethod.CREDIT),
+                        'Fundo de Troco': r2(c.openingBal),
+                        'Saldo Final': c.closingBal !== null ? r2(c.closingBal) : null,
+                        'Auditoria de Vendas': r2(auditVendas),
+                        'Auditoria Física': c.closingBal !== null ? r2(auditFisico) : null
+                    };
+                })
             }
         ];
 
