@@ -120,7 +120,7 @@ export default function UsuariosClient({ initialUsers }: { initialUsers: any[] }
 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="overflow-x-auto min-h-[40vh]">
-                <table className="w-full text-left border-collapse whitespace-nowrap">
+                <table className="w-full text-left border-collapse whitespace-nowrap compact-table">
                     <thead>
                     <tr className="bg-slate-50 border-b border-gray-100 text-xs uppercase text-slate-500 font-bold tracking-wider">
                         <th className="p-4">Funcionário</th>

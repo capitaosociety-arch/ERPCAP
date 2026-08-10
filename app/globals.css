@@ -110,3 +110,22 @@
   [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="text-xl"] { font-size: 1.02rem !important; }
   [class~="fixed"][class~="inset-0"][class~="p-4"] [class~="text-lg"] { font-size: 0.98rem !important; }
 }
+
+/* ============================================================
+   TABELAS COMPACTAS: reduz espaçamento entre colunas das tabelas
+   largas para evitar barra de rolagem lateral horizontal curta
+   ============================================================ */
+.compact-table th,
+.compact-table td {
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+}
+.compact-table th:first-child,
+.compact-table td:first-child {
+  padding-left: 0.75rem !important;
+}
+.compact-table th:last-child,
+.compact-table td:last-child {
+  padding-right: 0.75rem !important;
+}
+

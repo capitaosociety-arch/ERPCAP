@@ -728,7 +728,7 @@ export default function FinanceiroClient({ payload }: any) {
 
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse whitespace-nowrap">
+                            <table className="w-full text-left border-collapse whitespace-nowrap compact-table">
                                 <thead>
                                     <tr className="bg-slate-50 border-b border-gray-100 text-[10px] uppercase text-gray-400 font-black tracking-widest">
                                         <th className="p-4">Descrição / Categoria</th>
@@ -1076,7 +1076,7 @@ export default function FinanceiroClient({ payload }: any) {
                         <h3 className="font-bold text-slate-800 text-sm">Histórico e Auditoria de Caixas Registradoras</h3>
                     </div>
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse whitespace-nowrap">
+                        <table className="w-full text-left border-collapse whitespace-nowrap compact-table">
                             <thead>
                                 <tr className="bg-white border-b border-gray-100 text-[10px] uppercase text-gray-400 font-black tracking-wider text-center">
                                     <th className="p-4 text-left">Operador / Turno</th>
@@ -1150,13 +1150,13 @@ export default function FinanceiroClient({ payload }: any) {
                                                     </span>
                                                 )}
                                             </td>
-                                            <td className="p-4 font-bold text-slate-700 text-sm bg-emerald-50/10">R$ {Number(byMethod.CASH || 0).toFixed(2).replace('.', ',')}</td>
-                                            <td className="p-4 font-bold text-slate-700 text-sm bg-blue-50/10">R$ {Number(byMethod.PIX || 0).toFixed(2).replace('.', ',')}</td>
-                                            <td className="p-4 font-bold text-slate-700 text-sm bg-orange-50/10">R$ {Number(byMethod.DEBIT || 0).toFixed(2).replace('.', ',')}</td>
-                                            <td className="p-4 font-bold text-slate-700 text-sm bg-indigo-50/10">R$ {Number(byMethod.CREDIT || 0).toFixed(2).replace('.', ',')}</td>
+                                            <td className="p-4 font-bold text-slate-700 text-[13px] bg-emerald-50/10">R$ {Number(byMethod.CASH || 0).toFixed(2).replace('.', ',')}</td>
+                                            <td className="p-4 font-bold text-slate-700 text-[13px] bg-blue-50/10">R$ {Number(byMethod.PIX || 0).toFixed(2).replace('.', ',')}</td>
+                                            <td className="p-4 font-bold text-slate-700 text-[13px] bg-orange-50/10">R$ {Number(byMethod.DEBIT || 0).toFixed(2).replace('.', ',')}</td>
+                                            <td className="p-4 font-bold text-slate-700 text-[13px] bg-indigo-50/10">R$ {Number(byMethod.CREDIT || 0).toFixed(2).replace('.', ',')}</td>
 
-                                            <td className="p-4 font-medium text-slate-500 text-sm border-l border-gray-100">R$ {Number(cash.openingBal || 0).toFixed(2).replace('.', ',')}</td>
-                                            <td className="p-4 font-black text-slate-800 text-sm border-r border-gray-100">{cash.closingBal !== null ? `R$ ${Number(cash.closingBal || 0).toFixed(2).replace('.', ',')}` : '-'}</td>
+                                            <td className="p-4 font-medium text-slate-500 text-[13px] border-l border-gray-100">R$ {Number(cash.openingBal || 0).toFixed(2).replace('.', ',')}</td>
+                                            <td className="p-4 font-black text-slate-800 text-[13px] border-r border-gray-100">{cash.closingBal !== null ? `R$ ${Number(cash.closingBal || 0).toFixed(2).replace('.', ',')}` : '-'}</td>
 
                                             <td className="p-4">
                                                 {cash.status === 'CLOSED' ? (
