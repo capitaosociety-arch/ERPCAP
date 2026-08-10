@@ -736,6 +736,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                   <th className="p-4 font-bold">Tipo</th>
                   <th className="p-4 font-bold text-center">Documento / Nota</th>
                   <th className="p-4 font-bold text-right">Qtd</th>
+                  <th className="p-4 font-bold">Observações</th>
                   <th className="p-4 font-bold">Anexo</th>
                 </tr>
               </thead>
@@ -762,6 +763,11 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                           </span>
                       </td>
                       <td className="p-4">
+                          {mov.notes ? (
+                              <span className="text-xs text-slate-500 italic max-w-[220px] whitespace-normal leading-snug block" title={mov.notes}>📝 {mov.notes}</span>
+                          ) : '-'}
+                      </td>
+                      <td className="p-4">
                           {mov.imageUrl ? (
                               <a 
                                 href={mov.imageUrl} 
@@ -777,7 +783,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                 ))}
                 {allMovements.length === 0 && (
                     <tr>
-                        <td colSpan={6} className="p-8 text-center text-gray-500 font-medium">Nenhum lançamento no histórico.</td>
+                        <td colSpan={7} className="p-8 text-center text-gray-500 font-medium">Nenhum lançamento no histórico.</td>
                     </tr>
                 )}
               </tbody>

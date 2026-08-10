@@ -715,6 +715,7 @@ export default function DepotClient({
                                             <th className="p-4 text-center">Emissão</th>
                                             <th className="p-4 text-center">Recebimento</th>
                                             <th className="p-4 text-right">Qtd</th>
+                                            <th className="p-4">Observações</th>
                                             <th className="p-4">Anexo</th>
                                         </tr>
                                     </thead>
@@ -747,6 +748,11 @@ export default function DepotClient({
                                                     </span>
                                                 </td>
                                                 <td className="p-4">
+                                                    {mov.notes ? (
+                                                        <span className="text-xs text-slate-500 italic max-w-[220px] whitespace-normal leading-snug block" title={mov.notes}>📝 {mov.notes}</span>
+                                                    ) : '-'}
+                                                </td>
+                                                <td className="p-4">
                                                     {mov.imageUrl ? (
                                                         <a href={mov.imageUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-600 rounded-lg font-bold text-xs hover:bg-blue-100 transition border border-blue-100">
                                                             <Camera size={14}/> Ver NF
@@ -756,7 +762,7 @@ export default function DepotClient({
                                             </tr>
                                         ))}
                                         {allMovements.length === 0 && (
-                                            <tr><td colSpan={8} className="p-10 text-center text-slate-400 font-bold">Nenhum lançamento no histórico.</td></tr>
+                                            <tr><td colSpan={9} className="p-10 text-center text-slate-400 font-bold">Nenhum lançamento no histórico.</td></tr>
                                         )}
                                     </tbody>
                                 </table>
