@@ -86,6 +86,7 @@ export default function FinanceiroClient({ payload }: any) {
 
     const [selectedCashRegister, setSelectedCashRegister] = useState<any>(null);
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+    const [sessionToDelete, setSessionToDelete] = useState<any>(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [editingPayment, setEditingPayment] = useState<{id: string, method: string, amount: number} | null>(null);
 
@@ -202,18 +203,24 @@ export default function FinanceiroClient({ payload }: any) {
         });
     };
 
-    const handleDeleteSession = async (id: string) => {
-        if (!confirm("ATENÇÃO: Deseja realmente EXCLUIR esta sessão de caixa e TODO o seu histórico de vendas e pagamentos? Esta ação removerá os dados de auditoria permanentemente e é recomendada apenas para limpar testes.")) return;
+    const handleDeleteSession = (cash: any) => {
+        setSessionToDelete(cash);
+    };
+
+    const confirmDeleteSession = async () => {
+        if (!sessionToDelete) return;
         startTransition(async () => {
             try {
-                const res = await deleteCashSessionAction(id);
+                const res = await deleteCashSessionAction(sessionToDelete.id);
                 if (res && !res.success) {
                     alert("Falha ao excluir: " + res.error);
                 } else {
                     alert("Sessão excluída com sucesso!");
                 }
+                setSessionToDelete(null);
             } catch (e: any) {
                 alert("Erro técnico: " + e.message);
+                setSessionToDelete(null);
             }
         });
     };
@@ -1152,7 +1159,7 @@ export default function FinanceiroClient({ payload }: any) {
                                                         <Eye size={16} />
                                                     </button>
                                                     <button
-                                                        onClick={() => handleDeleteSession(cash.id)}
+                                                        onClick={() => handleDeleteSession(cash)}
                                                         className="bg-red-50 hover:bg-red-500 text-red-500 hover:text-white p-2 rounded-lg transition"
                                                         title="Excluir Histórico de Sessão (Admin Only)"
                                                     >
@@ -1806,6 +1813,63 @@ export default function FinanceiroClient({ payload }: any) {
                                     )}
                                 </div>
                             ) : null}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL CONFIRMAR EXCLUSÃO DE SESSÃO DE CAIXA */}
+            {sessionToDelete && (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl animate-in zoom-in-95 overflow-hidden border border-gray-100">
+                        <div className="p-6 border-b border-gray-100 bg-red-50 flex justify-between items-center">
+                            <h2 className="text-lg font-black text-red-600 flex items-center gap-2">
+                                <AlertCircle className="shrink-0" /> Excluir Sessão de Caixa
+                            </h2>
+                            <button onClick={() => setSessionToDelete(null)} className="text-gray-400 hover:text-gray-600 bg-white p-2 rounded-full shadow-sm">
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm font-bold text-slate-800 leading-relaxed">
+                                Tem certeza que deseja <span className="text-red-600">EXCLUIR</span> esta sessão de caixa?
+                            </p>
+                            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm">
+                                <p className="text-slate-600 font-medium">
+                                    Operador: <span className="font-black text-slate-800">{sessionToDelete.user?.name || '-'}</span>
+                                </p>
+                                <p className="text-slate-600 font-medium mt-1">
+                                    Abertura: <span className="font-black text-slate-800">{sessionToDelete.openedAt ? new Date(sessionToDelete.openedAt).toLocaleString('pt-BR') : '-'}</span>
+                                </p>
+                                <p className="text-slate-600 font-medium mt-1">
+                                    Fechamento: <span className="font-black text-slate-800">{sessionToDelete.closedAt ? new Date(sessionToDelete.closedAt).toLocaleString('pt-BR') : 'Em curso'}</span>
+                                </p>
+                            </div>
+                            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                                <p className="text-xs font-bold text-amber-800 leading-relaxed">
+                                    ⚠️ Esta ação removerá TODO o histórico de vendas e pagamentos desta sessão permanentemente.
+                                    Recomendada apenas para limpar testes.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="p-6 bg-slate-50 border-t border-gray-100 flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setSessionToDelete(null)}
+                                className="flex-1 bg-white text-gray-500 font-bold py-3 rounded-2xl border border-gray-200 hover:bg-gray-50 transition"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={confirmDeleteSession}
+                                disabled={isPending}
+                                className="flex-[2] bg-red-500 hover:bg-red-600 text-white font-black py-3 rounded-2xl shadow-xl shadow-red-500/20 hover:scale-[1.02] active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none disabled:transform-none"
+                            >
+                                {isPending ? 'EXCLUINDO...' : <><Trash2 size={18} /> SIM, EXCLUIR</>}
+                            </button>
                         </div>
                     </div>
                 </div>
