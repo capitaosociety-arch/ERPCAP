@@ -15,6 +15,7 @@ import { computeDre } from '../dre';
 import { buildPeriods, isRentalItem, isFut5, isFut7, round2, fmtMoney } from '../analytics';
 import type { CopilotTool, PeriodoArg, ToolResult } from './types';
 import { isAdmin } from './types';
+import analisarOcupacaoPrecos from './ferramentaOcupacao';
 
 const dayMs = 24 * 60 * 60 * 1000;
 
@@ -801,5 +802,6 @@ export const COPILOT_TOOLS: CopilotTool[] = [
   previsaoTool,
   resumoTool,
   sessoesTool,
-  estoqueTool
+  estoqueTool,
+  analisarOcupacaoPrecos
 ];

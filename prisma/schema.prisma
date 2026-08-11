@@ -38,6 +38,8 @@ model User {
   payments      Payment[]
   requestedTransfers  TransferRequest[] @relation("RequestedTransfers")
   authorizedTransfers TransferRequest[] @relation("AuthorizedTransfers")
+  recommendations RecommendationHistory[] @relation("AdminApprovedRecommendations")
+  priceChanges  PriceChange[] @relation("AuthorizedPriceChanges")
 
   @@index([name])
   @@index([role])
@@ -346,6 +348,93 @@ model Rental {
   @@index([customerId])
   @@index([status])
   @@index([startTime])
+}
+
+model OccupationSettings {
+  id             String   @id @default("default")
+  capacidadeFut5 Int      @default(2)
+  capacidadeFut7 Int      @default(1)
+  abertura       Int      @default(6) // hora de abertura dos campos
+  fechamento     Int      @default(24) // hora de fechamento (exclusiva)
+  // Limiares configuráveis da classificação automática de horários (percentuais)
+  ociosoLimite       Int @default(25)  // ocupação abaixo => MUITO OCIOSO
+  saudavelLimite     Int @default(50)  // ocupação a partir daqui => SAUDÁVEL
+  altaDemandaLimite  Int @default(80)  // ocupação a partir daqui => ALTA DEMANDA
+  saturadoLimite     Int @default(95)  // ocupação a partir daqui => SATURADO
+  diasAvaliacaoElasticidade Int @default(30) // período mínimo (dias) p/ avaliar alteração de preço
+  updatedAt      DateTime @updatedAt
+}
+
+model PricingBand {
+  id        String   @id @default(cuid())
+  campo     String   // 'fut5' | 'fut7'
+  startHour Int
+  endHour   Int
+  minPrice  Float
+  maxPrice  Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([campo, startHour, endHour])
+}
+
+model RecommendationHistory {
+  id             String   @id @default(cuid())
+  fingerprint    String   @unique
+  campo          String   // 'fut5' | 'fut7' | 'ambos'
+  diaSemana      String?
+  horaInicio     Int?
+  horaFim        Int?
+  categoria      String   // AUMENTAR_PRECO | REDUZIR_PRECO | PROMOCAO | REALINHAR | MANTER
+  precoAtual     Float
+  precoSugerido  Float
+  nivelConfianca Float
+  motivo         String
+  periodoRef     String
+  decisao        String   @default("PENDENTE") // PENDENTE | ACEITA | REJEITADA
+  decisaoNota    String?
+  adminId        String?
+  admin          User?    @relation("AdminApprovedRecommendations", fields: [adminId], references: [id])
+  precoAplicado  Float?   // preço efetivamente aplicado após aprovação do admin
+  periodoTesteDias Int?   // período de teste definido pelo admin
+  resultado      String?  // EM_AVALIACAO | MELHOROU | AUMENTOU_OCUPACAO | REDUZIU_MARGEM | SEM_EFEITO
+  resultadoNota  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([decisao])
+  @@index([campo])
+  @@index([adminId])
+}
+
+// Histórico de alterações de preço dos campos para análise de elasticidade.
+// O sistema NUNCA altera preço sozinho: todo registro aqui é criado por uma
+// ação explícita de um administrador (após aprovação de recomendação ou manual).
+model PriceChange {
+  id            String   @id @default(cuid())
+  campo         String   // 'fut5' | 'fut7'
+  startHour     Int
+  endHour       Int
+  precoAnterior Float
+  precoNovo     Float
+  autorId       String
+  autor         User     @relation("AuthorizedPriceChanges", fields: [autorId], references: [id])
+  // Snapshot "antes" calculado no momento da alteração (rastreabilidade)
+  ocupacaoAntes   Float?
+  receitaAntes    Float?
+  consumoBarAntes Float?
+  // "Depois" é calculado após o período mínimo (diasAvaliacaoElasticidade)
+  ocupacaoDepois   Float?
+  receitaDepois    Float?
+  consumoBarDepois Float?
+  appliedAt        DateTime @default(now())
+  status           String   @default("EM_AVALIACAO") // EM_AVALIACAO | AVALIADO
+  resultado        String?  // MELHOROU | AUMENTOU_OCUPACAO | REDUZIU_MARGEM | SEM_EFEITO
+  nota             String?
+
+  @@index([campo, startHour, endHour])
+  @@index([appliedAt])
+  @@index([autorId])
 }
 
 model FinancialEntry {
