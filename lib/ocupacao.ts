@@ -382,25 +382,6 @@ export interface ElasticidadeItem {
   nota: string | null;
 }
 
-export interface HistoricoRecomendacao {
-  id: string;
-  campo: string;
-  faixa: string | null;
-  categoria: string;
-  precoAtual: number;
-  precoSugerido: number;
-  nivelConfianca: number;
-  motivo: string;
-  decisao: string;
-  decisaoNota: string | null;
-  precoAplicado: number | null;
-  periodoTesteDias: number | null;
-  resultado: string | null;
-  resultadoNota: string | null;
-  adminName: string | null;
-  createdAt: string;
-}
-
 // ---------------------------------------------------------------------------
 // Agregação pura por slot (campo + hora). Retorna um mapa chaveado.
 // ---------------------------------------------------------------------------
@@ -650,7 +631,7 @@ export interface ReporteOcupacao {
   comparativos: ComparativoOcupacao;
   simulacao?: SimulacaoResult | null;
   elasticidade?: ElasticidadeItem[];
-  historico?: HistoricoRecomendacao[];
+  historico?: unknown[];
 }
 
 // ---------------------------------------------------------------------------

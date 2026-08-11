@@ -9,8 +9,6 @@ import {
 } from 'lucide-react';
 import { getIntelligenceReport, type Analise, type IntelligenceReport, type Secao } from '../../actions/inteligencia';
 import CopilotClient, { type CopilotAccess } from './CopilotClient';
-import OcupacaoClient from './OcupacaoClient';
-import type { ReporteOcupacao } from '../../../lib/ocupacao';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 type PeriodoKey = '7d' | '30d' | '90d' | 'month';
@@ -78,20 +76,13 @@ function money(v: number) {
 export default function InteligenciaClient({
   initialReport,
   initialError,
-  copilot,
-  ocupacao
+  copilot
 }: {
   initialReport: IntelligenceReport | null;
   initialError?: string;
   copilot: CopilotAccess;
-  ocupacao?: {
-    initialReport: ReporteOcupacao | null;
-    initialError?: string;
-    faixas: { id: string; campo: string; startHour: number; endHour: number; minPrice: number; maxPrice: number; rotulo: string }[];
-    isAdmin: boolean;
-  };
 }) {
-  const [tab, setTab] = useState<'analises' | 'copiloto' | 'ocupacao'>('analises');
+  const [tab, setTab] = useState<'analises' | 'copiloto'>('analises');
   const [periodo, setPeriodo] = useState<PeriodoKey>('30d');
   const [report, setReport] = useState<IntelligenceReport | null>(initialReport);
   const [error, setError] = useState<string | undefined>(initialError);
@@ -166,24 +157,9 @@ export default function InteligenciaClient({
         >
           <BrainCircuit size={15} /> Copiloto IA
         </button>
-        <button
-          onClick={() => setTab('ocupacao')}
-          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${tab === 'ocupacao' ? 'bg-emerald-600 text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}
-        >
-          <TrendingUp size={15} /> Inteligência de Ocupação
-        </button>
       </div>
 
       {tab === 'copiloto' && <CopilotClient access={copilot} />}
-
-      {tab === 'ocupacao' && ocupacao && (
-        <OcupacaoClient
-          initialReport={ocupacao.initialReport}
-          initialError={ocupacao.initialError}
-          faixas={ocupacao.faixas}
-          isAdmin={ocupacao.isAdmin}
-        />
-      )}
 
       {tab === 'analises' && (
       <div>
