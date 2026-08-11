@@ -13,5 +13,3 @@ dist
 build
 .DS_Store
 supabase/.temp
-backup_producao_*.sql
-_check_stock.mjs

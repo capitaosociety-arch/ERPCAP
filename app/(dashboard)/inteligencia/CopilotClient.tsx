@@ -30,18 +30,14 @@ interface Msg {
 }
 
 const SUGESTOES = [
-  'Quais horários estão mais ociosos esta semana?',
-  'Qual horário devo promover esta semana?',
-  'Posso aumentar o preço das 20h?',
-  'O preço de R$ 90 até 17h está funcionando?',
-  'Qual campo tem maior potencial de aumento de preço?',
-  'Qual horário ocioso gera mais consumo no bar?',
-  'Vale mais reduzir o preço ou oferecer crédito no bar?',
-  'Quanto estou deixando de faturar com horários vazios?',
-  'Qual preço você recomenda para o campo maior às 17h?',
-  'Como aumentar o faturamento sem mexer no horário nobre?',
+  'Qual foi o faturamento de vendas nos últimos 30 dias?',
   'Como está o resultado (lucro ou prejuízo) neste mês?',
+  'Quais campos têm maior rentabilidade e por quê?',
+  'Quais produtos têm maior margem bruta?',
+  'Quais clientes estão inativos há mais tempo?',
+  'Quais horários têm menor ocupação nas quadras?',
   'Quais contas a pagar estão pendentes?',
+  'Qual a projeção de fechamento do mês?',
 ];
 
 let uid = 0;

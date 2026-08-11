@@ -117,41 +117,6 @@ async function main() {
     }
   });
 
-  // 9. Configuração de Ocupação (capacidade por tipo de campo e faixas de preço)
-  await prisma.occupationSettings.upsert({
-    where: { id: 'default' },
-    update: {},
-    create: {
-      id: 'default',
-      capacidadeFut5: 2,
-      capacidadeFut7: 1,
-      abertura: 6,
-      fechamento: 24,
-      ociosoLimite: 25,
-      saudavelLimite: 50,
-      altaDemandaLimite: 80,
-      saturadoLimite: 95,
-      diasAvaliacaoElasticidade: 30
-    }
-  });
-
-  const defaultBands = [
-    { startHour: 0, endHour: 17, minPrice: 90, maxPrice: 130 },
-    { startHour: 17, endHour: 18, minPrice: 100, maxPrice: 140 },
-    { startHour: 18, endHour: 19, minPrice: 105, maxPrice: 145 },
-    { startHour: 19, endHour: 23, minPrice: 110, maxPrice: 150 },
-    { startHour: 23, endHour: 24, minPrice: 105, maxPrice: 140 },
-  ];
-  for (const campo of ['fut5', 'fut7']) {
-    for (const band of defaultBands) {
-      await prisma.pricingBand.upsert({
-        where: { campo_startHour_endHour: { campo, startHour: band.startHour, endHour: band.endHour } },
-        update: {},
-        create: { campo, ...band }
-      });
-    }
-  }
-
   console.log('✅ Seed finalizado com sucesso!');
 }
 
