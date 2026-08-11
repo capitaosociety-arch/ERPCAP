@@ -11,7 +11,7 @@ import {
   Line, ComposedChart, Legend
 } from 'recharts';
 import { getOcupacaoReport, registrarDecisaoRecomendacao } from '../../actions/ocupacao';
-import type { ReporteOcupacao, SimulacaoResult, ElasticidadeItem, OcupacaoConfig } from '../../../lib/ocupacao';
+import type { ReporteOcupacao, SimulacaoResult, ElasticidadeItem, OcupacaoConfig, HistoricoRecomendacao } from '../../../lib/ocupacao';
 
 type PeriodoKey = '7d' | '30d' | '90d' | 'month';
 
@@ -39,28 +39,12 @@ function pct(v: number) {
   return `${(v || 0).toFixed(1).replace('.', ',')}%`;
 }
 
-interface HistoricoItem {
-  id: string;
-  campo: string;
-  faixa: string | null;
-  categoria: string;
-  precoAtual: number;
-  precoSugerido: number;
-  nivelConfianca: number;
-  motivo: string;
-  decisao: string;
-  decisaoNota: string | null;
-  precoAplicado: number | null;
-  periodoTesteDias: number | null;
-  resultado: string | null;
-  adminName: string | null;
-  createdAt: string;
-}
+type HistoricoItem = HistoricoRecomendacao;
 
 type ReportePage = ReporteOcupacao & {
-  simulacao: SimulacaoResult | null;
-  elasticidade: ElasticidadeItem[];
-  historico: HistoricoItem[];
+  simulacao?: SimulacaoResult | null;
+  elasticidade?: ElasticidadeItem[];
+  historico?: HistoricoItem[];
 };
 
 export default function OcupacaoClient({
