@@ -1,8 +1,11 @@
 'use server'
 
 import { prisma } from "../../lib/prisma";
+import { requireUser } from "../../lib/auth-guard";
 
 export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') {
+  await requireUser();
+
   const now = new Date();
   const startDate = new Date();
   
@@ -86,6 +89,8 @@ export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') 
 }
 
 export async function getTopProducts() {
+  await requireUser();
+
   const orderItems = await prisma.orderItem.findMany({
     where: {
       order: { status: "CLOSED" }
@@ -115,6 +120,8 @@ export async function getTopProducts() {
 }
 
 export async function getDashboardKpis() {
+  await requireUser();
+
   try {
     // Pegar a data atual em Cuiabá e forçar o início e fim do dia absoluto
     const formatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit', day: '2-digit' });

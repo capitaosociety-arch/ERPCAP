@@ -1,8 +1,7 @@
 'use server'
 
 import { prisma } from '../../lib/prisma';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../api/auth/[...nextauth]/route';
+import { requirePermission } from '../../lib/auth-guard';
 import { isRentalItem, getCuiabaDateStr } from '../../lib/analytics';
 import {
   computeScore,
@@ -39,9 +38,8 @@ export interface ScoreCliente {
 }
 
 async function requireSession() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) throw new Error('Não autenticado');
-  return session.user.id as string;
+  const user = await requirePermission('permCustomers');
+  return user.id;
 }
 
 export async function getScoreConfig() {
@@ -276,6 +274,8 @@ async function persistScore(c: CustomerAgg, agg: Agg) {
 // Calcula (e persiste) o score de todos os clientes. Usado na carga da tela e
 // nos ganchos de recálculo. Retorna a lista serializável para o cliente.
 export async function computeCustomerScores(): Promise<ScoreCliente[]> {
+  await requireSession();
+
   const hojeStr = getCuiabaDateStr();
   const hoje = new Date(`${hojeStr}T00:00:00-04:00`);
 
@@ -334,6 +334,7 @@ export async function computeCustomerScores(): Promise<ScoreCliente[]> {
 }
 
 export async function recalcAllScores() {
+  await requireSession();
   await computeCustomerScores();
   return { success: true };
 }

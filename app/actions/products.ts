@@ -2,6 +2,7 @@
 
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
+import { requirePermission } from "../../lib/auth-guard";
 import { createAuditLog, formatChangeLog } from "./audit";
 
 export async function updateProductPrice(
@@ -11,6 +12,8 @@ export async function updateProductPrice(
     invoice: string | null,
     dateValue: string
 ) {
+    await requirePermission("permProducts");
+
     if (!productId || price < 0 || cost < 0) {
         throw new Error("Valores inválidos para atualização de preço.");
     }
@@ -54,6 +57,8 @@ export async function upsertProduct(data: {
     unit: string,
     allowFractional?: boolean
 }) {
+    await requirePermission("permProducts");
+
     if (!data.name || !data.categoryId || data.price < 0) {
         throw new Error("Campos obrigatórios inválidos");
     }
@@ -106,6 +111,8 @@ export async function upsertProduct(data: {
 }
 
 export async function toggleProductStatus(productId: string, isActive: boolean) {
+    await requirePermission("permProducts");
+
     if (!productId) throw new Error("ID inválido");
 
     await prisma.product.update({
@@ -119,6 +126,9 @@ export async function toggleProductStatus(productId: string, isActive: boolean) 
 }
 
 export async function quickCreateProductFromInvoice(name: string, cost: number) {
+    // Usado pelo Estoque e pelo Depósito durante a importação de NF.
+    await requirePermission(["permProducts", "permStock", "permDepot"]);
+
     if (!name) throw new Error("Nome é obrigatório");
 
     let category = await prisma.productCategory.findFirst({ where: { name: 'Geral' } });
@@ -145,6 +155,8 @@ export async function quickCreateProductFromInvoice(name: string, cost: number) 
     return { success: true, product: newProduct };
 }
 export async function deleteProduct(productId: string) {
+    await requirePermission("permProducts");
+
     if (!productId) return { success: false, error: "ID inválido" };
 
     try {

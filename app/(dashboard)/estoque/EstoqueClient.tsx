@@ -3,7 +3,6 @@
 import { useState, useTransition, useMemo } from 'react';
 import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search, Upload, Plus, ClipboardList, Sheet, CalendarRange, Eye } from 'lucide-react';
 import { registerStockMovement, updateMinStock, registerBatchStockMovement } from '../../actions/stock';
-import { parseInvoiceImage } from '../../actions/invoice-ai';
 import { quickCreateProductFromInvoice } from '../../actions/products';
 import { saveStockCounts } from '../../actions/stock-count';
 import { downloadExcel } from '../../../lib/excel-export';
@@ -129,6 +128,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
   const [isParsingNf, setParsingNf] = useState(false);
   const [parsedNfData, setParsedNfData] = useState<any>(null);
   const [nfImageUrl, setNfImageUrl] = useState<string | null>(null);
+  const [nfImagePath, setNfImagePath] = useState<string | null>(null);
   const [mappedItems, setMappedItems] = useState<Record<number, any>>({});
   const [nfDueDateStr, setNfDueDateStr] = useState("");
 
@@ -238,6 +238,18 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
               method: 'POST',
               body: formData
           });
+
+          if (apiRes.status === 401) {
+              window.location.href = '/login';
+              return;
+          }
+          if (apiRes.status === 403) {
+              alert('Você não tem permissão para importar notas fiscais.');
+              setNfFile(null);
+              setParsingNf(false);
+              return;
+          }
+
           const res = await apiRes.json();
           
           if (res.success && res.data) {
@@ -252,7 +264,8 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
               setImgZoom(1); // Reset zoom
               setImgPos({ x: 0, y: 0 });
               setMobileTab('data'); // No mobile, começa na aba de dados
-              // Agora usamos a URL persistente do Supabase Storage retornada pela API
+              // Preview usa URL assinada temporária; o banco guarda apenas o caminho.
+              setNfImagePath(res.imagePath || null);
               setNfImageUrl(res.imageUrl || (typeof window !== 'undefined' ? window.URL.createObjectURL(file) : null));
               
               const initialMap: Record<number, any> = {};
@@ -317,7 +330,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
               const res = await registerBatchStockMovement(
                   movementsToSave,
                   parsedNfData?.numero_nf || '',
-                  nfImageUrl,
+                  nfImagePath,
                   "Entrada NF-e IA",
                   nfDueDateStr || undefined
               );
@@ -326,7 +339,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                   alert("Estoque atualizado com sucesso via IA!");
                   setNfModalOpen(false);
                   setParsedNfData(null);
-                  setNfImageUrl(null);
+                  setNfImageUrl(null); setNfImagePath(null);
                   setVerifiedRows(new Set());
                   setExcludedRows(new Set());
                   window.location.reload();
@@ -349,7 +362,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
       setVerifiedRows(new Set());
       setExcludedRows(new Set());
       setMappedItems({});
-      setNfImageUrl(null);
+      setNfImageUrl(null); setNfImagePath(null);
   };
 
   const handleAddManualRow = () => {
@@ -998,7 +1011,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                     <button onClick={() => {
                         setNfModalOpen(false);
                         setParsedNfData(null);
-                        setNfImageUrl(null);
+                        setNfImageUrl(null); setNfImagePath(null);
                     }} className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full transition shrink-0">
                         <X size={18} className="text-gray-500" />
                     </button>
@@ -1312,7 +1325,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                         <button 
                             type="button" 
                             disabled={isPending}
-                            onClick={() => { setParsedNfData(null); setNfImageUrl(null); }}
+                            onClick={() => { setParsedNfData(null); setNfImageUrl(null); setNfImagePath(null); }}
                             className="w-full sm:w-auto text-sm font-bold text-red-500 bg-red-50 hover:bg-red-100 rounded-xl px-5 py-3 transition"
                         >
                             Refazer Foto

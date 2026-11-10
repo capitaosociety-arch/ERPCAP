@@ -1,7 +1,10 @@
 import { prisma } from "../../../lib/prisma";
+import { requirePagePermission } from "../../../lib/auth-guard";
 import ClientesClient from "./ClientesClient";
 
 export default async function ClientesRoute() {
+  await requirePagePermission("permCustomers");
+
   const [customers, payments] = await Promise.all([
     prisma.customer.findMany({
       include: {

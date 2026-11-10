@@ -1,7 +1,10 @@
 import { prisma } from "../../../lib/prisma";
+import { requirePagePermission } from "../../../lib/auth-guard";
 import ProductsClient from "./ProductsClient";
 
 export default async function ProductsRoute() {
+  await requirePagePermission("permProducts");
+
   const [products, categories] = await Promise.all([
     prisma.product.findMany({
       include: { 

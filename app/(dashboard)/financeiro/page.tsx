@@ -1,7 +1,10 @@
 import { prisma } from "../../../lib/prisma";
+import { requirePagePermission } from "../../../lib/auth-guard";
 import FinanceiroClient from "./FinanceiroClient";
 
 export default async function FinanceiroRoute({ searchParams }: { searchParams: { from?: string; to?: string } }) {
+  await requirePagePermission("permFinance");
+
   const p = await searchParams;
   const from = p.from;
   const to = p.to;
@@ -44,7 +47,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       where: { openedAt: { gte: startDate, lte: endDate } },
       orderBy: { openedAt: 'desc' },
       include: { 
-        user: true,
+        user: { select: { name: true } },
         payments: { include: { order: { include: { items: true } } } }
       }
     }),

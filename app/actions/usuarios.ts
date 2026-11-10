@@ -3,15 +3,34 @@
 import { prisma } from '../../lib/prisma';
 import bcrypt from 'bcryptjs';
 import { revalidatePath } from 'next/cache';
+import { requirePermission } from '../../lib/auth-guard';
 import { createAuditLog, formatChangeLog } from './audit';
 
 export async function getUsers() {
+    await requirePermission('permUsers');
+
     return await prisma.user.findMany({
+        omit: { password: true },
         orderBy: { createdAt: 'desc' }
     });
 }
 
+const ALLOWED_ROLES = ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER'] as const;
+const ALLOWED_PERMISSION_FIELDS = new Set([
+    'permDashboard', 'permPDV', 'permComandas', 'permProducts', 'permStock',
+    'permCustomers', 'permFinance', 'permUsers', 'permDepot', 'permInteligencia', 'permCopilot'
+]);
+
 export async function createUser(data: any) {
+    const actor = await requirePermission('permUsers');
+    const role = data.role || 'WAITER';
+    if (!ALLOWED_ROLES.includes(role)) {
+        throw new Error('Perfil inválido.');
+    }
+    if (role === 'ADMIN' && actor.role !== 'ADMIN') {
+        throw new Error('Apenas administradores podem criar usuários com perfil ADMIN.');
+    }
+
     if (!data.name || !data.email || !data.password) {
         throw new Error("Preencha os campos obrigatórios (Nome, Email, Senha).");
     }
@@ -29,7 +48,7 @@ export async function createUser(data: any) {
             email: data.email,
             phone: data.phone || null,
             password: hashedPassword,
-            role: data.role || 'WAITER',
+            role,
             isActive: true
         }
     });
@@ -40,20 +59,31 @@ export async function createUser(data: any) {
 }
 
 export async function updateUserRole(id: string, role: string) {
+    const actor = await requirePermission('permUsers');
+    if (!ALLOWED_ROLES.includes(role as any)) {
+        throw new Error('Perfil inválido.');
+    }
+
     const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) throw new Error('Usuário não encontrado.');
+
+    if (actor.role !== 'ADMIN' && (role === 'ADMIN' || user.role === 'ADMIN')) {
+        throw new Error('Apenas administradores podem conceder ou remover o perfil ADMIN.');
+    }
+
     await prisma.user.update({
         where: { id },
         data: { role }
     });
 
-    if (user) {
-        await createAuditLog("Cargo de Usuário", `Alterou cargo de ${user.name}: ${user.role} → ${role}`);
-    }
+    await createAuditLog("Cargo de Usuário", `Alterou cargo de ${user.name}: ${user.role} → ${role}`);
 
     revalidatePath('/usuarios');
 }
 
 export async function updateUserDetails(id: string, name: string, email: string, phone: string, newPassword?: string) {
+    await requirePermission('permUsers');
+
     const oldUser = await prisma.user.findUnique({ where: { id } });
     const dataToUpdate: any = { name, email, phone };
     
@@ -80,6 +110,14 @@ export async function updateUserDetails(id: string, name: string, email: string,
 }
 
 export async function toggleUserPermission(id: string, field: string) {
+    const actor = await requirePermission('permUsers');
+    if (actor.role !== 'ADMIN') {
+        throw new Error('Apenas administradores podem alterar permissões de usuários.');
+    }
+    if (!ALLOWED_PERMISSION_FIELDS.has(field)) {
+        throw new Error('Permissão inválida.');
+    }
+
     const user = await prisma.user.findUnique({ where: { id } }) as any;
     if (!user) throw new Error("Usuário não encontrado.");
     
@@ -110,8 +148,13 @@ export async function toggleUserPermission(id: string, field: string) {
 }
 
 export async function toggleUserStatus(id: string) {
+    const actor = await requirePermission('permUsers');
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) throw new Error("Usuário não encontrado.");
+
+    if (user.role === 'ADMIN' && actor.role !== 'ADMIN') {
+        throw new Error('Apenas administradores podem alterar o status de um ADMIN.');
+    }
 
     await prisma.user.update({
         where: { id },
@@ -124,6 +167,11 @@ export async function toggleUserStatus(id: string) {
 }
 
 export async function deleteUser(id: string) {
+    const actor = await requirePermission('permUsers');
+    if (id === actor.id) {
+        return { success: false, error: "Você não pode excluir o próprio usuário." };
+    }
+
     try {
         const user = await prisma.user.findUnique({ 
             where: { id },
@@ -134,6 +182,9 @@ export async function deleteUser(id: string) {
         });
 
         if (!user) return { success: false, error: "Usuário não encontrado." };
+        if (user.role === 'ADMIN' && actor.role !== 'ADMIN') {
+            return { success: false, error: "Apenas administradores podem excluir um ADMIN." };
+        }
 
         // Check if user has related records that would prevent deletion (integrity)
         if (user.orders.length > 0 || user.cashRegisters.length > 0) {

@@ -13,11 +13,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   // Fetch dbUser to ensure real-time granular permission toggles
   const dbUser = await prisma.user.findUnique({
-    where: { id: (session.user as any)?.id }
+    where: { id: (session.user as any)?.id },
+    omit: { password: true }
   });
 
+  // Um JWT válido não basta: o usuário precisa continuar existindo e ativo.
+  if (!dbUser || !dbUser.isActive) {
+    redirect('/login');
+  }
+
   return (
-    <DashboardContent user={dbUser || session.user}>
+    <DashboardContent user={dbUser}>
       {children}
     </DashboardContent>
   );

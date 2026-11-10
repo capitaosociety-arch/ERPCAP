@@ -1,14 +1,12 @@
 'use server'
 
-import { getServerSession } from "next-auth";
-import { authOptions } from "../api/auth/[...nextauth]/route";
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
+import { requirePermission } from "../../lib/auth-guard";
 
 export async function processCheckoutAction(cart: any[]) {
-  const session = await getServerSession(authOptions) as any;
-  const userId = session?.user?.id || (await prisma.user.findFirst())?.id;
-  if (!userId) throw new Error("Unauthorized");
+  const user = await requirePermission("permPDV");
+  const userId = user.id;
 
   const openRegister = await prisma.cashRegister.findFirst({ where: { status: "OPEN" } });
   if (!openRegister) throw new Error("Nenhum caixa aberto! Abra o caixa no menu Financeiro antes de vender.");
@@ -67,6 +65,8 @@ export async function processCheckoutAction(cart: any[]) {
 }
 
 export async function getOrderWithPayments(orderId: string) {
+    await requirePermission(['permPDV', 'permComandas']);
+
     return await prisma.order.findUnique({
         where: { id: orderId },
         include: {
@@ -82,8 +82,7 @@ export async function getOrderWithPayments(orderId: string) {
 }
 
 export async function cancelOrderAction(orderId: string) {
-  const session = await getServerSession(authOptions) as any;
-  if (!session) throw new Error("Unauthorized");
+  await requirePermission(['permPDV', 'permComandas']);
 
   await prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({

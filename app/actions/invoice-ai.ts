@@ -1,10 +1,14 @@
 'use server'
 
 import { supabaseAdmin } from "@/lib/supabase";
+import { requirePermission } from "@/lib/auth-guard";
+import { createInvoiceSignedUrl } from "@/lib/storage";
 import { isAIEnabled, extractJson } from "@/lib/ai/provider";
 import { visionWithFallback } from "@/lib/ai/vision";
 
 export async function parseInvoiceImage(formData: FormData) {
+    await requirePermission(["permStock", "permDepot"]);
+
     if (!isAIEnabled()) {
         throw new Error("API Key do Gemini não configurada!");
     }
@@ -19,7 +23,7 @@ export async function parseInvoiceImage(formData: FormData) {
 
         // 1. Upload para o Supabase Storage (Bucket notas-fiscais)
         const fileName = `nf-${Date.now()}-${file.name.replace(/\s/g, '_')}`;
-        const { error: uploadError } = await supabaseAdmin.storage
+        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
             .from('notas-fiscais')
             .upload(fileName, buffer, {
                 contentType: file.type,
@@ -30,11 +34,8 @@ export async function parseInvoiceImage(formData: FormData) {
             console.error("Erro no upload Supabase (Action):", uploadError);
         }
 
-        const { data: publicUrlData } = supabaseAdmin.storage
-            .from('notas-fiscais')
-            .getPublicUrl(fileName);
-
-        const imageUrl = publicUrlData?.publicUrl || null;
+        const imagePath = uploadError ? null : (uploadData?.path || fileName);
+        const imageUrl = imagePath ? await createInvoiceSignedUrl(imagePath) : null;
 
         // 2. Processar a imagem com a camada de IA (retry + fallback de modelos)
         const prompt = `Extraia os dados desta nota fiscal para um JSON rigoroso com: 
@@ -59,6 +60,7 @@ export async function parseInvoiceImage(formData: FormData) {
         return {
             success: true,
             imageUrl,
+            imagePath,
             data: resData
         };
 

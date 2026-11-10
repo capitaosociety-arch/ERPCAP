@@ -4,13 +4,17 @@ import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../api/auth/[...nextauth]/route";
+import { requirePermission, requireUser } from "../../lib/auth-guard";
 import { createAuditLog } from "./audit";
+
+const COMANDAS_ACCESS = ["permPDV", "permComandas"] as const;
+const PAYMENT_ACCESS = ["permPDV", "permComandas", "permFinance"] as const;
 
 export async function createComanda(name: string, customerId?: string | null) {
     if(!name) throw new Error("Name required");
 
-    const session = await getServerSession(authOptions) as any;
-    const userId = session?.user?.id || (await prisma.user.findFirst())?.id;
+    const user = await requirePermission([...COMANDAS_ACCESS]);
+    const userId = user.id;
 
     const register = await prisma.cashRegister.findFirst({ where: { status: "OPEN" } });
     if (!register) throw new Error("Nenhum caixa aberto! Abra o caixa antes de criar novas comandas.");
@@ -35,6 +39,8 @@ export async function createComanda(name: string, customerId?: string | null) {
 }
 
 export async function closeComanda(orderId: string) {
+    await requirePermission([...COMANDAS_ACCESS]);
+
     await prisma.order.update({
         where: { id: orderId },
         data: { status: "CLOSED", closedAt: new Date() }
@@ -44,6 +50,8 @@ export async function closeComanda(orderId: string) {
 }
 
 export async function addItemToOrder(orderId: string, itemId: string, quantity: number, price: number, isService: boolean = false) {
+    await requirePermission([...COMANDAS_ACCESS]);
+
     await prisma.$transaction(async (tx) => {
         await tx.orderItem.create({
             data: {
@@ -89,8 +97,8 @@ export async function addItemToOrder(orderId: string, itemId: string, quantity: 
 }
 
 export async function processPayment(orderId: string, amount: number, method: string, discount: number = 0) {
-    const session = await getServerSession(authOptions) as any;
-    const userId = session?.user?.id || (await prisma.user.findFirst())?.id;
+    const user = await requirePermission([...PAYMENT_ACCESS]);
+    const userId = user.id;
 
     if (!userId) throw new Error("UsuÃ¡rio nÃ£o logado");
 
@@ -148,6 +156,8 @@ export async function processPayment(orderId: string, amount: number, method: st
     revalidatePath("/dashboard");
 }
 export async function updateOrderItemQuantity(orderItemId: string, newQuantity: number) {
+    await requirePermission([...COMANDAS_ACCESS]);
+
     if (newQuantity <= 0) throw new Error("A quantidade deve ser maior que zero.");
 
     await prisma.$transaction(async (tx) => {
@@ -205,7 +215,10 @@ export async function processPayment(orderId: string, amount: number, method: st
     revalidatePath("/pdv");
 }
 
-export async function removeItemFromOrder(orderItemId: string) {    await prisma.$transaction(async (tx) => {
+export async function removeItemFromOrder(orderItemId: string) {
+    await requirePermission([...COMANDAS_ACCESS]);
+
+    await prisma.$transaction(async (tx) => {
         const item = await tx.orderItem.findUnique({
             where: { id: orderItemId },
             include: { order: true }
@@ -251,8 +264,10 @@ export async function removeItemFromOrder(orderItemId: string) {    await prisma
 }
 
 export async function deleteComandaAction(orderId: string) {
-    const session = await getServerSession(authOptions) as any;
-    if (!session) throw new Error("Unauthorized");
+    const actor = await requireUser();
+    if (actor.role !== 'ADMIN' && actor.role !== 'MANAGER') {
+        throw new Error("Apenas administradores ou gerentes podem cancelar uma comanda inteira.");
+    }
 
     await prisma.$transaction(async (tx) => {
         const order = await tx.order.findUnique({
@@ -305,6 +320,8 @@ export async function deleteComandaAction(orderId: string) {
 
 export async function voidPaymentAction(paymentId: string) {
     try {
+        await requirePermission(['permFinance', 'permComandas', 'permPDV']);
+
         const session = await getServerSession(authOptions) as any;
         if (!session) throw new Error("Não autorizado");
 

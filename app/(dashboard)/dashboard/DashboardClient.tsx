@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { getSupabaseClient } from '../../../lib/supabase-browser'
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell 
 } from 'recharts'
@@ -55,21 +54,12 @@ export default function DashboardClient({ stats, payments, userName, userRole }:
         return () => clearInterval(timer)
     }, [])
 
-    // Configuração Segura do Tempo Real
+    // Atualização do dashboard: polling server-side a cada 60s.
+    // O Realtime via anon foi desativado até que o RLS/policies do Supabase
+    // estejam aplicados. Assim, a anon key não é enviada ao navegador.
     useEffect(() => {
-        const supabase = getSupabaseClient();
-        if (!supabase) return;
-
-        const channel = supabase
-            .channel('dashboard-realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'Payment' }, () => router.refresh())
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'Rental' }, () => router.refresh())
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'Order' }, () => router.refresh())
-            .subscribe()
-
-        return () => {
-            supabase.removeChannel(channel)
-        }
+        const interval = setInterval(() => router.refresh(), 60_000);
+        return () => clearInterval(interval);
     }, [router])
 
     const fieldData = [

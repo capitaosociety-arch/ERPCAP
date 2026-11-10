@@ -2,8 +2,11 @@
 
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
+import { requirePermission } from "../../lib/auth-guard";
 
 export async function getFinancialEntries() {
+    await requirePermission("permFinance");
+
     return await prisma.financialEntry.findMany({
         orderBy: { dueDate: 'asc' }
     });
@@ -20,6 +23,8 @@ export async function createFinancialEntry(data: {
     reference?: string;
     installments?: number;
 }) {
+    await requirePermission("permFinance");
+
     const installmentsCount = data.installments || 1;
     const installmentGroup = installmentsCount > 1 ? `GRP-${Date.now()}-${Math.floor(Math.random() * 1000)}` : null;
     
@@ -72,6 +77,8 @@ export async function createFinancialEntry(data: {
 }
 
 export async function updateFinancialStatus(id: string, status: 'PAID' | 'PENDING' | 'CANCELED', method?: string, paymentDate?: string) {
+    await requirePermission("permFinance");
+
     const entry = await prisma.financialEntry.update({
         where: { id },
         data: {
@@ -95,6 +102,8 @@ export async function updateFinancialEntry(id: string, data: {
     method?: string;
     reference?: string;
 }) {
+    await requirePermission("permFinance");
+
     const entry = await prisma.financialEntry.update({
         where: { id },
         data: {
@@ -114,6 +123,8 @@ export async function updateFinancialEntry(id: string, data: {
 }
 
 export async function deleteFinancialEntry(id: string) {
+    await requirePermission("permFinance");
+
     await prisma.financialEntry.delete({
         where: { id }
     });

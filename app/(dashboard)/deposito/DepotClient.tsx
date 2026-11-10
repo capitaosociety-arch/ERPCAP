@@ -119,6 +119,7 @@ export default function DepotClient({
     const [isParsingNf, setParsingNf] = useState(false);
     const [parsedNfData, setParsedNfData] = useState<any>(null);
     const [nfImageUrl, setNfImageUrl] = useState<string | null>(null);
+    const [nfImagePath, setNfImagePath] = useState<string | null>(null);
     const [mappedItems, setMappedItems] = useState<Record<number, any>>({});
     const [nfIssueDateStr, setNfIssueDateStr] = useState("");
     const [nfReceivedDateStr, setNfReceivedDateStr] = useState("");
@@ -228,6 +229,17 @@ export default function DepotClient({
         formData.append('file', file);
         try {
             const apiRes = await fetch('/api/ocr', { method: 'POST', body: formData });
+
+            if (apiRes.status === 401) {
+                window.location.href = '/login';
+                return;
+            }
+            if (apiRes.status === 403) {
+                alert('Você não tem permissão para importar notas fiscais.');
+                setParsingNf(false);
+                return;
+            }
+
             const res = await apiRes.json();
             if (res.success && res.data) {
                 setParsedNfData(res.data);
@@ -239,6 +251,7 @@ export default function DepotClient({
                 setImgZoom(1);
                 setImgPos({ x: 0, y: 0 });
                 setMobileTab('data');
+                setNfImagePath(res.imagePath || null);
                 setNfImageUrl(res.imageUrl || (typeof window !== 'undefined' ? window.URL.createObjectURL(file) : null));
                 const initialMap: Record<number, any> = {};
                 res.data.produtos?.forEach((item: any, i: number) => {
@@ -293,7 +306,7 @@ export default function DepotClient({
 
         startTransition(async () => {
             try {
-                const res = await registerBatchDepotStockMovement(movementsToSave, parsedNfData?.numero_nf || '', nfImageUrl, "Entrada NF Matriz (IA)", nfDueDateStr || undefined, nfIssueDateStr || undefined, nfReceivedDateStr || undefined);
+                const res = await registerBatchDepotStockMovement(movementsToSave, parsedNfData?.numero_nf || '', nfImagePath, "Entrada NF Matriz (IA)", nfDueDateStr || undefined, nfIssueDateStr || undefined, nfReceivedDateStr || undefined);
                 if (res.success) {
                     window.location.reload();
                 } else {
@@ -857,7 +870,7 @@ export default function DepotClient({
                                 <h2 className="text-lg md:text-xl font-black flex items-center gap-2 text-slate-800"><Camera size={24} className="text-mrts-blue" /> Entrada Matriz Inteligente</h2>
                                 <p className="text-[10px] md:text-xs text-gray-500 font-medium">Capture a nota fiscal para abastecer o fundo de estoque da matriz (depósito).</p>
                             </div>
-                            <button onClick={() => { setNfModalOpen(false); setParsedNfData(null); setNfImageUrl(null); }} className="w-10 h-10 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-full transition"><X size={20}/></button>
+                            <button onClick={() => { setNfModalOpen(false); setParsedNfData(null); setNfImageUrl(null); setNfImagePath(null); }} className="w-10 h-10 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-full transition"><X size={20}/></button>
                         </div>
 
                         <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">

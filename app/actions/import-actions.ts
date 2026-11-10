@@ -2,9 +2,12 @@
 
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
+import { requirePermission } from "../../lib/auth-guard";
 import { createAIProvider, extractJson } from "../../lib/ai/provider";
 
 export async function processProductsWithAI(rawData: any[]) {
+    await requirePermission("permProducts");
+
     if (!rawData || rawData.length === 0) {
         throw new Error("Nenhum dado encontrado na planilha.");
     }
@@ -41,6 +44,8 @@ export async function processProductsWithAI(rawData: any[]) {
 }
 
 export async function saveBatchProducts(products: any[]) {
+    await requirePermission("permProducts");
+
     if (!products || !Array.isArray(products)) {
         throw new Error("Lista de produtos inválida.");
     }

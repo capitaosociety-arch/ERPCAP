@@ -1,9 +1,12 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../api/auth/[...nextauth]/route";
 import { prisma } from "../../../lib/prisma";
+import { requirePagePermission } from "../../../lib/auth-guard";
 import PDVClient from "./PDVClient";
 
 export default async function PDVRoute() {
+  await requirePagePermission("permPDV");
+
   const session = await getServerSession(authOptions);
   
   // Buscar catálogo completo no banco

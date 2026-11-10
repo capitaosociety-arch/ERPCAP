@@ -2,6 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../api/auth/[...nextauth]/route';
 import { redirect } from 'next/navigation';
 import { prisma } from '../../../lib/prisma';
+import { attachSignedInvoiceUrls } from '../../../lib/storage';
 import DepotClient from './DepotClient';
 
 export default async function DepotPage() {
@@ -31,8 +32,8 @@ export default async function DepotPage() {
     const requests = await prisma.transferRequest.findMany({
         include: {
             product: true,
-            user: true,
-            authorizedBy: true
+            user: { select: { name: true } },
+            authorizedBy: { select: { name: true } }
         },
         orderBy: { createdAt: 'desc' }
     });
@@ -50,10 +51,12 @@ export default async function DepotPage() {
         where: { location: 'DEPOT' }
     });
 
+    const movementsWithSignedImages = await attachSignedInvoiceUrls(movements);
+
     return <DepotClient 
         initialInventory={inventory} 
         initialRequests={requests} 
-        initialMovements={movements}
+        initialMovements={movementsWithSignedImages}
         initialStockCounts={stockCounts}
         userRole={dbUser.role} 
     />;

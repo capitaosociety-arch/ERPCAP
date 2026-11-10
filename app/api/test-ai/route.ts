@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { requireApiAdmin } from "@/lib/api-auth";
 import { resolveAIEnv, maskKey } from "@/lib/ai/provider";
 
 export const dynamic = 'force-dynamic';
 
 // Endpoint de diagnóstico para identificar quais modelos IA estão disponíveis
 export async function GET() {
+    const auth = await requireApiAdmin();
+    if (auth.response) return auth.response;
+
     const env = resolveAIEnv();
 
     if (!env.apiKey) {

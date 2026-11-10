@@ -2,9 +2,12 @@
 
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
+import { requirePermission } from "../../lib/auth-guard";
 import { createAuditLog } from "./audit";
 
 export async function updateMinStock(productId: string, minQuantity: number) {
+    await requirePermission("permStock");
+
     if (!productId || minQuantity < 0) {
         throw new Error("Valores inválidos");
     }
@@ -28,6 +31,8 @@ export async function registerStockMovement(
     dueDateString?: string,
     unitCost?: number
 ) {
+    await requirePermission("permStock");
+
     if (!productId || quantity <= 0) {
         throw new Error("Dados inválidos para a movimentação");
     }
@@ -115,10 +120,12 @@ export async function registerStockMovement(
 export async function registerBatchStockMovement(
     movements: { productId: string, quantity: number, price?: number }[],
     document: string,
-    imageUrl: string | null,
+    imagePath: string | null,
     notes: string,
     dueDateString?: string
 ) {
+    await requirePermission("permStock");
+
     if (!movements || movements.length === 0) {
         throw new Error("Nenhum item válido para movimentar.");
     }
@@ -160,7 +167,8 @@ export async function registerBatchStockMovement(
                         quantity: qty,
                         notes: notes || "Entrada via NF (IA)",
                         document: document || null,
-                        imageUrl: imageUrl || null,
+                        // Guarda o caminho do Storage; a URL assinada é gerada na leitura.
+                        imageUrl: imagePath || null,
                         date
                     }
                 });

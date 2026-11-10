@@ -1,7 +1,10 @@
 import { prisma } from "../../../lib/prisma";
+import { requirePagePermission } from "../../../lib/auth-guard";
 import ComandaBoard from "./ComandaBoard";
 
 export default async function MesasRoute() {
+  await requirePagePermission("permComandas");
+
   const [openOrders, products, openRegister, customers] = await Promise.all([
     prisma.order.findMany({
       where: { status: 'OPEN' },

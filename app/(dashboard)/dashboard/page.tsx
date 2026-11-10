@@ -1,14 +1,13 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "../../api/auth/[...nextauth]/route";
 import { prisma } from "../../../lib/prisma";
+import { requirePageAuth } from "../../../lib/auth-guard";
 import RevenueChart from "../../../components/RevenueChart";
 import TopProductsChart from "../../../components/TopProductsChart";
 import DashboardClient from "./DashboardClient";
 import { getDashboardKpis } from "../../actions/dashboard";
 
 export default async function DashboardPage() {
-  const session = await getServerSession(authOptions);
-  
+  const user = await requirePageAuth();
+
   // Buscar o último caixa aberto/fechado
   const lastRegister = await prisma.cashRegister.findFirst({
     orderBy: { openedAt: 'desc' },
@@ -64,8 +63,8 @@ export default async function DashboardPage() {
       <DashboardClient 
         stats={stats} 
         payments={paymentsList}
-        userName={session?.user?.name?.split(' ')[0] || ''} 
-        userRole={session?.user?.role || ''}
+        userName={user.name?.split(' ')[0] || ''}
+        userRole={user.role || ''}
       />
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
@@ -79,7 +78,7 @@ export default async function DashboardPage() {
 
       <div className="bg-white rounded-2xl shadow-soft border border-gray-100 p-6">
         <h3 className="text-lg font-bold text-gray-800 mb-4">Módulos Disponíveis</h3>
-        <p className="text-gray-500 text-sm">Navegue pelas opções no menu esquerdo. As funcionalidades foram limitadas conforme seu perfil de acesso ({session?.user?.role}).</p>
+        <p className="text-gray-500 text-sm">Navegue pelas opções no menu esquerdo. As funcionalidades foram limitadas conforme seu perfil de acesso ({user.role}).</p>
       </div>
     </div>
   );

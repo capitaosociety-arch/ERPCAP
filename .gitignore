@@ -13,3 +13,9 @@ dist
 build
 .DS_Store
 supabase/.temp
+
+# Backups locais e artefatos gerados (nao versionar)
+backup_*.sql
+*.dump
+*.tsbuildinfo
+_check_stock.mjs

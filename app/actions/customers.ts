@@ -2,6 +2,7 @@
 
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
+import { requirePermission } from "../../lib/auth-guard";
 import { createAuditLog } from "./audit";
 import { recalcScore } from "./score";
 
@@ -12,6 +13,8 @@ export async function upsertCustomer(data: {
     notes: string;
     subscription?: { planName: string, amount: number, dueDate: number } | null
 }) {
+    await requirePermission("permCustomers");
+
     if (!data.name) throw new Error("Nome é obrigatório.");
 
     let custId = data.id;
@@ -61,6 +64,9 @@ export async function upsertCustomer(data: {
 }
 
 export async function createCustomerQuick(name: string) {
+    // Usado também pelas Comandas/PDV para cadastro rápido de cliente.
+    await requirePermission(["permCustomers", "permComandas", "permPDV"]);
+
     if (!name || !name.trim()) throw new Error("Nome é obrigatório.");
 
     const customer = await prisma.customer.create({
@@ -73,6 +79,8 @@ export async function createCustomerQuick(name: string) {
 }
 
 export async function paySubscription(subscriptionId: string, amount: number) {
+    await requirePermission("permCustomers");
+
     if (!subscriptionId) throw new Error("ID inválido");
 
     let customerId: string | null = null;
@@ -103,6 +111,8 @@ export async function paySubscription(subscriptionId: string, amount: number) {
 }
 
 export async function createRental(customerId: string, resource: string, date: string, startHour: string, endHour: string, amount: number) {
+    await requirePermission("permCustomers");
+
     if (!customerId || !resource) throw new Error("Faltam dados do agendamento.");
 
     const [sy, sm, sd] = date.split('-').map(Number);
@@ -122,6 +132,8 @@ export async function createRental(customerId: string, resource: string, date: s
 }
 
 export async function setRentalStatus(rentalId: string, status: string) {
+    await requirePermission("permCustomers");
+
     if (!rentalId) throw new Error("ID inválido");
 
     const allowed = ['PENDING', 'CONFIRMED', 'PAID', 'CANCELED', 'NO_SHOW'];
@@ -144,6 +156,8 @@ export async function setRentalStatus(rentalId: string, status: string) {
 }
 
 export async function updateSubscriptionPayment(paymentId: string, amount: number, paymentDate?: string) {
+    await requirePermission("permCustomers");
+
     if (!paymentId) throw new Error("ID inválido");
 
     await prisma.subscriptionPayment.update({
@@ -164,6 +178,8 @@ export async function updateSubscriptionPayment(paymentId: string, amount: numbe
 }
 
 export async function deleteSubscriptionPayment(paymentId: string) {
+    await requirePermission("permCustomers");
+
     if (!paymentId) throw new Error("ID inválido");
 
     const payment = await prisma.subscriptionPayment.findUnique({
@@ -181,6 +197,8 @@ export async function deleteSubscriptionPayment(paymentId: string) {
 }
 
 export async function updateRental(rentalId: string, resource: string, date: string, startHour: string, endHour: string, amount: number) {
+    await requirePermission("permCustomers");
+
     if (!rentalId || !resource) throw new Error("Faltam dados do agendamento.");
 
     const [sy, sm, sd] = date.split('-').map(Number);
@@ -202,6 +220,8 @@ export async function updateRental(rentalId: string, resource: string, date: str
 }
 
 export async function deleteRental(rentalId: string) {
+    await requirePermission("permCustomers");
+
     if (!rentalId) throw new Error("ID inválido");
 
     const rental = await prisma.rental.findUnique({ where: { id: rentalId } });
@@ -215,6 +235,8 @@ export async function deleteRental(rentalId: string) {
 }
 
 export async function deleteCustomer(id: string) {
+    await requirePermission("permCustomers");
+
     if (!id) return { success: false, error: "ID inválido." };
 
     try {

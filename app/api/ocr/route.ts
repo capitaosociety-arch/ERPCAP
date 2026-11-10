@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { requireApiPermission } from "@/lib/api-auth";
+import { createInvoiceSignedUrl } from "@/lib/storage";
 import { isAIEnabled, extractJson } from "@/lib/ai/provider";
 import { visionWithFallback } from "@/lib/ai/vision";
 
@@ -7,6 +9,9 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+    const auth = await requireApiPermission(["permStock", "permDepot"]);
+    if (auth.response) return auth.response;
+
     if (!isAIEnabled()) {
         return NextResponse.json({ success: false, error: "Chave GOOGLE_API_KEY não configurada!" }, { status: 500 });
     }
@@ -38,9 +43,9 @@ export async function POST(req: NextRequest) {
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
 
-        // Upload para o Supabase Storage
+        // Upload para o Supabase Storage (o banco guarda o caminho, não a URL pública)
         const fileName = `nf-${Date.now()}-${file.name.replace(/\s/g, '_')}`;
-        const { error: uploadError } = await supabaseAdmin.storage
+        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
             .from('notas-fiscais')
             .upload(fileName, buffer, {
                 contentType: file.type,
@@ -51,11 +56,8 @@ export async function POST(req: NextRequest) {
             console.error("Erro no upload Supabase:", uploadError);
         }
 
-        const { data: publicUrlData } = supabaseAdmin.storage
-            .from('notas-fiscais')
-            .getPublicUrl(fileName);
-
-        const imageUrl = publicUrlData?.publicUrl || null;
+        const imagePath = uploadError ? null : (uploadData?.path || fileName);
+        const imageUrl = imagePath ? await createInvoiceSignedUrl(imagePath) : null;
 
         const prompt = `Extraia os dados desta nota fiscal para um JSON rigoroso com: 
         fornecedor, 
@@ -77,7 +79,7 @@ export async function POST(req: NextRequest) {
             throw new Error("A IA retornou um formato inválido. Tente tirar uma foto mais nítida.");
         }
 
-        return NextResponse.json({ success: true, imageUrl, data });
+        return NextResponse.json({ success: true, imageUrl, imagePath, data });
 
     } catch (error: any) {
         const msg = error.message || "Falha ao processar a imagem";

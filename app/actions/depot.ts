@@ -149,8 +149,8 @@ export async function getTransferRequests() {
     return await prisma.transferRequest.findMany({
         include: {
             product: true,
-            user: true,
-            authorizedBy: true
+            user: { select: { name: true } },
+            authorizedBy: { select: { name: true } }
         },
         orderBy: { createdAt: 'desc' }
     });
@@ -335,7 +335,7 @@ export async function updateDepotMinStock(productId: string, minQuantity: number
 export async function registerBatchDepotStockMovement(
     movements: { productId: string, quantity: number, price?: number }[],
     document: string,
-    imageUrl: string | null,
+    imagePath: string | null,
     notes: string,
     dueDateString?: string,
     issueDateString?: string,
@@ -385,7 +385,8 @@ export async function registerBatchDepotStockMovement(
                         quantity: qty,
                         notes: notes || "Entrada via NF (IA) no Depósito",
                         document: document || null,
-                        imageUrl: imageUrl || null,
+                        // Guarda o caminho do Storage; a URL assinada é gerada na leitura.
+                        imageUrl: imagePath || null,
                         issueDate: issueDateString ? new Date(issueDateString) : null,
                         receivedDate: receivedDateString ? new Date(receivedDateString) : null,
                         date

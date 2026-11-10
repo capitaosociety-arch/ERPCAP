@@ -4,12 +4,12 @@ import { prisma } from '../../lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../api/auth/[...nextauth]/route';
 import { revalidatePath } from 'next/cache';
+import { requirePermission } from '../../lib/auth-guard';
 import { createAuditLog } from './audit';
 
 export async function openGlobalCashRegister(openingBal: number) {
-    const session = await getServerSession(authOptions);
-    const userId = (session?.user as any)?.id || (await prisma.user.findFirst())?.id;
-    if (!userId) throw new Error('Unauthorized');
+    const user = await requirePermission(['permFinance', 'permPDV']);
+    const userId = user.id;
 
     const openRegister = await prisma.cashRegister.findFirst({ where: { status: 'OPEN' }, include: { user: true } });
     if (openRegister) throw new Error(`Já existe um caixa aberto no sistema por ${openRegister.user?.name || 'outro usuário'}. Feche-o e faça a conferência antes de abrir um novo para os próximos dias.`);
@@ -30,9 +30,8 @@ export async function openGlobalCashRegister(openingBal: number) {
 }
 
 export async function closeGlobalCashRegister(registerId: string, closingBal: number, notes?: string) {
-    const session = await getServerSession(authOptions);
-    const userId = (session?.user as any)?.id || (await prisma.user.findFirst())?.id;
-    if (!userId) throw new Error('Unauthorized');
+    const user = await requirePermission(['permFinance', 'permPDV']);
+    const userId = user.id;
 
     const registerToClose = await prisma.cashRegister.findUnique({
         where: { id: registerId },
@@ -75,8 +74,7 @@ export async function closeGlobalCashRegister(registerId: string, closingBal: nu
 }
 
 export async function getRegisterSummary(registerId: string) {
-    const session = await getServerSession(authOptions);
-    if (!session) throw new Error('Unauthorized');
+    await requirePermission(['permFinance', 'permPDV']);
 
     const registerToClose = await prisma.cashRegister.findUnique({
         where: { id: registerId }
@@ -288,8 +286,7 @@ export async function deleteCashSessionAction(sessionId: string) {
 }
 
 export async function getSessionsForDepositAction() {
-    const session = await getServerSession(authOptions);
-    if (!session) throw new Error('Unauthorized');
+    await requirePermission('permFinance');
 
     const registers = await prisma.cashRegister.findMany({
         where: { status: 'CLOSED' },
@@ -334,8 +331,7 @@ export async function getSessionsForDepositAction() {
 
 export async function recordCashDepositAction(registerId: string, amount: number, notes?: string) {
     try {
-        const session = await getServerSession(authOptions) as any;
-        if (!session) throw new Error('Unauthorized');
+        await requirePermission('permFinance');
 
         const register = await prisma.cashRegister.findUnique({
             where: { id: registerId },
@@ -369,8 +365,7 @@ export async function recordCashDepositAction(registerId: string, amount: number
 
 export async function recordGlobalCashDepositAction(amountToDeposit: number, notes?: string) {
     try {
-        const session = await getServerSession(authOptions) as any;
-        if (!session) throw new Error('Unauthorized');
+        await requirePermission('permFinance');
 
         if (amountToDeposit <= 0) throw new Error('Valor inválido');
 

@@ -3,6 +3,7 @@
 import { prisma } from "../../lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../api/auth/[...nextauth]/route";
+import { requirePermission } from "../../lib/auth-guard";
 import { revalidatePath } from "next/cache";
 
 export async function createAuditLog(action: string, details?: string) {
@@ -45,6 +46,8 @@ export async function formatChangeLog(oldData: any, newData: any, fields: Record
 }
 
 export async function getAuditLogs() {
+    await requirePermission('permUsers');
+
     try {
         const logs = await prisma.auditLog.findMany({
             orderBy: { timestamp: 'desc' },
