@@ -13,9 +13,10 @@ import {
 } from 'lucide-react';
 import { downloadExcel, downloadMultiSheetExcel } from '../../../lib/excel-export';
 import { downloadDrePdf } from '../../../lib/pdf-export';
+import { buildDreExportRows } from '../../../lib/dre-export';
 import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry, updateFinancialEntry } from '../../actions/financeiro';
 import { closeFinancialPeriod, reopenFinancialPeriod } from '../../actions/financial-periods';
-import { formatPeriodKey, monthsForYear as getMonthsForYear, listYears, periodStatus, shiftMonth } from '../../../lib/dre-navigation';
+import { dbPeriodToKey, formatPeriodKey, keyToDbPeriod, monthsForYear as getMonthsForYear, listYears, periodStatus, shiftMonth } from '../../../lib/dre-navigation';
 import { getRegisterSummary, deleteCashSessionAction, getSessionsForDepositAction, recordCashDepositAction, recordGlobalCashDepositAction } from '../../actions/caixa';
 import { voidPaymentAction, editPaymentAction } from '../../actions/comandas';
 
@@ -31,7 +32,7 @@ export default function FinanceiroClient({ payload }: any) {
     const {
         totalRevenue, totalPendingPayable, totalPendingReceivable,
         dailyChart, methodChart,
-        cashRegisters, financialEntries, dreMonths, dreDetails, financialPeriodAudits = [], userRole, fieldRentalStats
+        cashRegisters, financialEntries, dreMonthsCash = [], dreMonthsCompetence = [], dreDetailsCash = [], dreDetailsCompetence = [], financialPeriods = [], financialPeriodAudits = [], userRole, fieldRentalStats
     } = payload;
 
     const [activeTab, setActiveTab] = useState('DASHBOARD'); // DASHBOARD, CASHIER, BILLING, DRE
@@ -43,6 +44,8 @@ export default function FinanceiroClient({ payload }: any) {
     };
     const [dreYear, setDreYear] = useState<number | null>(null);
     const [dreMonthNumber, setDreMonthNumber] = useState<number | null>(null);
+    const [dreRegime, setDreRegime] = useState<'competence' | 'cash'>('competence');
+    const [dreVersion, setDreVersion] = useState<number | null>(null);
     const [isPending, startTransition] = useTransition();
     const [showAddModal, setShowAddModal] = useState(false);
     const [filterType, setFilterType] = useState('ALL'); // ALL, PAYABLE, RECEIVABLE
@@ -961,20 +964,80 @@ export default function FinanceiroClient({ payload }: any) {
             )}
 
             {activeTab === 'DRE' && (() => {
-                const months = dreMonths || [];
+                const months = dreRegime === 'cash' ? dreMonthsCash : dreMonthsCompetence;
                 const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-                const years = listYears(months as any);
+                const years = listYears([...(dreMonthsCash || []), ...(dreMonthsCompetence || [])] as any);
                 const fallbackYear = years.length > 0 ? years[years.length - 1] : new Date().getFullYear();
                 const activeYear = dreYear != null && (years.length === 0 || years.includes(dreYear))
                     ? dreYear
                     : fallbackYear;
                 const monthsForYear = getMonthsForYear(months as any, activeYear);
+                const chartMonths = monthsForYear.filter((m: any) => !m.regimeUnavailable);
                 const lastMonthForYear = monthsForYear.length > 0
                     ? Number(monthsForYear[monthsForYear.length - 1].key.split('/')[0])
                     : (activeYear === new Date().getFullYear() ? new Date().getMonth() + 1 : 12);
                 const activeMonth = dreMonthNumber != null ? dreMonthNumber : lastMonthForYear;
                 const selected = formatPeriodKey(activeYear, activeMonth);
-                const monthData = months.find((m: any) => m.key === selected);
+                const periodAudits = (financialPeriodAudits || []).filter((audit: any) => audit.period === selected);
+                const closeRecord = (financialPeriods || []).find((close: any) => dbPeriodToKey(close.period) === selected && close.status === 'CLOSED');
+                const versionMap = new Map<number, any>();
+                if (closeRecord?.snapshot) {
+                    versionMap.set(closeRecord.version, {
+                        version: closeRecord.version,
+                        snapshot: closeRecord.snapshot,
+                        closedAt: closeRecord.closedAt,
+                    });
+                    periodAudits.forEach((audit: any) => {
+                        for (const snapshot of [audit.after, audit.before]) {
+                            if (snapshot?.version && snapshot?.periodStatus === 'CLOSED' && !versionMap.has(snapshot.version)) {
+                                versionMap.set(snapshot.version, {
+                                    version: snapshot.version,
+                                    snapshot,
+                                    closedAt: snapshot.closedAt,
+                                });
+                            }
+                        }
+                    });
+                }
+                const versionOptions = Array.from(versionMap.values()).sort((a: any, b: any) => b.version - a.version);
+                const latestVersion = versionOptions.length > 0 ? versionOptions[0].version : null;
+                const activeVersion = dreVersion != null && versionMap.has(dreVersion) ? dreVersion : latestVersion;
+                const selectedVersionSnapshot = activeVersion != null ? versionMap.get(activeVersion) : null;
+                const baseMonthData = months.find((m: any) => m.key === selected);
+                let monthData = baseMonthData;
+                if (selectedVersionSnapshot?.snapshot) {
+                    const snapshot = selectedVersionSnapshot.snapshot as any;
+                    const regimeSnapshot = snapshot.regimes?.[dreRegime];
+                    if (regimeSnapshot) {
+                        monthData = {
+                            ...baseMonthData,
+                            ...regimeSnapshot,
+                            key: selected,
+                            periodStatus: 'CLOSED',
+                            closeVersion: activeVersion,
+                            closedAt: selectedVersionSnapshot.closedAt,
+                        };
+                    } else if (dreRegime === 'cash' && !snapshot.regimes) {
+                        monthData = {
+                            ...baseMonthData,
+                            ...snapshot,
+                            key: selected,
+                            periodStatus: 'CLOSED',
+                            closeVersion: activeVersion,
+                            closedAt: selectedVersionSnapshot.closedAt,
+                            legacyCashOnly: true,
+                        };
+                    } else {
+                        monthData = {
+                            ...baseMonthData,
+                            key: selected,
+                            periodStatus: 'CLOSED',
+                            closeVersion: activeVersion,
+                            closedAt: selectedVersionSnapshot.closedAt,
+                            regimeUnavailable: true,
+                        };
+                    }
+                }
                 const currentPeriodStatus = periodStatus(monthData);
                 const isClosed = currentPeriodStatus === 'CLOSED';
                 const canManagePeriod = userRole === 'ADMIN';
@@ -988,6 +1051,7 @@ export default function FinanceiroClient({ payload }: any) {
                     if (!next) return;
                     setDreYear(next.year);
                     setDreMonthNumber(next.month);
+                    setDreVersion(null);
                 };
 
                 const handleYearChange = (year: number) => {
@@ -997,6 +1061,7 @@ export default function FinanceiroClient({ payload }: any) {
                         : 1;
                     setDreYear(year);
                     setDreMonthNumber(lastMonth);
+                    setDreVersion(null);
                 };
 
                 const handleCloseMonth = () => {
@@ -1004,7 +1069,7 @@ export default function FinanceiroClient({ payload }: any) {
                     if (!window.confirm(`Fechar o DRE de ${selected}? O mês ficará preservado e só poderá ser reaberto por um administrador com justificativa.`)) return;
                     startTransition(async () => {
                         try {
-                            await closeFinancialPeriod(selected);
+                            await closeFinancialPeriod(keyToDbPeriod(selected));
                             router.refresh();
                         } catch (error: any) {
                             alert(error?.message || 'Erro ao fechar o período.');
@@ -1018,7 +1083,7 @@ export default function FinanceiroClient({ payload }: any) {
                     if (!reason || !reason.trim()) return;
                     startTransition(async () => {
                         try {
-                            await reopenFinancialPeriod(selected, reason.trim());
+                            await reopenFinancialPeriod(keyToDbPeriod(selected), reason.trim());
                             router.refresh();
                         } catch (error: any) {
                             alert(error?.message || 'Erro ao reabrir o período.');
@@ -1031,13 +1096,40 @@ export default function FinanceiroClient({ payload }: any) {
 
                 // Total de despesas operacionais + financeiras + impostos
                 const totalExpenses = monthData ? (monthData.totalDespesasOp + monthData.despesasFinanceiras + monthData.impostos) : 0;
-                const periodAudits = (financialPeriodAudits || []).filter((audit: any) => audit.period === selected);
 
                 return (
                     <div className="space-y-6">
                         {/* TOOLBAR */}
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-center gap-4">
                             <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex bg-white rounded-xl border border-gray-200 p-0.5">
+                                    <button
+                                        onClick={() => { setDreRegime('competence'); setDreMonthNumber(null); setDreVersion(null); }}
+                                        className={`px-3 py-2 rounded-lg text-xs font-bold transition ${dreRegime === 'competence' ? 'bg-slate-900 text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+                                        title="DRE por competência"
+                                    >
+                                        Competência
+                                    </button>
+                                    <button
+                                        onClick={() => { setDreRegime('cash'); setDreMonthNumber(null); setDreVersion(null); }}
+                                        className={`px-3 py-2 rounded-lg text-xs font-bold transition ${dreRegime === 'cash' ? 'bg-emerald-600 text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+                                        title="Visão complementar por caixa"
+                                    >
+                                        Caixa
+                                    </button>
+                                </div>
+                                {versionOptions.length > 1 && (
+                                    <select
+                                        aria-label="Versão do fechamento"
+                                        value={activeVersion ?? ''}
+                                        onChange={(e) => setDreVersion(Number(e.target.value))}
+                                        className="bg-amber-50 border border-amber-200 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-amber-800 focus:ring-2 focus:ring-amber-500 outline-none"
+                                    >
+                                        {versionOptions.map((option: any) => (
+                                            <option key={option.version} value={option.version}>Versão v{option.version}</option>
+                                        ))}
+                                    </select>
+                                )}
                                 <Calendar size={16} className="text-gray-400" />
                                 <select
                                     aria-label="Ano do DRE"
@@ -1061,7 +1153,7 @@ export default function FinanceiroClient({ payload }: any) {
                                 <select
                                     aria-label="Mês do DRE"
                                     value={activeMonth}
-                                    onChange={(e) => setDreMonthNumber(Number(e.target.value))}
+                                    onChange={(e) => { setDreMonthNumber(Number(e.target.value)); setDreVersion(null); }}
                                     className="bg-gray-50 border border-gray-200 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none"
                                 >
                                     {monthNames.map((name, index) => {
@@ -1081,30 +1173,21 @@ export default function FinanceiroClient({ payload }: any) {
                                 </button>
                             </div>
                             <div className="text-xs text-gray-400 font-medium">
-                                Regime de caixa — receitas recebidas e despesas pagas no período.
+                                {dreRegime === 'competence'
+                                    ? 'Visão principal por competência — receitas e despesas reconhecidas no período.'
+                                    : 'Visão complementar por caixa — recebimentos e pagamentos efetivos.'}
                             </div>
                             <div className="flex-1"></div>
-                            {monthData && (
+                            {monthData && !monthData.regimeUnavailable && (
                                 <button
                                     onClick={() => {
                                         const sheet = [
                                             {
                                                 sheetName: 'DRE Gerencial',
-                                                data: [
-                                                    { 'Conta': 'Receita de Vendas (PDV/Comandas)', 'Valor': monthData.receitasVendas, 'Percentual': '' },
-                                                    { 'Conta': 'Outras Receitas', 'Valor': monthData.receitasOutras, 'Percentual': '' },
-                                                    { 'Conta': 'Receita Bruta Total', 'Valor': monthData.totalReceitas, 'Percentual': '100%' },
-                                                    { 'Conta': '(-) CMV (Custo das Mercadorias Vendidas)', 'Valor': -monthData.cmv, 'Percentual': `${monthData.totalReceitas > 0 ? ((monthData.cmv / monthData.totalReceitas) * 100).toFixed(1) : 0}%` },
-                                                    { 'Conta': 'Lucro Bruto', 'Valor': monthData.lucroBruto, 'Percentual': `${monthData.margemBruta}%` },
-                                                    ...expenseCats.map(([k, v]: any) => ({ 'Conta': `(-) ${k}`, 'Valor': -v, 'Percentual': `${monthData.totalReceitas > 0 ? ((v / monthData.totalReceitas) * 100).toFixed(1) : 0}%` })),
-                                                    { 'Conta': '(-) Despesas Financeiras', 'Valor': -monthData.despesasFinanceiras, 'Percentual': '' },
-                                                    { 'Conta': '(-) Impostos', 'Valor': -monthData.impostos, 'Percentual': '' },
-                                                    { 'Conta': 'EBITDA', 'Valor': monthData.ebitda, 'Percentual': `${monthData.margemEbitda}%` },
-                                                    { 'Conta': 'Resultado Líquido', 'Valor': monthData.resultadoLiquido, 'Percentual': `${monthData.margemLiquida}%` }
-                                                ]
+                                                data: buildDreExportRows(monthData, dreRegime)
                                             }
                                         ];
-                                        downloadMultiSheetExcel(sheet, `DRE_Gerencial_${selected.replace('/','_')}`);
+                                        downloadMultiSheetExcel(sheet, `DRE_${dreRegime === 'competence' ? 'Competencia' : 'Caixa'}_${selected.replace('/','_')}`);
                                     }}
                                     className="bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-slate-900/20 flex items-center gap-2 hover:scale-105 active:scale-95 transition"
                                 >
@@ -1131,10 +1214,10 @@ export default function FinanceiroClient({ payload }: any) {
                                     Sem dados / não fechado
                                 </span>
                             )}
-                            {monthData && (
+                            {monthData && !monthData.regimeUnavailable && (
                                 <button
                                     onClick={() => {
-                                        downloadDrePdf(dreMonths, dreDetails, selected);
+                                        downloadDrePdf(months, dreRegime === 'cash' ? dreDetailsCash : dreDetailsCompetence, selected, dreRegime);
                                     }}
                                     className="bg-white border-2 border-slate-800 text-slate-800 px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-slate-900/10 flex items-center gap-2 hover:scale-105 active:scale-95 transition"
                                 >
@@ -1143,6 +1226,17 @@ export default function FinanceiroClient({ payload }: any) {
                             )}
                         </div>
 
+                        {monthData?.regimeUnavailable ? (
+                            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-sm text-amber-800 font-medium flex flex-col sm:flex-row sm:items-center gap-4">
+                                <span className="flex-1">
+                                    Este mês foi fechado na versão legada, que contém somente a visão de caixa. A visão por competência estará disponível após uma retificação auditável do período.
+                                </span>
+                                <button onClick={() => setDreRegime('cash')} className="bg-white border border-amber-300 text-amber-800 px-4 py-2 rounded-xl text-xs font-bold hover:bg-amber-100 transition">
+                                    Abrir visão de caixa
+                                </button>
+                            </div>
+                        ) : (
+                        <>
                         {/* CARDS RESUMO */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm relative overflow-hidden">
@@ -1287,12 +1381,12 @@ export default function FinanceiroClient({ payload }: any) {
                             {/* COMPARATIVO MENSAL */}
                             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 flex flex-col min-w-0">
                                 <h3 className="font-bold text-sm text-slate-800 mb-6">Evolução Mensal — {activeYear}</h3>
-                                {monthsForYear.length === 0 ? (
+                                {chartMonths.length === 0 ? (
                                     <div className="flex items-center justify-center h-full text-sm text-gray-400 font-medium">Sem dados neste ano.</div>
                                 ) : (
                                     <div className="w-full h-72">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={monthsForYear.map((m: any) => {
+                                            <BarChart data={chartMonths.map((m: any) => {
                                                 const [month] = String(m.key).split('/');
                                                 return {
                                                     name: monthNames[Number(month) - 1],
@@ -1319,6 +1413,8 @@ export default function FinanceiroClient({ payload }: any) {
                                 <p className="text-[10px] text-gray-400 font-medium mt-4 text-center">Receitas, CMV e resultado líquido por mês do ano selecionado.</p>
                             </div>
                         </div>
+                        </>
+                        )}
 
                         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
                             <div className="p-5 bg-slate-50 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -1349,6 +1445,9 @@ export default function FinanceiroClient({ payload }: any) {
                                             {periodAudits.map((audit: any) => {
                                                 const after = (audit.after || {}) as any;
                                                 const before = (audit.before || null) as any;
+                                                const afterCompetence = after.regimes?.competence || after;
+                                                const afterCash = after.regimes?.cash || null;
+                                                const beforeCompetence = before?.regimes?.competence || before;
                                                 const version = after.version || before?.version || '-';
                                                 return (
                                                     <tr key={audit.id} className="hover:bg-slate-50/50">
@@ -1366,14 +1465,17 @@ export default function FinanceiroClient({ payload }: any) {
                                                         <td className="p-4 text-right text-xs text-slate-600">
                                                             {before ? (
                                                                 <div className="flex flex-col gap-0.5 whitespace-nowrap">
-                                                                    <span>Antes: R$ {Number(before.resultadoLiquido || 0).toFixed(2).replace('.', ',')}</span>
-                                                                    <span>Depois: R$ {Number(after.resultadoLiquido || 0).toFixed(2).replace('.', ',')}</span>
+                                                                    <span>Antes: R$ {Number(beforeCompetence?.resultadoLiquido || 0).toFixed(2).replace('.', ',')}</span>
+                                                                    <span>Depois: R$ {Number(afterCompetence?.resultadoLiquido || 0).toFixed(2).replace('.', ',')}</span>
                                                                 </div>
                                                             ) : (
                                                                 <div className="flex flex-col gap-0.5 whitespace-nowrap">
-                                                                    <span>Receita: R$ {Number(after.totalReceitas || 0).toFixed(2).replace('.', ',')}</span>
-                                                                    <span>CMV: R$ {Number(after.cmv || 0).toFixed(2).replace('.', ',')}</span>
-                                                                    <span className="font-black text-slate-800">Resultado: R$ {Number(after.resultadoLiquido || 0).toFixed(2).replace('.', ',')}</span>
+                                                                    <span>Receita: R$ {Number(afterCompetence?.totalReceitas || 0).toFixed(2).replace('.', ',')}</span>
+                                                                    <span>CMV: R$ {Number(afterCompetence?.cmv || 0).toFixed(2).replace('.', ',')}</span>
+                                                                    <span className="font-black text-slate-800">Resultado: R$ {Number(afterCompetence?.resultadoLiquido || 0).toFixed(2).replace('.', ',')}</span>
+                                                                    {afterCash && (
+                                                                        <span className="text-[10px] text-gray-400">Caixa: R$ {Number(afterCash.resultadoLiquido || 0).toFixed(2).replace('.', ',')}</span>
+                                                                    )}
                                                                 </div>
                                                             )}
                                                         </td>

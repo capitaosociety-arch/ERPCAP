@@ -33,7 +33,12 @@ const roundedRect = (doc: jsPDF, x: number, y: number, w: number, h: number, r: 
     doc.roundedRect(x, y, w, h, r, r, 'F');
 };
 
-export function downloadDrePdf(dreMonths: any[], dreDetails: any[], selectedKey: string) {
+export function downloadDrePdf(
+    dreMonths: any[],
+    dreDetails: any[],
+    selectedKey: string,
+    regime: 'cash' | 'competence' = 'cash'
+) {
     const month = dreMonths.find((m: any) => m.key === selectedKey);
     const detail = dreDetails.find((d: any) => d.key === selectedKey);
 
@@ -168,7 +173,7 @@ export function downloadDrePdf(dreMonths: any[], dreDetails: any[], selectedKey:
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(7.5);
     doc.setTextColor(C.gray);
-    doc.text('Regime de caixa — receitas recebidas e despesas pagas no período.', M, y);
+    doc.text(regime === 'competence' ? 'Regime de competência - receitas e despesas reconhecidas no período.' : 'Regime de caixa - receitas recebidas e despesas pagas no período.', M, y);
     doc.text('Gerado em ' + new Date().toLocaleString('pt-BR', { timeZone: 'America/Cuiaba' }) + ' pelo sistema ERPCap.', W - M, y, { align: 'right' });
 
     // ===== PÁGINA 2+: DETALHAMENTO DAS CONTAS =====
@@ -293,5 +298,5 @@ export function downloadDrePdf(dreMonths: any[], dreDetails: any[], selectedKey:
         });
     }
 
-    doc.save(`DRE_Gerencial_${selectedKey.replace('/', '_')}.pdf`);
+    doc.save(`DRE_${regime === 'competence' ? 'Competencia' : 'Caixa'}_${selectedKey.replace('/', '_')}.pdf`);
 }

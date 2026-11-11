@@ -3,7 +3,7 @@
 import { prisma } from '../../lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { requirePermission } from '../../lib/auth-guard';
-import { computeDre } from '../../lib/dre';
+import { computeDre, computeDreAccrual } from '../../lib/dre';
 import { createAuditLog } from './audit';
 
 function periodFromDate(date: Date): string {
@@ -51,13 +51,20 @@ export async function closeFinancialPeriod(period: string) {
   if (existing?.status === 'CLOSED') throw new Error('Este período já está fechado.');
 
   const { from, to } = periodRange(period);
-  const dre = await computeDre(from, to);
-  const expenses = dre.totalDespesasOp + dre.despesasFinanceiras + dre.impostos;
+  const [cashDre, competenceDre] = await Promise.all([
+    computeDre(from, to),
+    computeDreAccrual(from, to),
+  ]);
+  const expenses = competenceDre.totalDespesasOp + competenceDre.despesasFinanceiras + competenceDre.impostos;
   const version = (existing?.version || 0) + 1;
   const snapshot = {
-    ...dre,
     key: period,
     periodStatus: 'CLOSED',
+    primaryRegime: 'competence',
+    regimes: {
+      competence: competenceDre,
+      cash: cashDre,
+    },
     closedAt: new Date().toISOString(),
     version,
   };
@@ -67,11 +74,11 @@ export async function closeFinancialPeriod(period: string) {
         where: { period },
         data: {
           status: 'CLOSED',
-          snapshot,
-          revenue: dre.totalReceitas,
-          cmv: dre.cmv,
+          snapshot: snapshot as any,
+          revenue: competenceDre.totalReceitas,
+          cmv: competenceDre.cmv,
           expenses,
-          result: dre.resultadoLiquido,
+          result: competenceDre.resultadoLiquido,
           version,
           closedAt: new Date(),
           closedById: user.id,
@@ -84,11 +91,11 @@ export async function closeFinancialPeriod(period: string) {
         data: {
           period,
           status: 'CLOSED',
-          snapshot,
-          revenue: dre.totalReceitas,
-          cmv: dre.cmv,
+          snapshot: snapshot as any,
+          revenue: competenceDre.totalReceitas,
+          cmv: competenceDre.cmv,
           expenses,
-          result: dre.resultadoLiquido,
+          result: competenceDre.resultadoLiquido,
           version,
           closedAt: new Date(),
           closedById: user.id,
@@ -102,13 +109,13 @@ export async function closeFinancialPeriod(period: string) {
       userId: user.id,
       reason: version > 1 ? 'Refechamento após reabertura' : 'Fechamento mensal',
       before: existing?.snapshot ?? undefined,
-      after: snapshot,
+      after: snapshot as any,
     },
   });
 
   await createAuditLog(
     'Fechamento DRE',
-    `Fechou o período ${period} (versão ${version}). Receita: R$ ${dre.totalReceitas.toFixed(2)} | CMV: R$ ${dre.cmv.toFixed(2)} | Resultado: R$ ${dre.resultadoLiquido.toFixed(2)}.`
+    `Fechou o período ${period} (versão ${version}). Competência: receita R$ ${competenceDre.totalReceitas.toFixed(2)}, CMV R$ ${competenceDre.cmv.toFixed(2)}, resultado R$ ${competenceDre.resultadoLiquido.toFixed(2)}. Caixa: receita R$ ${cashDre.totalReceitas.toFixed(2)}, CMV R$ ${cashDre.cmv.toFixed(2)}, resultado R$ ${cashDre.resultadoLiquido.toFixed(2)}.`
   );
 
   revalidatePath('/financeiro');

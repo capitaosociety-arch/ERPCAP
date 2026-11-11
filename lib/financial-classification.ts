@@ -14,6 +14,12 @@ function text(entry: FinancialEntryLike): string {
     .toLowerCase();
 }
 
+function isPayrollCategory(entry: FinancialEntryLike): boolean {
+  const category = (entry.category || '').toLowerCase();
+  return category.includes('salário') || category.includes('salario') ||
+    category.includes('pessoal') || category.includes('folha');
+}
+
 /**
  * Compras de estoque não são despesa operacional no DRE: o custo é
  * reconhecido como CMV quando o produto é vendido. O campo entryKind é a
@@ -21,6 +27,7 @@ function text(entry: FinancialEntryLike): string {
  */
 export function isInventoryPurchaseEntry(entry: FinancialEntryLike): boolean {
   if (entry.type !== 'PAYABLE') return false;
+  if (isPayrollCategory(entry)) return false;
   if (entry.entryKind) return entry.entryKind === 'INVENTORY_PURCHASE';
 
   const category = (entry.category || '').toLowerCase();
@@ -31,6 +38,7 @@ export function isInventoryPurchaseEntry(entry: FinancialEntryLike): boolean {
 }
 
 export function classifyDreExpense(entry: FinancialEntryLike): DreExpenseKind {
+  if (isPayrollCategory(entry)) return 'operating';
   if (isInventoryPurchaseEntry(entry)) return 'inventory';
 
   if (entry.entryKind === 'FINANCIAL') return 'financial';
@@ -45,6 +53,7 @@ export function classifyDreExpense(entry: FinancialEntryLike): DreExpenseKind {
 
 export function inferFinancialEntryKind(entry: FinancialEntryLike): string {
   if (entry.type === 'RECEIVABLE') return 'OTHER_REVENUE';
+  if (isPayrollCategory(entry)) return 'OPERATING';
   if (isInventoryPurchaseEntry(entry)) return 'INVENTORY_PURCHASE';
   return classifyDreExpense(entry) === 'financial'
     ? 'FINANCIAL'

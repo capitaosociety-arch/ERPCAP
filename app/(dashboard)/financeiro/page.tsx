@@ -2,6 +2,7 @@ import { prisma } from "../../../lib/prisma";
 import { requirePagePermission } from "../../../lib/auth-guard";
 import { evaluateCmvMovement } from "../../../lib/financial-cmv";
 import { classifyDreExpense, isInventoryPurchaseEntry } from "../../../lib/financial-classification";
+import { dbPeriodToKey } from "../../../lib/dre-navigation";
 import FinanceiroClient from "./FinanceiroClient";
 
 export default async function FinanceiroRoute({ searchParams }: { searchParams: { from?: string; to?: string } }) {
@@ -31,7 +32,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   // Execute all heavy queries in parallel
   // O módulo Clientes é independente do financeiro: mensalidades (Subscription)
   // e jogos/locações (Rental) são apenas informativos dentro do próprio Clientes.
-  const [payments, drePayments, cashRegisters, financialEntries, stockMovements, financialPeriods, financialPeriodAudits, auditUsers] = await Promise.all([
+  const [payments, drePayments, accrualOrders, cashRegisters, financialEntries, stockMovements, financialPeriods, financialPeriodAudits, auditUsers] = await Promise.all([
     prisma.payment.findMany({
       where: { date: { gte: startDate, lte: endDate } },
       include: { 
@@ -48,6 +49,10 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
     prisma.payment.findMany({
       select: { amount: true, date: true, method: true, orderId: true },
       orderBy: { date: 'asc' }
+    }),
+    prisma.order.findMany({
+      where: { status: { not: 'CANCELED' } },
+      select: { id: true, total: true, discount: true, openedAt: true },
     }),
     prisma.cashRegister.findMany({
       where: { openedAt: { gte: startDate, lte: endDate } },
@@ -234,6 +239,25 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       }
       return dreMap.get(key)!;
   };
+  const dreAccrualMap = new Map<string, DreBucket>();
+  const getAccrualBucket = (key: string): DreBucket => {
+      if (!dreAccrualMap.has(key)) {
+          dreAccrualMap.set(key, {
+              key,
+              receitasVendas: 0,
+              receitasOutras: 0,
+              cmv: 0,
+              despesas: {},
+              despesasFinanceiras: 0,
+              impostos: 0,
+              cmvUncostedCount: 0,
+              cmvUncostedQty: 0,
+              cmvSuspectCount: 0,
+              cmvSuspectValue: 0,
+          });
+      }
+      return dreAccrualMap.get(key)!;
+  };
   const monthKey = (d: Date) => {
       const f = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit' });
       const parts = f.formatToParts(d);
@@ -252,23 +276,32 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       b.receitasVendas += p.amount;
   });
 
+  // Receita por competência: ordem de venda não cancelada, pela data de abertura.
+  accrualOrders.forEach(order => {
+      const b = getAccrualBucket(monthKey(order.openedAt));
+      b.receitasVendas += Number(order.total || 0) - Number(order.discount || 0);
+  });
+
   // CMV: custo dos produtos vendidos no período (movimentos de saída de venda).
   // Usa exclusivamente o snapshot de custo da movimentação; não substitui por
   // Product.cost atual, evitando alteração retroativa do histórico.
   stockMovements.forEach(m => {
       if (m.type === 'OUT_SALE' || m.movementKind === 'RETURN') {
-          const b = getBucket(monthKey(m.date));
+          const key = monthKey(m.date);
+          const buckets = [getBucket(key), getAccrualBucket(key)];
           const cmv = evaluateCmvMovement(m);
           const isReturn = m.movementKind === 'RETURN';
-          b.cmv += isReturn ? -cmv.value : cmv.value;
-          if (cmv.uncosted && !isReturn) {
-              b.cmvUncostedCount += 1;
-              b.cmvUncostedQty += cmv.quantity;
-          }
-          if (cmv.suspect && !isReturn) {
-              b.cmvSuspectCount += 1;
-              b.cmvSuspectValue += cmv.value;
-          }
+          buckets.forEach((b) => {
+              b.cmv += isReturn ? -cmv.value : cmv.value;
+              if (cmv.uncosted && !isReturn) {
+                  b.cmvUncostedCount += 1;
+                  b.cmvUncostedQty += cmv.quantity;
+              }
+              if (cmv.suspect && !isReturn) {
+                  b.cmvSuspectCount += 1;
+                  b.cmvSuspectValue += cmv.value;
+              }
+          });
       }
   });
 
@@ -297,6 +330,28 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   });
 
   // Detalhamento por conta para o PDF (mesmas fontes do DRE, com data e descrição)
+  // Contas por competência: inclui pendentes e pagas, exceto canceladas.
+  financialEntries.forEach(entry => {
+      if (entry.status === 'CANCELED') return;
+      if (isInventoryPurchaseEntry(entry)) return;
+      const competenceAt = entry.competenceDate || entry.dueDate;
+      const b = getAccrualBucket(monthKey(competenceAt));
+
+      if (entry.type === 'RECEIVABLE') {
+          b.receitasOutras += entry.amount;
+      } else {
+          const kind = classifyDreExpense(entry);
+          if (kind === 'tax') {
+              b.impostos += entry.amount;
+          } else if (kind === 'financial') {
+              b.despesasFinanceiras += entry.amount;
+          } else {
+              const catName = entry.category || 'Diversos';
+              b.despesas[catName] = (b.despesas[catName] || 0) + entry.amount;
+          }
+      }
+  });
+
   type DreDetail = {
       key: string;
       vendas: { data: string; metodo: string; comanda: string; valor: number }[];
@@ -312,6 +367,14 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       return detailMap.get(key)!;
   };
 
+  const detailAccrualMap = new Map<string, DreDetail>();
+  const getAccrualDetail = (key: string): DreDetail => {
+      if (!detailAccrualMap.has(key)) {
+          detailAccrualMap.set(key, { key, vendas: [], outrasReceitas: [], despesas: [], cmv: [] });
+      }
+      return detailAccrualMap.get(key)!;
+  };
+
   drePayments.forEach(p => {
       const b = getDetail(monthKey(p.date));
       b.vendas.push({
@@ -322,17 +385,30 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       });
   });
 
+  accrualOrders.forEach(order => {
+      const b = getAccrualDetail(monthKey(order.openedAt));
+      b.vendas.push({
+          data: order.openedAt.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' }),
+          metodo: 'COMPETÊNCIA',
+          comanda: order.id?.slice(-6) || '-',
+          valor: Number((Number(order.total || 0) - Number(order.discount || 0)).toFixed(2))
+      });
+  });
+
   stockMovements.forEach(m => {
-      if (m.type === 'OUT_SALE') {
-          const b = getDetail(monthKey(m.date));
+      if (m.type === 'OUT_SALE' || m.movementKind === 'RETURN') {
           const cmv = evaluateCmvMovement(m);
-          b.cmv.push({
-              produto: m.product?.name || 'Produto',
-              qtd: m.quantity,
-              custoUnit: Number((cmv.unitCost ?? 0).toFixed(2)),
-              total: Number(cmv.value.toFixed(2)),
-              semCusto: cmv.uncosted,
-              suspeito: cmv.suspect,
+          const isReturn = m.movementKind === 'RETURN';
+          const sign = isReturn ? -1 : 1;
+          [getDetail(monthKey(m.date)), getAccrualDetail(monthKey(m.date))].forEach((b) => {
+              b.cmv.push({
+                  produto: m.product?.name || 'Produto',
+                  qtd: sign * m.quantity,
+                  custoUnit: Number((cmv.unitCost ?? 0).toFixed(2)),
+                  total: sign * Number(cmv.value.toFixed(2)),
+                  semCusto: cmv.uncosted,
+                  suspeito: cmv.suspect,
+              });
           });
       }
   });
@@ -358,10 +434,32 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       }
   });
 
-  const dreDetails = Array.from(detailMap.values()).sort((a, b) => monthSortKey(a.key).localeCompare(monthSortKey(b.key)));
+  financialEntries.forEach(entry => {
+      if (entry.status === 'CANCELED') return;
+      if (isInventoryPurchaseEntry(entry)) return;
+      const competenceAt = entry.competenceDate || entry.dueDate;
+      const b = getAccrualDetail(monthKey(competenceAt));
+      if (entry.type === 'RECEIVABLE') {
+          b.outrasReceitas.push({
+              data: competenceAt.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' }),
+              descricao: entry.description,
+              valor: Number(entry.amount.toFixed(2))
+          });
+      } else {
+          b.despesas.push({
+              data: competenceAt.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' }),
+              categoria: entry.category || 'Diversos',
+              descricao: entry.description,
+              valor: Number(entry.amount.toFixed(2))
+          });
+      }
+  });
+
+  const dreDetailsCash = Array.from(detailMap.values()).sort((a, b) => monthSortKey(a.key).localeCompare(monthSortKey(b.key)));
+  const dreDetailsCompetence = Array.from(detailAccrualMap.values()).sort((a, b) => monthSortKey(a.key).localeCompare(monthSortKey(b.key)));
 
   // Se não houver nada no range, garante que o mês atual aparece
-  const dreMonths = Array.from(dreMap.entries()).map(([key, b]) => {
+  const toDreMonth = (key: string, b: DreBucket) => {
       const totalReceitas = b.receitasVendas + b.receitasOutras;
       const totalDespesasOp = Object.values(b.despesas).reduce((a, v) => a + v, 0);
       const lucroBruto = totalReceitas - b.cmv;
@@ -390,33 +488,87 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
               suspectValue: Number(b.cmvSuspectValue.toFixed(2)),
           }
       };
-  }).sort((a, b) => monthSortKey(a.key).localeCompare(monthSortKey(b.key)));
+  };
 
-  const periodCloseMap = new Map(financialPeriods.map((close) => [close.period, close]));
-  const liveMonthKeys = new Set(dreMonths.map((month) => month.key));
-  const dreMonthsWithStatus = dreMonths.map((month) => {
-      const close = periodCloseMap.get(month.key);
-      if (close?.status === 'CLOSED') {
+  const dreMonths = Array.from(dreMap.entries())
+      .map(([key, b]) => toDreMonth(key, b))
+      .sort((a, b) => monthSortKey(a.key).localeCompare(monthSortKey(b.key)));
+
+  const dreMonthsAccrual = Array.from(dreAccrualMap.entries())
+      .map(([key, b]) => toDreMonth(key, b))
+      .sort((a, b) => monthSortKey(a.key).localeCompare(monthSortKey(b.key)));
+
+  const periodCloseMap = new Map(financialPeriods.map((close) => [dbPeriodToKey(close.period), close]));
+
+  const mergeRegimeMonths = (liveMonths: any[], regime: 'cash' | 'competence') => {
+      const liveMonthKeys = new Set(liveMonths.map((month) => month.key));
+      const emptyRegime = {
+          receitasVendas: 0,
+          receitasOutras: 0,
+          totalReceitas: 0,
+          cmv: 0,
+          lucroBruto: 0,
+          despesas: {},
+          totalDespesasOp: 0,
+          despesasFinanceiras: 0,
+          impostos: 0,
+          ebitda: 0,
+          resultadoLiquido: 0,
+          margemBruta: 0,
+          margemEbitda: 0,
+          margemLiquida: 0,
+      };
+
+      const fromClose = (close: any, key: string) => {
+          const snapshot = (close.snapshot || {}) as any;
+          const regimes = snapshot.regimes || null;
+          if (regimes?.[regime]) {
+              return {
+                  ...emptyRegime,
+                  ...regimes[regime],
+                  key,
+                  periodStatus: 'CLOSED',
+                  closeVersion: close.version,
+                  closedAt: close.closedAt,
+                  primaryRegime: snapshot.primaryRegime || 'competence',
+              };
+          }
+          if (regime === 'cash' && !regimes) {
+              return {
+                  ...emptyRegime,
+                  ...snapshot,
+                  key,
+                  periodStatus: 'CLOSED',
+                  closeVersion: close.version,
+                  closedAt: close.closedAt,
+                  legacyCashOnly: true,
+              };
+          }
           return {
-              ...month,
-              ...(close.snapshot as any),
+              ...emptyRegime,
+              key,
               periodStatus: 'CLOSED',
+              regimeUnavailable: true,
               closeVersion: close.version,
               closedAt: close.closedAt,
           };
-      }
-      return { ...month, periodStatus: 'OPEN' };
-  }).concat(
+      };
+
+      const merged = liveMonths.map((month) => {
+          const close = periodCloseMap.get(month.key);
+          if (close?.status === 'CLOSED') return fromClose(close, month.key);
+          return { ...month, periodStatus: 'OPEN' };
+      });
+
       financialPeriods
-          .filter((close) => close.status === 'CLOSED' && !liveMonthKeys.has(close.period))
-          .map((close) => ({
-              ...(close.snapshot as any),
-              key: close.period,
-              periodStatus: 'CLOSED',
-              closeVersion: close.version,
-              closedAt: close.closedAt,
-          }))
-  ).sort((a, b) => monthSortKey(a.key).localeCompare(monthSortKey(b.key)));
+          .filter((close) => close.status === 'CLOSED' && !liveMonthKeys.has(dbPeriodToKey(close.period)))
+          .forEach((close) => merged.push(fromClose(close, dbPeriodToKey(close.period))));
+
+      return merged.sort((a, b) => monthSortKey(a.key).localeCompare(monthSortKey(b.key)));
+  };
+
+  const dreMonthsCash = mergeRegimeMonths(dreMonths, 'cash');
+  const dreMonthsCompetence = mergeRegimeMonths(dreMonthsAccrual, 'competence');
 
   // Formatar Arrays do Recharts
   const dailyChart = Object.keys(dailyRevenueMap).map(date => ({
@@ -463,6 +615,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   const auditUserNameMap = new Map(auditUsers.map((user) => [user.id, user.name]));
   const financialPeriodAuditsPayload = financialPeriodAudits.map((audit) => ({
       ...audit,
+      period: dbPeriodToKey(audit.period),
       createdAt: audit.createdAt.toISOString(),
       userName: auditUserNameMap.get(audit.userId) || 'Sistema',
   }));
@@ -475,8 +628,10 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       methodChart,
       cashRegisters,
       financialEntries,
-      dreMonths: dreMonthsWithStatus,
-      dreDetails,
+      dreMonthsCash,
+      dreMonthsCompetence,
+      dreDetailsCash,
+      dreDetailsCompetence,
       financialPeriods,
       financialPeriodAudits: financialPeriodAuditsPayload,
       userRole: currentUser.role,

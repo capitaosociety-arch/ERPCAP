@@ -25,6 +25,18 @@ export function formatPeriodKey(year: number, month: number): string {
   return `${String(month).padStart(2, '0')}/${year}`;
 }
 
+export function dbPeriodToKey(period: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(period));
+  if (!match) return period;
+  return `${match[2]}/${match[1]}`;
+}
+
+export function keyToDbPeriod(key: string): string {
+  const match = /^(\d{2})\/(\d{4})$/.exec(String(key));
+  if (!match) return key;
+  return `${match[2]}-${match[1]}`;
+}
+
 export function listYears(months: DreMonthLike[]): number[] {
   const years = new Set<number>();
   for (const month of months) {
