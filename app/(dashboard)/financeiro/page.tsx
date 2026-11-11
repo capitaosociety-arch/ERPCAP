@@ -31,7 +31,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   // Execute all heavy queries in parallel
   // O módulo Clientes é independente do financeiro: mensalidades (Subscription)
   // e jogos/locações (Rental) são apenas informativos dentro do próprio Clientes.
-  const [payments, cashRegisters, financialEntries, stockMovements, financialPeriods] = await Promise.all([
+  const [payments, drePayments, cashRegisters, financialEntries, stockMovements, financialPeriods] = await Promise.all([
     prisma.payment.findMany({
       where: { date: { gte: startDate, lte: endDate } },
       include: { 
@@ -44,6 +44,10 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
           }
         }
       }
+    }),
+    prisma.payment.findMany({
+      select: { amount: true, date: true, method: true, orderId: true },
+      orderBy: { date: 'asc' }
     }),
     prisma.cashRegister.findMany({
       where: { openedAt: { gte: startDate, lte: endDate } },
@@ -58,7 +62,6 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
     }),
     prisma.stockMovement.findMany({
       where: {
-        date: { gte: startDate, lte: endDate },
         OR: [{ type: 'OUT_SALE' }, { movementKind: 'RETURN' }],
       },
       include: { product: true }
@@ -237,8 +240,8 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       return `${year}${month}`;
   };
 
-  // Receitas de vendas (payments de comandas/PDV)
-  payments.forEach(p => {
+  // Receitas de vendas (payments de comandas/PDV) para todo o histórico.
+  drePayments.forEach(p => {
       const b = getBucket(monthKey(p.date));
       b.receitasVendas += p.amount;
   });
@@ -269,7 +272,6 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       if (entry.status !== 'PAID') return;
       if (isInventoryPurchaseEntry(entry)) return;
       const paidAt = entry.paymentDate || entry.dueDate;
-      if (paidAt < startDate || paidAt > endDate) return;
       const b = getBucket(monthKey(paidAt));
 
       if (entry.type === 'RECEIVABLE') {
@@ -304,12 +306,12 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       return detailMap.get(key)!;
   };
 
-  payments.forEach(p => {
+  drePayments.forEach(p => {
       const b = getDetail(monthKey(p.date));
       b.vendas.push({
           data: p.date.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' }),
           metodo: p.method,
-          comanda: p.order?.id?.slice(-6) || '-',
+          comanda: p.orderId?.slice(-6) || '-',
           valor: Number(p.amount.toFixed(2))
       });
   });
@@ -333,7 +335,6 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       if (entry.status !== 'PAID') return;
       if (isInventoryPurchaseEntry(entry)) return;
       const paidAt = entry.paymentDate || entry.dueDate;
-      if (paidAt < startDate || paidAt > endDate) return;
       const b = getDetail(monthKey(paidAt));
       if (entry.type === 'RECEIVABLE') {
           b.outrasReceitas.push({
@@ -386,6 +387,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   }).sort((a, b) => monthSortKey(a.key).localeCompare(monthSortKey(b.key)));
 
   const periodCloseMap = new Map(financialPeriods.map((close) => [close.period, close]));
+  const liveMonthKeys = new Set(dreMonths.map((month) => month.key));
   const dreMonthsWithStatus = dreMonths.map((month) => {
       const close = periodCloseMap.get(month.key);
       if (close?.status === 'CLOSED') {
@@ -398,7 +400,17 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
           };
       }
       return { ...month, periodStatus: 'OPEN' };
-  });
+  }).concat(
+      financialPeriods
+          .filter((close) => close.status === 'CLOSED' && !liveMonthKeys.has(close.period))
+          .map((close) => ({
+              ...(close.snapshot as any),
+              key: close.period,
+              periodStatus: 'CLOSED',
+              closeVersion: close.version,
+              closedAt: close.closedAt,
+          }))
+  ).sort((a, b) => monthSortKey(a.key).localeCompare(monthSortKey(b.key)));
 
   // Formatar Arrays do Recharts
   const dailyChart = Object.keys(dailyRevenueMap).map(date => ({

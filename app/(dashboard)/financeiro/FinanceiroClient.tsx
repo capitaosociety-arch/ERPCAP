@@ -40,7 +40,8 @@ export default function FinanceiroClient({ payload }: any) {
         const n = Number(v || 0);
         return Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
     };
-    const [dreMonth, setDreMonth] = useState('');
+    const [dreYear, setDreYear] = useState<number | null>(null);
+    const [dreMonthNumber, setDreMonthNumber] = useState<number | null>(null);
     const [isPending, startTransition] = useTransition();
     const [showAddModal, setShowAddModal] = useState(false);
     const [filterType, setFilterType] = useState('ALL'); // ALL, PAYABLE, RECEIVABLE
@@ -960,10 +961,50 @@ export default function FinanceiroClient({ payload }: any) {
 
             {activeTab === 'DRE' && (() => {
                 const months = dreMonths || [];
-                const selected = dreMonth || (months.length > 0 ? months[months.length - 1].key : '');
+                const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+                const years: number[] = (Array.from(new Set(months.map((m: any) => Number(String(m.key).split('/')[1])))) as number[])
+                    .filter((year) => Number.isFinite(year))
+                    .sort((a, b) => a - b);
+                const fallbackYear = years.length > 0 ? years[years.length - 1] : new Date().getFullYear();
+                const activeYear = dreYear != null && (years.length === 0 || years.includes(dreYear))
+                    ? dreYear
+                    : fallbackYear;
+                const monthsForYear = months
+                    .filter((m: any) => Number(String(m.key).split('/')[1]) === activeYear)
+                    .sort((a: any, b: any) => Number(a.key.split('/')[0]) - Number(b.key.split('/')[0]));
+                const lastMonthForYear = monthsForYear.length > 0
+                    ? Number(monthsForYear[monthsForYear.length - 1].key.split('/')[0])
+                    : (activeYear === new Date().getFullYear() ? new Date().getMonth() + 1 : 12);
+                const activeMonth = dreMonthNumber != null ? dreMonthNumber : lastMonthForYear;
+                const selected = `${String(activeMonth).padStart(2, '0')}/${activeYear}`;
                 const monthData = months.find((m: any) => m.key === selected);
                 const isClosed = monthData?.periodStatus === 'CLOSED';
                 const canManagePeriod = userRole === 'ADMIN';
+                const minYear = years.length > 0 ? years[0] : fallbackYear;
+                const maxYear = years.length > 0 ? years[years.length - 1] : fallbackYear;
+                const canGoPrevious = !(activeYear === minYear && activeMonth === 1);
+                const canGoNext = !(activeYear === maxYear && activeMonth === 12);
+
+                const goToMonth = (delta: number) => {
+                    let year = activeYear;
+                    let month = activeMonth + delta;
+                    if (month < 1) { month = 12; year -= 1; }
+                    if (month > 12) { month = 1; year += 1; }
+                    if (year < minYear || year > maxYear) return;
+                    setDreYear(year);
+                    setDreMonthNumber(month);
+                };
+
+                const handleYearChange = (year: number) => {
+                    const monthsOfYear = months
+                        .filter((m: any) => Number(String(m.key).split('/')[1]) === year)
+                        .sort((a: any, b: any) => Number(a.key.split('/')[0]) - Number(b.key.split('/')[0]));
+                    const lastMonth = monthsOfYear.length > 0
+                        ? Number(monthsOfYear[monthsOfYear.length - 1].key.split('/')[0])
+                        : 1;
+                    setDreYear(year);
+                    setDreMonthNumber(lastMonth);
+                };
 
                 const handleCloseMonth = () => {
                     if (!selected || !canManagePeriod) return;
@@ -1002,19 +1043,48 @@ export default function FinanceiroClient({ payload }: any) {
                     <div className="space-y-6">
                         {/* TOOLBAR */}
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-wrap items-center gap-4">
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                                 <Calendar size={16} className="text-gray-400" />
                                 <select
-                                    value={selected}
-                                    onChange={(e) => setDreMonth(e.target.value)}
+                                    aria-label="Ano do DRE"
+                                    value={activeYear}
+                                    onChange={(e) => handleYearChange(Number(e.target.value))}
                                     className="bg-gray-50 border border-gray-200 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none"
                                 >
-                                    {months.map((m: any) => {
-                                        const [mm, yyyy] = m.key.split('/');
-                                        const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-                                        return <option key={m.key} value={m.key}>{monthNames[parseInt(mm)-1]}/{yyyy}</option>;
+                                    {(years.length > 0 ? years : [fallbackYear]).map((year: number) => (
+                                        <option key={year} value={year}>{year}</option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={() => goToMonth(-1)}
+                                    disabled={!canGoPrevious}
+                                    className="p-2 rounded-lg bg-white border border-gray-200 text-slate-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title="Mês anterior"
+                                >
+                                    <ChevronLeft size={15} />
+                                </button>
+                                <select
+                                    aria-label="Mês do DRE"
+                                    value={activeMonth}
+                                    onChange={(e) => setDreMonthNumber(Number(e.target.value))}
+                                    className="bg-gray-50 border border-gray-200 rounded-xl pl-3 pr-8 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none"
+                                >
+                                    {monthNames.map((name, index) => {
+                                        const key = `${String(index + 1).padStart(2, '0')}/${activeYear}`;
+                                        const hasData = months.some((m: any) => m.key === key);
+                                        return <option key={key} value={index + 1}>{name}{hasData ? '' : ' (sem dados)'}</option>;
                                     })}
                                 </select>
+                                <button
+                                    type="button"
+                                    onClick={() => goToMonth(1)}
+                                    disabled={!canGoNext}
+                                    className="p-2 rounded-lg bg-white border border-gray-200 text-slate-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title="Próximo mês"
+                                >
+                                    <ChevronRight size={15} />
+                                </button>
                             </div>
                             <div className="text-xs text-gray-400 font-medium">
                                 Regime de caixa — receitas recebidas e despesas pagas no período.
@@ -1047,7 +1117,7 @@ export default function FinanceiroClient({ payload }: any) {
                                     <Sheet size={16} className="text-emerald-400" /> Exportar Excel
                                 </button>
                             )}
-                            {monthData && (
+                            {monthData ? (
                                 <div className="flex items-center gap-2">
                                     <span className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${isClosed ? 'bg-slate-900 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
                                         {isClosed ? `Fechado${monthData.closeVersion ? ` v${monthData.closeVersion}` : ''}` : 'Em aberto'}
@@ -1062,6 +1132,10 @@ export default function FinanceiroClient({ payload }: any) {
                                         </button>
                                     ))}
                                 </div>
+                            ) : (
+                                <span className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-gray-100 text-gray-500 border border-gray-200">
+                                    Sem dados / não fechado
+                                </span>
                             )}
                             {monthData && (
                                 <button
@@ -1218,17 +1292,21 @@ export default function FinanceiroClient({ payload }: any) {
 
                             {/* COMPARATIVO MENSAL */}
                             <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 flex flex-col min-w-0">
-                                <h3 className="font-bold text-sm text-slate-800 mb-6">Evolução Mensal</h3>
-                                {months.length === 0 ? (
-                                    <div className="flex items-center justify-center h-full text-sm text-gray-400 font-medium">Sem dados.</div>
+                                <h3 className="font-bold text-sm text-slate-800 mb-6">Evolução Mensal — {activeYear}</h3>
+                                {monthsForYear.length === 0 ? (
+                                    <div className="flex items-center justify-center h-full text-sm text-gray-400 font-medium">Sem dados neste ano.</div>
                                 ) : (
                                     <div className="w-full h-72">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={months.map((m: any) => ({
-                                                name: m.key,
-                                                'Receitas': m.totalReceitas,
-                                                'Resultado': m.resultadoLiquido
-                                            }))} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                            <BarChart data={monthsForYear.map((m: any) => {
+                                                const [month] = String(m.key).split('/');
+                                                return {
+                                                    name: monthNames[Number(month) - 1],
+                                                    'Receitas': m.totalReceitas,
+                                                    'CMV': m.cmv,
+                                                    'Resultado': m.resultadoLiquido
+                                                };
+                                            })} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                                 <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 9 }} axisLine={false} tickLine={false} />
                                                 <YAxis tick={{ fill: '#94a3b8', fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(val) => `R$ ${val}`} />
@@ -1238,12 +1316,13 @@ export default function FinanceiroClient({ payload }: any) {
                                                     cursor={{ fill: '#f8fafc' }}
                                                 />
                                                 <Bar dataKey="Receitas" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={24} />
+                                                <Bar dataKey="CMV" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={24} />
                                                 <Bar dataKey="Resultado" fill="#1e293b" radius={[4, 4, 0, 0]} maxBarSize={24} />
                                             </BarChart>
                                         </ResponsiveContainer>
                                     </div>
                                 )}
-                                <p className="text-[10px] text-gray-400 font-medium mt-4 text-center">Comparativo de receitas e resultado líquido por mês no período filtrado.</p>
+                                <p className="text-[10px] text-gray-400 font-medium mt-4 text-center">Receitas, CMV e resultado líquido por mês do ano selecionado.</p>
                             </div>
                         </div>
                     </div>
