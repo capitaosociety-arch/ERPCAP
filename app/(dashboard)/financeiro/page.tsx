@@ -31,7 +31,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   // Execute all heavy queries in parallel
   // O módulo Clientes é independente do financeiro: mensalidades (Subscription)
   // e jogos/locações (Rental) são apenas informativos dentro do próprio Clientes.
-  const [payments, drePayments, cashRegisters, financialEntries, stockMovements, financialPeriods] = await Promise.all([
+  const [payments, drePayments, cashRegisters, financialEntries, stockMovements, financialPeriods, financialPeriodAudits, auditUsers] = await Promise.all([
     prisma.payment.findMany({
       where: { date: { gte: startDate, lte: endDate } },
       include: { 
@@ -68,6 +68,12 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
     }),
     prisma.financialPeriodClose.findMany({
       orderBy: { period: 'desc' },
+    }),
+    prisma.financialPeriodAudit.findMany({
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.user.findMany({
+      select: { id: true, name: true },
     })
   ]);
 
@@ -454,6 +460,13 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       dailySeries: fieldDailySeries
   };
 
+  const auditUserNameMap = new Map(auditUsers.map((user) => [user.id, user.name]));
+  const financialPeriodAuditsPayload = financialPeriodAudits.map((audit) => ({
+      ...audit,
+      createdAt: audit.createdAt.toISOString(),
+      userName: auditUserNameMap.get(audit.userId) || 'Sistema',
+  }));
+
   const payload = {
       totalRevenue,
       totalPendingPayable,
@@ -465,6 +478,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       dreMonths: dreMonthsWithStatus,
       dreDetails,
       financialPeriods,
+      financialPeriodAudits: financialPeriodAuditsPayload,
       userRole: currentUser.role,
       fieldRentalStats
   };

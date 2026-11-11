@@ -7,6 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "test:finance": "tsx scripts/tests/finance-dre.test.ts",
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

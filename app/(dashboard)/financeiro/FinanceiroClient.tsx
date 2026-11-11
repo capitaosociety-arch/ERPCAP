@@ -15,6 +15,7 @@ import { downloadExcel, downloadMultiSheetExcel } from '../../../lib/excel-expor
 import { downloadDrePdf } from '../../../lib/pdf-export';
 import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry, updateFinancialEntry } from '../../actions/financeiro';
 import { closeFinancialPeriod, reopenFinancialPeriod } from '../../actions/financial-periods';
+import { formatPeriodKey, monthsForYear as getMonthsForYear, listYears, periodStatus, shiftMonth } from '../../../lib/dre-navigation';
 import { getRegisterSummary, deleteCashSessionAction, getSessionsForDepositAction, recordCashDepositAction, recordGlobalCashDepositAction } from '../../actions/caixa';
 import { voidPaymentAction, editPaymentAction } from '../../actions/comandas';
 
@@ -30,7 +31,7 @@ export default function FinanceiroClient({ payload }: any) {
     const {
         totalRevenue, totalPendingPayable, totalPendingReceivable,
         dailyChart, methodChart,
-        cashRegisters, financialEntries, dreMonths, dreDetails, userRole, fieldRentalStats
+        cashRegisters, financialEntries, dreMonths, dreDetails, financialPeriodAudits = [], userRole, fieldRentalStats
     } = payload;
 
     const [activeTab, setActiveTab] = useState('DASHBOARD'); // DASHBOARD, CASHIER, BILLING, DRE
@@ -962,23 +963,20 @@ export default function FinanceiroClient({ payload }: any) {
             {activeTab === 'DRE' && (() => {
                 const months = dreMonths || [];
                 const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-                const years: number[] = (Array.from(new Set(months.map((m: any) => Number(String(m.key).split('/')[1])))) as number[])
-                    .filter((year) => Number.isFinite(year))
-                    .sort((a, b) => a - b);
+                const years = listYears(months as any);
                 const fallbackYear = years.length > 0 ? years[years.length - 1] : new Date().getFullYear();
                 const activeYear = dreYear != null && (years.length === 0 || years.includes(dreYear))
                     ? dreYear
                     : fallbackYear;
-                const monthsForYear = months
-                    .filter((m: any) => Number(String(m.key).split('/')[1]) === activeYear)
-                    .sort((a: any, b: any) => Number(a.key.split('/')[0]) - Number(b.key.split('/')[0]));
+                const monthsForYear = getMonthsForYear(months as any, activeYear);
                 const lastMonthForYear = monthsForYear.length > 0
                     ? Number(monthsForYear[monthsForYear.length - 1].key.split('/')[0])
                     : (activeYear === new Date().getFullYear() ? new Date().getMonth() + 1 : 12);
                 const activeMonth = dreMonthNumber != null ? dreMonthNumber : lastMonthForYear;
-                const selected = `${String(activeMonth).padStart(2, '0')}/${activeYear}`;
+                const selected = formatPeriodKey(activeYear, activeMonth);
                 const monthData = months.find((m: any) => m.key === selected);
-                const isClosed = monthData?.periodStatus === 'CLOSED';
+                const currentPeriodStatus = periodStatus(monthData);
+                const isClosed = currentPeriodStatus === 'CLOSED';
                 const canManagePeriod = userRole === 'ADMIN';
                 const minYear = years.length > 0 ? years[0] : fallbackYear;
                 const maxYear = years.length > 0 ? years[years.length - 1] : fallbackYear;
@@ -986,19 +984,14 @@ export default function FinanceiroClient({ payload }: any) {
                 const canGoNext = !(activeYear === maxYear && activeMonth === 12);
 
                 const goToMonth = (delta: number) => {
-                    let year = activeYear;
-                    let month = activeMonth + delta;
-                    if (month < 1) { month = 12; year -= 1; }
-                    if (month > 12) { month = 1; year += 1; }
-                    if (year < minYear || year > maxYear) return;
-                    setDreYear(year);
-                    setDreMonthNumber(month);
+                    const next = shiftMonth(activeYear, activeMonth, delta, minYear, maxYear);
+                    if (!next) return;
+                    setDreYear(next.year);
+                    setDreMonthNumber(next.month);
                 };
 
                 const handleYearChange = (year: number) => {
-                    const monthsOfYear = months
-                        .filter((m: any) => Number(String(m.key).split('/')[1]) === year)
-                        .sort((a: any, b: any) => Number(a.key.split('/')[0]) - Number(b.key.split('/')[0]));
+                    const monthsOfYear = getMonthsForYear(months as any, year);
                     const lastMonth = monthsOfYear.length > 0
                         ? Number(monthsOfYear[monthsOfYear.length - 1].key.split('/')[0])
                         : 1;
@@ -1038,6 +1031,7 @@ export default function FinanceiroClient({ payload }: any) {
 
                 // Total de despesas operacionais + financeiras + impostos
                 const totalExpenses = monthData ? (monthData.totalDespesasOp + monthData.despesasFinanceiras + monthData.impostos) : 0;
+                const periodAudits = (financialPeriodAudits || []).filter((audit: any) => audit.period === selected);
 
                 return (
                     <div className="space-y-6">
@@ -1324,6 +1318,72 @@ export default function FinanceiroClient({ payload }: any) {
                                 )}
                                 <p className="text-[10px] text-gray-400 font-medium mt-4 text-center">Receitas, CMV e resultado líquido por mês do ano selecionado.</p>
                             </div>
+                        </div>
+
+                        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                            <div className="p-5 bg-slate-50 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div>
+                                    <h3 className="font-bold text-sm text-slate-800">Auditoria de fechamentos — {selected}</h3>
+                                    <p className="text-[10px] text-gray-400 font-medium mt-1">Histórico de fechamentos, reaberturas e versões do período selecionado.</p>
+                                </div>
+                                <span className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${isClosed ? 'bg-slate-900 text-white' : currentPeriodStatus === 'NO_DATA' ? 'bg-gray-100 text-gray-500 border border-gray-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                                    {isClosed ? 'Fechado' : currentPeriodStatus === 'NO_DATA' ? 'Sem dados' : 'Em aberto'}
+                                </span>
+                            </div>
+                            {periodAudits.length === 0 ? (
+                                <div className="p-6 text-sm text-gray-400 font-medium">Nenhum fechamento ou retificação registrado para este mês.</div>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse text-sm">
+                                        <thead>
+                                            <tr className="bg-white border-b border-gray-100 text-[10px] uppercase text-gray-400 font-black tracking-wider">
+                                                <th className="p-4">Ação</th>
+                                                <th className="p-4">Data</th>
+                                                <th className="p-4">Responsável</th>
+                                                <th className="p-4 text-center">Versão</th>
+                                                <th className="p-4">Justificativa</th>
+                                                <th className="p-4 text-right">Valores</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-50">
+                                            {periodAudits.map((audit: any) => {
+                                                const after = (audit.after || {}) as any;
+                                                const before = (audit.before || null) as any;
+                                                const version = after.version || before?.version || '-';
+                                                return (
+                                                    <tr key={audit.id} className="hover:bg-slate-50/50">
+                                                        <td className="p-4">
+                                                            <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${audit.action === 'CLOSE' ? 'bg-slate-900 text-white' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                                                                {audit.action === 'CLOSE' ? 'Fechamento' : audit.action === 'REOPEN' ? 'Reabertura' : audit.action}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-4 text-xs text-slate-500 whitespace-nowrap">
+                                                            {new Date(audit.createdAt).toLocaleString('pt-BR', { timeZone: 'America/Cuiaba' })}
+                                                        </td>
+                                                        <td className="p-4 text-xs font-bold text-slate-700">{audit.userName || 'Sistema'}</td>
+                                                        <td className="p-4 text-center text-xs font-black text-slate-700">v{version}</td>
+                                                        <td className="p-4 text-xs text-slate-500 max-w-[280px] whitespace-normal">{audit.reason || '—'}</td>
+                                                        <td className="p-4 text-right text-xs text-slate-600">
+                                                            {before ? (
+                                                                <div className="flex flex-col gap-0.5 whitespace-nowrap">
+                                                                    <span>Antes: R$ {Number(before.resultadoLiquido || 0).toFixed(2).replace('.', ',')}</span>
+                                                                    <span>Depois: R$ {Number(after.resultadoLiquido || 0).toFixed(2).replace('.', ',')}</span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex flex-col gap-0.5 whitespace-nowrap">
+                                                                    <span>Receita: R$ {Number(after.totalReceitas || 0).toFixed(2).replace('.', ',')}</span>
+                                                                    <span>CMV: R$ {Number(after.cmv || 0).toFixed(2).replace('.', ',')}</span>
+                                                                    <span className="font-black text-slate-800">Resultado: R$ {Number(after.resultadoLiquido || 0).toFixed(2).replace('.', ',')}</span>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
                         </div>
                     </div>
                 );
