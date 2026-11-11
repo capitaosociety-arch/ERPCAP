@@ -2,7 +2,6 @@
 
 import { supabaseAdmin } from "@/lib/supabase";
 import { requirePermission } from "@/lib/auth-guard";
-import { createInvoiceSignedUrl } from "@/lib/storage";
 import { isAIEnabled, extractJson } from "@/lib/ai/provider";
 import { visionWithFallback } from "@/lib/ai/vision";
 
@@ -35,7 +34,6 @@ export async function parseInvoiceImage(formData: FormData) {
         }
 
         const imagePath = uploadError ? null : (uploadData?.path || fileName);
-        const imageUrl = imagePath ? await createInvoiceSignedUrl(imagePath) : null;
 
         // 2. Processar a imagem com a camada de IA (retry + fallback de modelos)
         const prompt = `Extraia os dados desta nota fiscal para um JSON rigoroso com: 
@@ -59,7 +57,6 @@ export async function parseInvoiceImage(formData: FormData) {
 
         return {
             success: true,
-            imageUrl,
             imagePath,
             data: resData
         };

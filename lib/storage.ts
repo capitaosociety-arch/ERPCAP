@@ -1,54 +1,34 @@
 import { supabaseAdmin } from "@/lib/supabase";
 
 export const INVOICE_BUCKET = "notas-fiscais";
-export const INVOICE_SIGNED_URL_TTL = 60 * 60; // 1 hora
 
 /**
  * Registros novos guardam o caminho do objeto (ex.: "nf-123-arquivo.jpg").
- * Registros legados guardam uma URL pública completa.
+ * URLs publicas legadas (http/https) nao sao aceitas para acesso server-side.
  */
 export function isStoragePath(value: string | null | undefined): value is string {
-  return typeof value === "string" && value.length > 0 && !/^https?:\/\//i.test(value);
+  if (typeof value !== "string" || value.length === 0 || value.length > 1024) return false;
+  if (/^https?:\/\//i.test(value)) return false;
+  if (value.includes("\\")) return false;
+  if (/[\u0000-\u001F]/.test(value)) return false;
+  if (value.startsWith("/")) return false;
+  if (value.split("/").includes("..")) return false;
+  return true;
 }
 
-export async function createInvoiceSignedUrl(
-  path: string,
-  expiresIn: number = INVOICE_SIGNED_URL_TTL
-): Promise<string | null> {
+export async function downloadInvoiceObject(
+  path: string
+): Promise<{ data: ArrayBuffer; contentType: string } | null> {
   if (!isStoragePath(path)) return null;
 
   const { data, error } = await supabaseAdmin.storage
     .from(INVOICE_BUCKET)
-    .createSignedUrl(path, expiresIn);
+    .download(path);
 
-  if (error) {
-    console.error("Erro ao gerar URL assinada da nota fiscal:", error.message);
-    return null;
-  }
+  if (error || !data) return null;
 
-  return data?.signedUrl ?? null;
-}
-
-/**
- * Converte um valor armazenado em URL utilizável no navegador.
- * - Caminho novo -> URL assinada de curta duração.
- * - URL legada (http/https) -> devolve como está.
- */
-export async function resolveInvoiceImageUrl(
-  value: string | null | undefined
-): Promise<string | null> {
-  if (!value) return null;
-  if (!isStoragePath(value)) return value;
-  return createInvoiceSignedUrl(value);
-}
-
-export async function attachSignedInvoiceUrls<T extends { imageUrl?: string | null }>(
-  rows: T[]
-): Promise<T[]> {
-  return Promise.all(
-    rows.map(async (row) => ({
-      ...row,
-      imageUrl: await resolveInvoiceImageUrl(row.imageUrl)
-    }))
-  );
+  return {
+    data: await data.arrayBuffer(),
+    contentType: data.type || "application/octet-stream"
+  };
 }

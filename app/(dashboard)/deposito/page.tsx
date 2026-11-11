@@ -2,7 +2,6 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../../api/auth/[...nextauth]/route';
 import { redirect } from 'next/navigation';
 import { prisma } from '../../../lib/prisma';
-import { attachSignedInvoiceUrls } from '../../../lib/storage';
 import DepotClient from './DepotClient';
 
 export default async function DepotPage() {
@@ -51,12 +50,18 @@ export default async function DepotPage() {
         where: { location: 'DEPOT' }
     });
 
-    const movementsWithSignedImages = await attachSignedInvoiceUrls(movements);
+    const movementsForClient = movements.map((movement) => {
+        const { imageUrl, ...movementData } = movement;
+        return {
+            ...movementData,
+            hasInvoiceImage: Boolean(imageUrl)
+        };
+    });
 
     return <DepotClient 
         initialInventory={inventory} 
         initialRequests={requests} 
-        initialMovements={movementsWithSignedImages}
+        initialMovements={movementsForClient}
         initialStockCounts={stockCounts}
         userRole={dbUser.role} 
     />;

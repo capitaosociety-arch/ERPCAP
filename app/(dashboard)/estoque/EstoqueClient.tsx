@@ -264,9 +264,9 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
               setImgZoom(1); // Reset zoom
               setImgPos({ x: 0, y: 0 });
               setMobileTab('data'); // No mobile, começa na aba de dados
-              // Preview usa URL assinada temporária; o banco guarda apenas o caminho.
+              // Preview local; o banco guarda apenas o caminho e o acesso é server-side.
               setNfImagePath(res.imagePath || null);
-              setNfImageUrl(res.imageUrl || (typeof window !== 'undefined' ? window.URL.createObjectURL(file) : null));
+              setNfImageUrl(typeof window !== 'undefined' ? window.URL.createObjectURL(file) : null);
               
               const initialMap: Record<number, any> = {};
               res.data.produtos?.forEach((item: any, i: number) => { // User now asked for list of 'produtos'
@@ -778,10 +778,10 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                           </span>
                       </td>
                       <td className="p-4">
-                          {mov.imageUrl ? (
+                          {mov.hasInvoiceImage ? (
                               <a 
-                                href={mov.imageUrl} 
-                                target="_blank" 
+                                href={`/api/invoices/stock/${mov.id}`}
+                                target="_blank"
                                 rel="noreferrer" 
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg font-bold text-xs hover:bg-blue-100 transition border border-blue-200"
                               >
@@ -939,8 +939,8 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                         )}
                     </div>
 
-                    {viewingMovement.imageUrl && (
-                        <a href={viewingMovement.imageUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-700 rounded-xl font-bold text-xs hover:bg-blue-100 transition border border-blue-200">
+                    {viewingMovement.hasInvoiceImage && (
+                        <a href={`/api/invoices/stock/${viewingMovement.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-700 rounded-xl font-bold text-xs hover:bg-blue-100 transition border border-blue-200">
                             <Camera size={14}/> Abrir Nota Fiscal (Anexo)
                         </a>
                     )}

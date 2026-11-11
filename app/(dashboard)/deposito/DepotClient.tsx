@@ -252,7 +252,7 @@ export default function DepotClient({
                 setImgPos({ x: 0, y: 0 });
                 setMobileTab('data');
                 setNfImagePath(res.imagePath || null);
-                setNfImageUrl(res.imageUrl || (typeof window !== 'undefined' ? window.URL.createObjectURL(file) : null));
+                setNfImageUrl(typeof window !== 'undefined' ? window.URL.createObjectURL(file) : null);
                 const initialMap: Record<number, any> = {};
                 res.data.produtos?.forEach((item: any, i: number) => {
                     let matchedId = '';
@@ -762,8 +762,8 @@ export default function DepotClient({
                                                     </span>
                                                 </td>
                                                 <td className="p-4">
-                                                    {mov.imageUrl ? (
-                                                        <a href={mov.imageUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-600 rounded-lg font-bold text-xs hover:bg-blue-100 transition border border-blue-100">
+                                                    {mov.hasInvoiceImage ? (
+                                                        <a href={`/api/invoices/depot/${mov.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-600 rounded-lg font-bold text-xs hover:bg-blue-100 transition border border-blue-100">
                                                             <Camera size={14}/> Ver NF
                                                         </a>
                                                     ) : '-'}
@@ -1193,8 +1193,8 @@ export default function DepotClient({
                                 )}
                             </div>
 
-                            {viewingMovement.imageUrl && (
-                                <a href={viewingMovement.imageUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-700 rounded-xl font-bold text-xs hover:bg-blue-100 transition border border-blue-200">
+                            {viewingMovement.hasInvoiceImage && (
+                                <a href={`/api/invoices/depot/${viewingMovement.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-700 rounded-xl font-bold text-xs hover:bg-blue-100 transition border border-blue-200">
                                     <Camera size={14}/> Abrir Nota Fiscal (Anexo)
                                 </a>
                             )}

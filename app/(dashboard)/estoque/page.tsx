@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { requirePagePermission } from "@/lib/auth-guard";
-import { attachSignedInvoiceUrls } from "@/lib/storage";
 import EstoqueClient from "./EstoqueClient";
 
 export default async function EstoqueRoute() {
@@ -24,12 +23,16 @@ export default async function EstoqueRoute() {
     })
   ]);
 
-  const productsWithSignedImages = await Promise.all(
-    products.map(async (product) => ({
-      ...product,
-      stockMovements: await attachSignedInvoiceUrls(product.stockMovements || [])
-    }))
-  );
+  const productsForClient = products.map((product) => ({
+    ...product,
+    stockMovements: (product.stockMovements || []).map((movement) => {
+      const { imageUrl, ...movementData } = movement;
+      return {
+        ...movementData,
+        hasInvoiceImage: Boolean(imageUrl)
+      };
+    })
+  }));
 
-  return <EstoqueClient initialProducts={productsWithSignedImages as any} initialStockCounts={stockCounts} />;
+  return <EstoqueClient initialProducts={productsForClient as any} initialStockCounts={stockCounts} />;
 }

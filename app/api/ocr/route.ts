@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { requireApiPermission } from "@/lib/api-auth";
-import { createInvoiceSignedUrl } from "@/lib/storage";
 import { isAIEnabled, extractJson } from "@/lib/ai/provider";
 import { visionWithFallback } from "@/lib/ai/vision";
 
@@ -57,7 +56,6 @@ export async function POST(req: NextRequest) {
         }
 
         const imagePath = uploadError ? null : (uploadData?.path || fileName);
-        const imageUrl = imagePath ? await createInvoiceSignedUrl(imagePath) : null;
 
         const prompt = `Extraia os dados desta nota fiscal para um JSON rigoroso com: 
         fornecedor, 
@@ -79,7 +77,7 @@ export async function POST(req: NextRequest) {
             throw new Error("A IA retornou um formato inválido. Tente tirar uma foto mais nítida.");
         }
 
-        return NextResponse.json({ success: true, imageUrl, imagePath, data });
+        return NextResponse.json({ success: true, imagePath, data });
 
     } catch (error: any) {
         const msg = error.message || "Falha ao processar a imagem";
