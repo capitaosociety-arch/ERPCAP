@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useEffect, useMemo, useState, useTransition } from 'react';
 import {
     AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer,
     PieChart, Pie, Cell, Legend
@@ -8,17 +8,20 @@ import {
 import { 
     DollarSign, Wallet, Activity, Database, Users, Lock, Unlock, ArrowRight, Sheet, 
     Plus, Calendar, CheckCircle, XCircle, Trash2, Filter, AlertCircle, TrendingUp, TrendingDown, 
-    Eye, CreditCard, Banknote, ShoppingBag, RotateCcw, Landmark, Edit2, Search, FileDown, Trophy
+    Eye, CreditCard, Banknote, ShoppingBag, RotateCcw, Landmark, Edit2, Search, FileDown, Trophy,
+    ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { downloadExcel, downloadMultiSheetExcel } from '../../../lib/excel-export';
 import { downloadDrePdf } from '../../../lib/pdf-export';
 import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry, updateFinancialEntry } from '../../actions/financeiro';
+import { closeFinancialPeriod, reopenFinancialPeriod } from '../../actions/financial-periods';
 import { getRegisterSummary, deleteCashSessionAction, getSessionsForDepositAction, recordCashDepositAction, recordGlobalCashDepositAction } from '../../actions/caixa';
 import { voidPaymentAction, editPaymentAction } from '../../actions/comandas';
 
 import { useRouter, useSearchParams } from 'next/navigation';
 
 const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#0ea5e9'];
+const PAGE_SIZE_OPTIONS = [10, 15, 25, 50];
 
 export default function FinanceiroClient({ payload }: any) {
     const router = useRouter();
@@ -27,7 +30,7 @@ export default function FinanceiroClient({ payload }: any) {
     const {
         totalRevenue, totalPendingPayable, totalPendingReceivable,
         dailyChart, methodChart,
-        cashRegisters, financialEntries, dreMonths, dreDetails, fieldRentalStats
+        cashRegisters, financialEntries, dreMonths, dreDetails, userRole, fieldRentalStats
     } = payload;
 
     const [activeTab, setActiveTab] = useState('DASHBOARD'); // DASHBOARD, CASHIER, BILLING, DRE
@@ -44,6 +47,8 @@ export default function FinanceiroClient({ payload }: any) {
     const [searchTerm, setSearchTerm] = useState('');
     const [billFrom, setBillFrom] = useState('');
     const [billTo, setBillTo] = useState('');
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(15);
     const [editingEntry, setEditingEntry] = useState<any>(null);
     const [viewingEntry, setViewingEntry] = useState<any>(null);
 
@@ -187,6 +192,7 @@ export default function FinanceiroClient({ payload }: any) {
                 installments: parseInt(newEntry.installments.toString(), 10) || 1
             });
             setShowAddModal(false);
+            setPage(1);
             setNewEntry({
                 description: '',
                 type: 'PAYABLE',
@@ -276,7 +282,7 @@ export default function FinanceiroClient({ payload }: any) {
         }
     };
 
-    const filteredEntries = financialEntries.filter((e: any) => {
+    const filteredEntries = useMemo(() => financialEntries.filter((e: any) => {
         if (filterType !== 'ALL' && e.type !== filterType) return false;
 
         const due = new Date(e.dueDate);
@@ -289,15 +295,60 @@ export default function FinanceiroClient({ payload }: any) {
             if (due > to) return false;
         }
         return true;
-    });
+    }), [financialEntries, filterType, billFrom, billTo]);
 
-    const searchedEntries = filteredEntries.filter((e: any) => {
+    const searchedEntries = useMemo(() => filteredEntries.filter((e: any) => {
         const term = searchTerm.trim().toLowerCase();
         if (!term) return true;
         return [e.description, e.category, e.reference, e.method, e.notes, e.status]
             .filter(Boolean)
             .some((field: any) => String(field).toLowerCase().includes(term));
-    });
+    }), [filteredEntries, searchTerm]);
+
+    // Lançamentos mais recentes primeiro, considerando a data/hora de criação.
+    const sortedEntries = useMemo(() => [...searchedEntries].sort((a: any, b: any) => {
+        const aCreated = new Date(a.createdAt).getTime();
+        const bCreated = new Date(b.createdAt).getTime();
+        const aTime = Number.isFinite(aCreated) ? aCreated : 0;
+        const bTime = Number.isFinite(bCreated) ? bCreated : 0;
+        if (aTime !== bTime) return bTime - aTime;
+
+        const aId = String(a.id || '');
+        const bId = String(b.id || '');
+        if (aId === bId) return 0;
+        return aId < bId ? -1 : 1;
+    }), [searchedEntries]);
+
+    const totalPages = Math.max(1, Math.ceil(sortedEntries.length / pageSize));
+    const safePage = Math.min(page, totalPages);
+
+    useEffect(() => {
+        if (page > totalPages) setPage(totalPages);
+    }, [page, totalPages]);
+
+    const paginatedEntries = useMemo(() => {
+        const start = (safePage - 1) * pageSize;
+        return sortedEntries.slice(start, start + pageSize);
+    }, [sortedEntries, safePage, pageSize]);
+
+    const firstVisible = sortedEntries.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
+    const lastVisible = Math.min(safePage * pageSize, sortedEntries.length);
+
+    const pageItems = useMemo(() => {
+        if (totalPages <= 7) {
+            return Array.from({ length: totalPages }, (_, i) => i + 1);
+        }
+
+        const items: Array<number | 'left-ellipsis' | 'right-ellipsis'> = [1];
+        const start = Math.max(2, safePage - 1);
+        const end = Math.min(totalPages - 1, safePage + 1);
+
+        if (start > 2) items.push('left-ellipsis');
+        for (let i = start; i <= end; i++) items.push(i);
+        if (end < totalPages - 1) items.push('right-ellipsis');
+        items.push(totalPages);
+        return items;
+    }, [safePage, totalPages]);
 
     const handleVoidPayment = async (paymentId: string) => {
         if (!confirm("Deseja realmente ESTORNAR este pagamento? O valor será removido do caixa e a comanda será reaberta se estiver fechada.")) return;
@@ -673,9 +724,9 @@ export default function FinanceiroClient({ payload }: any) {
                 <div className="space-y-4">
                     <div className="flex flex-wrap justify-between items-center gap-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                         <div className="flex gap-2">
-                            <button onClick={() => setFilterType('ALL')} className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${filterType === 'ALL' ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>Todos</button>
-                            <button onClick={() => setFilterType('PAYABLE')} className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${filterType === 'PAYABLE' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>Contas a Pagar</button>
-                            <button onClick={() => setFilterType('RECEIVABLE')} className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${filterType === 'RECEIVABLE' ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>Contas a Receber</button>
+                            <button onClick={() => { setFilterType('ALL'); setPage(1); }} className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${filterType === 'ALL' ? 'bg-slate-800 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>Todos</button>
+                            <button onClick={() => { setFilterType('PAYABLE'); setPage(1); }} className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${filterType === 'PAYABLE' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>Contas a Pagar</button>
+                            <button onClick={() => { setFilterType('RECEIVABLE'); setPage(1); }} className={`px-4 py-1.5 rounded-full text-xs font-bold transition ${filterType === 'RECEIVABLE' ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>Contas a Receber</button>
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="relative">
@@ -683,7 +734,7 @@ export default function FinanceiroClient({ payload }: any) {
                                 <input
                                     type="date"
                                     value={billFrom}
-                                    onChange={(e) => setBillFrom(e.target.value)}
+                                    onChange={(e) => { setBillFrom(e.target.value); setPage(1); }}
                                     title="Vencimento de"
                                     className="bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none w-40"
                                 />
@@ -694,14 +745,14 @@ export default function FinanceiroClient({ payload }: any) {
                                 <input
                                     type="date"
                                     value={billTo}
-                                    onChange={(e) => setBillTo(e.target.value)}
+                                    onChange={(e) => { setBillTo(e.target.value); setPage(1); }}
                                     title="Vencimento até"
                                     className="bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none w-40"
                                 />
                             </div>
                             {(billFrom || billTo) && (
                                 <button
-                                    onClick={() => { setBillFrom(''); setBillTo(''); }}
+                                    onClick={() => { setBillFrom(''); setBillTo(''); setPage(1); }}
                                     className="text-[10px] font-bold text-red-500 hover:text-red-600 px-2 py-2 rounded-lg hover:bg-red-50 transition"
                                     title="Limpar datas"
                                 >
@@ -715,7 +766,7 @@ export default function FinanceiroClient({ payload }: any) {
                                 <input
                                     type="text"
                                     value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
                                     placeholder="Buscar lançamento (descrição, categoria, ref., método...)"
                                     className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none"
                                 />
@@ -740,7 +791,7 @@ export default function FinanceiroClient({ payload }: any) {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-50">
-                                    {searchedEntries.map((e: any) => (
+                                    {paginatedEntries.map((e: any) => (
                                         <tr key={e.id} className="hover:bg-slate-50/50 transition">
                                             <td className="p-4">
                                                 <div className="flex flex-col">
@@ -839,6 +890,70 @@ export default function FinanceiroClient({ payload }: any) {
                                 </tbody>
                             </table>
                         </div>
+
+                        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 px-4 py-3 border-t border-gray-100 bg-slate-50">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                                <span className="text-xs font-medium text-slate-500">
+                                    Mostrando <b className="text-slate-700">{firstVisible}–{lastVisible}</b> de <b className="text-slate-700">{sortedEntries.length}</b> registros
+                                </span>
+                                <span className="hidden sm:inline text-gray-300">|</span>
+                                <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                                    Itens por página
+                                    <select
+                                        value={pageSize}
+                                        onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                                        className="bg-white border border-gray-200 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                                    >
+                                        {PAGE_SIZE_OPTIONS.map((size) => (
+                                            <option key={size} value={size}>{size}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+
+                            <div className="flex items-center justify-between sm:justify-end gap-2">
+                                <span className="text-xs font-bold text-slate-600 whitespace-nowrap">
+                                    Página {safePage} de {totalPages}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => setPage(Math.max(1, safePage - 1))}
+                                        disabled={safePage <= 1}
+                                        className="p-2 rounded-lg text-slate-500 bg-white border border-gray-200 hover:bg-gray-100 hover:text-slate-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                        aria-label="Página anterior"
+                                        title="Página anterior"
+                                    >
+                                        <ChevronLeft size={16} />
+                                    </button>
+
+                                    {pageItems.map((item) => (
+                                        typeof item === 'number' ? (
+                                            <button
+                                                key={item}
+                                                onClick={() => setPage(item)}
+                                                className={`min-w-8 h-8 px-2 rounded-lg text-xs font-black transition ${safePage === item ? 'bg-slate-800 text-white shadow-sm' : 'bg-white text-slate-500 border border-gray-200 hover:bg-gray-100 hover:text-slate-700'}`}
+                                                aria-label={`Página ${item}`}
+                                                aria-current={safePage === item ? 'page' : undefined}
+                                            >
+                                                {item}
+                                            </button>
+                                        ) : (
+                                            <span key={item} className="px-1 text-xs font-bold text-gray-400">…</span>
+                                        )
+                                    ))}
+
+                                    <button
+                                        onClick={() => setPage(Math.min(totalPages, safePage + 1))}
+                                        disabled={safePage >= totalPages}
+                                        className="p-2 rounded-lg text-slate-500 bg-white border border-gray-200 hover:bg-gray-100 hover:text-slate-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                        aria-label="Próxima página"
+                                        title="Próxima página"
+                                    >
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
@@ -847,6 +962,35 @@ export default function FinanceiroClient({ payload }: any) {
                 const months = dreMonths || [];
                 const selected = dreMonth || (months.length > 0 ? months[months.length - 1].key : '');
                 const monthData = months.find((m: any) => m.key === selected);
+                const isClosed = monthData?.periodStatus === 'CLOSED';
+                const canManagePeriod = userRole === 'ADMIN';
+
+                const handleCloseMonth = () => {
+                    if (!selected || !canManagePeriod) return;
+                    if (!window.confirm(`Fechar o DRE de ${selected}? O mês ficará preservado e só poderá ser reaberto por um administrador com justificativa.`)) return;
+                    startTransition(async () => {
+                        try {
+                            await closeFinancialPeriod(selected);
+                            router.refresh();
+                        } catch (error: any) {
+                            alert(error?.message || 'Erro ao fechar o período.');
+                        }
+                    });
+                };
+
+                const handleReopenMonth = () => {
+                    if (!selected || !canManagePeriod) return;
+                    const reason = window.prompt(`Justificativa para reabrir o DRE de ${selected}:`);
+                    if (!reason || !reason.trim()) return;
+                    startTransition(async () => {
+                        try {
+                            await reopenFinancialPeriod(selected, reason.trim());
+                            router.refresh();
+                        } catch (error: any) {
+                            alert(error?.message || 'Erro ao reabrir o período.');
+                        }
+                    });
+                };
 
                 // Categorias de despesas do mês selecionado
                 const expenseCats = monthData ? Object.entries(monthData.despesas || {}) : [];
@@ -902,6 +1046,22 @@ export default function FinanceiroClient({ payload }: any) {
                                 >
                                     <Sheet size={16} className="text-emerald-400" /> Exportar Excel
                                 </button>
+                            )}
+                            {monthData && (
+                                <div className="flex items-center gap-2">
+                                    <span className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${isClosed ? 'bg-slate-900 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                                        {isClosed ? `Fechado${monthData.closeVersion ? ` v${monthData.closeVersion}` : ''}` : 'Em aberto'}
+                                    </span>
+                                    {canManagePeriod && (isClosed ? (
+                                        <button onClick={handleReopenMonth} disabled={isPending} className="bg-amber-50 border border-amber-200 text-amber-700 px-3 py-2 rounded-xl text-xs font-bold hover:bg-amber-100 transition disabled:opacity-50">
+                                            Reabrir mês
+                                        </button>
+                                    ) : (
+                                        <button onClick={handleCloseMonth} disabled={isPending} className="bg-slate-900 text-white px-3 py-2 rounded-xl text-xs font-bold hover:bg-slate-800 transition disabled:opacity-50">
+                                            Fechar mês
+                                        </button>
+                                    ))}
+                                </div>
                             )}
                             {monthData && (
                                 <button
@@ -975,6 +1135,26 @@ export default function FinanceiroClient({ payload }: any) {
                                             <span className="text-sm font-medium text-slate-600 pl-4">(-) CMV — Custo das Mercadorias Vendidas</span>
                                             <span className="text-sm font-bold text-red-500">- R$ {Number(monthData.cmv).toFixed(2).replace('.', ',')}</span>
                                         </div>
+                                        {monthData.cmvAudit?.suspectCount > 0 && (
+                                            <div className="px-6 pb-3">
+                                                <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 rounded-xl px-3 py-2 text-[11px] font-medium">
+                                                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                                                    <span>
+                                                        CMV com {monthData.cmvAudit.suspectCount} saída(s) de custo acima do preço de venda, totalizando R$ {Number(monthData.cmvAudit.suspectValue).toFixed(2).replace('.', ',')}. Auditar os custos antes de fechar o mês.
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {monthData.cmvAudit?.uncostedCount > 0 && (
+                                            <div className="px-6 pb-3">
+                                                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-xl px-3 py-2 text-[11px] font-medium">
+                                                    <AlertCircle size={14} className="mt-0.5 shrink-0" />
+                                                    <span>
+                                                        {monthData.cmvAudit.uncostedCount} saída(s) de venda sem custo histórico registrado ({Number(monthData.cmvAudit.uncostedQty).toFixed(2).replace('.', ',')} un.). O CMV não usa o custo atual do cadastro para não alterar o histórico.
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
                                         <div className="px-6 py-3 flex justify-between items-center bg-slate-50">
                                             <span className="text-sm font-black text-slate-800">= Lucro Bruto</span>
                                             <div className="flex items-center gap-3">

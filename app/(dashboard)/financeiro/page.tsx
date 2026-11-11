@@ -1,9 +1,11 @@
 import { prisma } from "../../../lib/prisma";
 import { requirePagePermission } from "../../../lib/auth-guard";
+import { evaluateCmvMovement } from "../../../lib/financial-cmv";
+import { classifyDreExpense, isInventoryPurchaseEntry } from "../../../lib/financial-classification";
 import FinanceiroClient from "./FinanceiroClient";
 
 export default async function FinanceiroRoute({ searchParams }: { searchParams: { from?: string; to?: string } }) {
-  await requirePagePermission("permFinance");
+  const currentUser = await requirePagePermission("permFinance");
 
   const p = await searchParams;
   const from = p.from;
@@ -29,7 +31,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   // Execute all heavy queries in parallel
   // O módulo Clientes é independente do financeiro: mensalidades (Subscription)
   // e jogos/locações (Rental) são apenas informativos dentro do próprio Clientes.
-  const [payments, cashRegisters, financialEntries, stockMovements] = await Promise.all([
+  const [payments, cashRegisters, financialEntries, stockMovements, financialPeriods] = await Promise.all([
     prisma.payment.findMany({
       where: { date: { gte: startDate, lte: endDate } },
       include: { 
@@ -55,8 +57,14 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       orderBy: { dueDate: 'asc' }
     }),
     prisma.stockMovement.findMany({
-      where: { type: 'OUT_SALE', date: { gte: startDate, lte: endDate } },
+      where: {
+        date: { gte: startDate, lte: endDate },
+        OR: [{ type: 'OUT_SALE' }, { movementKind: 'RETURN' }],
+      },
       include: { product: true }
+    }),
+    prisma.financialPeriodClose.findMany({
+      orderBy: { period: 'desc' },
     })
   ]);
 
@@ -192,12 +200,28 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       despesas: Record<string, number>; // por categoria de conta paga
       despesasFinanceiras: number; // juros/multas etc (categoria específica, opcional)
       impostos: number;
+      cmvUncostedCount: number;
+      cmvUncostedQty: number;
+      cmvSuspectCount: number;
+      cmvSuspectValue: number;
   };
 
   const dreMap = new Map<string, DreBucket>();
   const getBucket = (key: string): DreBucket => {
       if (!dreMap.has(key)) {
-          dreMap.set(key, { key, receitasVendas: 0, receitasOutras: 0, cmv: 0, despesas: {}, despesasFinanceiras: 0, impostos: 0 });
+          dreMap.set(key, {
+              key,
+              receitasVendas: 0,
+              receitasOutras: 0,
+              cmv: 0,
+              despesas: {},
+              despesasFinanceiras: 0,
+              impostos: 0,
+              cmvUncostedCount: 0,
+              cmvUncostedQty: 0,
+              cmvSuspectCount: 0,
+              cmvSuspectValue: 0,
+          });
       }
       return dreMap.get(key)!;
   };
@@ -208,6 +232,10 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       const m = parts.find(p => p.type === 'month')!.value;
       return `${m}/${y}`;
   };
+  const monthSortKey = (key: string) => {
+      const [month, year] = key.split('/');
+      return `${year}${month}`;
+  };
 
   // Receitas de vendas (payments de comandas/PDV)
   payments.forEach(p => {
@@ -215,17 +243,31 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       b.receitasVendas += p.amount;
   });
 
-  // CMV: custo dos produtos vendidos no período (movimentos de saída de venda)
+  // CMV: custo dos produtos vendidos no período (movimentos de saída de venda).
+  // Usa exclusivamente o snapshot de custo da movimentação; não substitui por
+  // Product.cost atual, evitando alteração retroativa do histórico.
   stockMovements.forEach(m => {
-      if (m.type === 'OUT_SALE') {
+      if (m.type === 'OUT_SALE' || m.movementKind === 'RETURN') {
           const b = getBucket(monthKey(m.date));
-          b.cmv += (m.quantity * (m.unitCost ?? m.product?.cost ?? 0));
+          const cmv = evaluateCmvMovement(m);
+          const isReturn = m.movementKind === 'RETURN';
+          b.cmv += isReturn ? -cmv.value : cmv.value;
+          if (cmv.uncosted && !isReturn) {
+              b.cmvUncostedCount += 1;
+              b.cmvUncostedQty += cmv.quantity;
+          }
+          if (cmv.suspect && !isReturn) {
+              b.cmvSuspectCount += 1;
+              b.cmvSuspectValue += cmv.value;
+          }
       }
   });
 
-  // Contas a pagar/receber pagas no período (regime de caixa)
+  // Contas a pagar/receber pagas no período (regime de caixa).
+  // Compras de estoque não entram como despesa: o custo é reconhecido no CMV.
   financialEntries.forEach(entry => {
       if (entry.status !== 'PAID') return;
+      if (isInventoryPurchaseEntry(entry)) return;
       const paidAt = entry.paymentDate || entry.dueDate;
       if (paidAt < startDate || paidAt > endDate) return;
       const b = getBucket(monthKey(paidAt));
@@ -234,15 +276,15 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
           // Receitas extras realizadas (não contabilizadas em vendas)
           b.receitasOutras += entry.amount;
       } else {
-          const cat = (entry.category || 'Diversos').toLowerCase();
-          if (cat.includes('imposto') || cat.includes('taxa') || cat.includes('darf') || cat.includes('simples')) {
+          const kind = classifyDreExpense(entry);
+          if (kind === 'tax') {
               b.impostos += entry.amount;
-          } else if (cat.includes('juros') || cat.includes('multa') || cat.includes('financeiro') || cat.includes('tarifa')) {
+          } else if (kind === 'financial') {
               b.despesasFinanceiras += entry.amount;
           } else {
               const catName = entry.category || 'Diversos';
               b.despesas[catName] = (b.despesas[catName] || 0) + entry.amount;
-            }
+          }
       }
   });
 
@@ -252,7 +294,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       vendas: { data: string; metodo: string; comanda: string; valor: number }[];
       outrasReceitas: { data: string; descricao: string; valor: number }[];
       despesas: { data: string; categoria: string; descricao: string; valor: number }[];
-      cmv: { produto: string; qtd: number; custoUnit: number; total: number }[];
+      cmv: { produto: string; qtd: number; custoUnit: number; total: number; semCusto?: boolean; suspeito?: boolean }[];
   };
   const detailMap = new Map<string, DreDetail>();
   const getDetail = (key: string): DreDetail => {
@@ -275,17 +317,21 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   stockMovements.forEach(m => {
       if (m.type === 'OUT_SALE') {
           const b = getDetail(monthKey(m.date));
+          const cmv = evaluateCmvMovement(m);
           b.cmv.push({
               produto: m.product?.name || 'Produto',
               qtd: m.quantity,
-              custoUnit: Number((m.unitCost ?? m.product?.cost ?? 0).toFixed(2)),
-              total: Number((m.quantity * (m.unitCost ?? m.product?.cost ?? 0)).toFixed(2))
+              custoUnit: Number((cmv.unitCost ?? 0).toFixed(2)),
+              total: Number(cmv.value.toFixed(2)),
+              semCusto: cmv.uncosted,
+              suspeito: cmv.suspect,
           });
       }
   });
 
   financialEntries.forEach(entry => {
       if (entry.status !== 'PAID') return;
+      if (isInventoryPurchaseEntry(entry)) return;
       const paidAt = entry.paymentDate || entry.dueDate;
       if (paidAt < startDate || paidAt > endDate) return;
       const b = getDetail(monthKey(paidAt));
@@ -305,7 +351,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       }
   });
 
-  const dreDetails = Array.from(detailMap.values()).sort((a, b) => a.key.localeCompare(b.key));
+  const dreDetails = Array.from(detailMap.values()).sort((a, b) => monthSortKey(a.key).localeCompare(monthSortKey(b.key)));
 
   // Se não houver nada no range, garante que o mês atual aparece
   const dreMonths = Array.from(dreMap.entries()).map(([key, b]) => {
@@ -329,9 +375,30 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
           resultadoLiquido: Number(resultadoLiquido.toFixed(2)),
           margemBruta: totalReceitas > 0 ? Number((lucroBruto / totalReceitas * 100).toFixed(1)) : 0,
           margemEbitda: totalReceitas > 0 ? Number((ebitda / totalReceitas * 100).toFixed(1)) : 0,
-          margemLiquida: totalReceitas > 0 ? Number((resultadoLiquido / totalReceitas * 100).toFixed(1)) : 0
+          margemLiquida: totalReceitas > 0 ? Number((resultadoLiquido / totalReceitas * 100).toFixed(1)) : 0,
+          cmvAudit: {
+              uncostedCount: b.cmvUncostedCount,
+              uncostedQty: Number(b.cmvUncostedQty.toFixed(2)),
+              suspectCount: b.cmvSuspectCount,
+              suspectValue: Number(b.cmvSuspectValue.toFixed(2)),
+          }
       };
-  }).sort((a, b) => a.key.localeCompare(b.key));
+  }).sort((a, b) => monthSortKey(a.key).localeCompare(monthSortKey(b.key)));
+
+  const periodCloseMap = new Map(financialPeriods.map((close) => [close.period, close]));
+  const dreMonthsWithStatus = dreMonths.map((month) => {
+      const close = periodCloseMap.get(month.key);
+      if (close?.status === 'CLOSED') {
+          return {
+              ...month,
+              ...(close.snapshot as any),
+              periodStatus: 'CLOSED',
+              closeVersion: close.version,
+              closedAt: close.closedAt,
+          };
+      }
+      return { ...month, periodStatus: 'OPEN' };
+  });
 
   // Formatar Arrays do Recharts
   const dailyChart = Object.keys(dailyRevenueMap).map(date => ({
@@ -383,8 +450,10 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       methodChart,
       cashRegisters,
       financialEntries,
-      dreMonths,
+      dreMonths: dreMonthsWithStatus,
       dreDetails,
+      financialPeriods,
+      userRole: currentUser.role,
       fieldRentalStats
   };
 

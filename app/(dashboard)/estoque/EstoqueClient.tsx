@@ -12,6 +12,7 @@ interface Product {
   id: string;
   name: string;
   unit: string;
+  price?: number;
   category?: { name: string };
   stock?: { quantity: number; minQuantity: number; unit: string };
   iconUrl?: string;
@@ -318,10 +319,20 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
           if (!mOptions.productId) {
               return alert(`Associe todos os itens à um produto no sistema para continuar.`);
           }
+
+          const itemPrice = parseLocalNumber(mOptions.price);
+          const product = products.find((p: any) => p.id === mOptions.productId);
+          if (product && Number(product.price) > 0 && itemPrice > Number(product.price)) {
+              const proceed = window.confirm(
+                  `Custo unitário de R$ ${itemPrice.toFixed(2)} para "${product.name}" é maior que o preço de venda (R$ ${Number(product.price).toFixed(2)}).\n\nConfirme somente se o custo da nota fiscal estiver correto.`
+              );
+              if (!proceed) return;
+          }
+
           movementsToSave.push({
               productId: mOptions.productId,
               quantity: parseLocalNumber(mOptions.quantity),
-              price: parseLocalNumber(mOptions.price)
+              price: itemPrice
           });
       }
 

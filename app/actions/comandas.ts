@@ -6,6 +6,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../api/auth/[...nextauth]/route";
 import { requirePermission, requireUser } from "../../lib/auth-guard";
 import { createAuditLog } from "./audit";
+import { effectiveAverageCost, recordInventoryCost, weightedAverageCost } from "../../lib/inventory-cost";
+import { assertFinancialPeriodOpen } from "./financial-periods";
 
 const COMANDAS_ACCESS = ["permPDV", "permComandas"] as const;
 const PAYMENT_ACCESS = ["permPDV", "permComandas", "permFinance"] as const;
@@ -53,7 +55,7 @@ export async function addItemToOrder(orderId: string, itemId: string, quantity: 
     await requirePermission([...COMANDAS_ACCESS]);
 
     await prisma.$transaction(async (tx) => {
-        await tx.orderItem.create({
+        const orderItem = await tx.orderItem.create({
             data: {
                 orderId,
                 productId: isService ? undefined : itemId,
@@ -73,20 +75,39 @@ export async function addItemToOrder(orderId: string, itemId: string, quantity: 
         if (!isService) {
             const hasStock = await tx.stock.findUnique({ where: { productId: itemId }});
             if(hasStock) {
+               const currentQty = Number(hasStock.quantity) || 0;
+               const prod = await tx.product.findUnique({ where: { id: itemId }, select: { cost: true } });
+               const unitCost = effectiveAverageCost(hasStock.averageCost, prod?.cost, currentQty);
+               const newQty = currentQty - quantity;
+
                await tx.stock.update({
                    where: { productId: itemId },
-                   data: { quantity: { decrement: quantity } }
+                   data: { quantity: newQty, averageCost: unitCost }
                });
                
-               const prod = await tx.product.findUnique({ where: { id: itemId }, select: { cost: true } });
-               await tx.stockMovement.create({
+               const movement = await tx.stockMovement.create({
                    data: {
                        productId: itemId,
                        type: "OUT_SALE",
+                       movementKind: "SALE",
+                       orderId,
+                       orderItemId: orderItem.id,
                        quantity,
-                       unitCost: prod?.cost ?? null,
+                       unitCost,
                        notes: `Adicionado à comanda`
                    }
+               });
+
+               await recordInventoryCost(tx, {
+                   productId: itemId,
+                   location: 'BALCAO',
+                   movementType: 'SALE',
+                   quantity,
+                   unitCost,
+                   balanceQty: newQty,
+                   balanceAvgCost: effectiveAverageCost(hasStock.averageCost, prod?.cost, newQty),
+                   referenceId: movement.id,
+                   notes: `Venda comanda ${orderId}`,
                });
             }
         }
@@ -179,20 +200,53 @@ export async function processPayment(orderId: string, amount: number, method: st
                 if (delta > 0 && stock.quantity < delta) {
                     throw new Error(`Estoque insuficiente! Disponível: ${stock.quantity}`);
                 }
+
+                const product = await tx.product.findUnique({ where: { id: item.productId }, select: { cost: true } });
+                const currentQty = Number(stock.quantity) || 0;
+                const currentAvg = effectiveAverageCost(stock.averageCost, product?.cost, currentQty);
+                let unitCost = currentAvg;
+                const newQty = currentQty - delta;
+                let newAvg = currentAvg;
+
+                if (delta < 0) {
+                    const saleMovements = await tx.stockMovement.findMany({
+                        where: { orderItemId: item.id, productId: item.productId, type: 'OUT_SALE' },
+                        select: { quantity: true, unitCost: true }
+                    });
+                    const saleQty = saleMovements.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
+                    const saleValue = saleMovements.reduce((acc, m) => acc + ((Number(m.quantity) || 0) * (Number(m.unitCost) || 0)), 0);
+                    unitCost = saleQty > 0 ? Number((saleValue / saleQty).toFixed(6)) : currentAvg;
+                    newAvg = weightedAverageCost(currentQty, currentAvg, Math.abs(delta), unitCost);
+                }
+
                 await tx.stock.update({
                     where: { id: stock.id },
-                    data: { quantity: { decrement: delta } }
+                    data: { quantity: newQty, averageCost: newAvg }
                 });
 
-                const prodCost = delta > 0 && item.productId ? (await tx.product.findUnique({ where: { id: item.productId }, select: { cost: true } }))?.cost ?? null : null;
-                await tx.stockMovement.create({
+                const movement = await tx.stockMovement.create({
                     data: {
                         productId: item.productId,
                         type: delta > 0 ? "OUT_SALE" : "IN",
+                        movementKind: delta > 0 ? "SALE" : "RETURN",
+                        orderId: item.orderId,
+                        orderItemId: item.id,
                         quantity: Math.abs(delta),
-                        unitCost: prodCost,
+                        unitCost,
                         notes: `Ajuste de quantidade na comanda (${item.quantity} -> ${newQuantity})`
                     }
+                });
+
+                await recordInventoryCost(tx, {
+                    productId: item.productId,
+                    location: 'BALCAO',
+                    movementType: delta > 0 ? 'SALE' : 'RETURN',
+                    quantity: Math.abs(delta),
+                    unitCost,
+                    balanceQty: newQty,
+                    balanceAvgCost: newAvg,
+                    referenceId: movement.id,
+                    notes: `Ajuste comanda ${item.orderId}`,
                 });
             }
         }
@@ -227,22 +281,50 @@ export async function removeItemFromOrder(orderItemId: string) {
         if (!item) throw new Error("Item não encontrado");
         if (item.order.status !== "OPEN") throw new Error("Apenas itens de comandas em aberto podem ser removidos");
 
-        // 1. Estorna estoque se for produto
+        // 1. Estorna estoque se for produto, usando o custo original da venda
         if (item.productId) {
             const stock = await tx.stock.findUnique({ where: { productId: item.productId } });
             if (stock) {
+                const saleMovements = await tx.stockMovement.findMany({
+                    where: { orderItemId: item.id, productId: item.productId, type: 'OUT_SALE' },
+                    select: { quantity: true, unitCost: true }
+                });
+                const saleQty = saleMovements.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
+                const saleValue = saleMovements.reduce((acc, m) => acc + ((Number(m.quantity) || 0) * (Number(m.unitCost) || 0)), 0);
+                const currentQty = Number(stock.quantity) || 0;
+                const currentAvg = effectiveAverageCost(stock.averageCost, 0, currentQty);
+                const unitCost = saleQty > 0 ? Number((saleValue / saleQty).toFixed(6)) : currentAvg;
+                const newQty = currentQty + item.quantity;
+                const newAvg = weightedAverageCost(currentQty, currentAvg, item.quantity, unitCost);
+
                 await tx.stock.update({
                     where: { id: stock.id },
-                    data: { quantity: { increment: item.quantity } }
+                    data: { quantity: newQty, averageCost: newAvg }
                 });
 
-                await tx.stockMovement.create({
+                const movement = await tx.stockMovement.create({
                     data: {
                         productId: item.productId,
                         type: "IN",
+                        movementKind: "RETURN",
+                        orderId: item.orderId,
+                        orderItemId: item.id,
                         quantity: item.quantity,
+                        unitCost,
                         notes: `Estorno: Item removido da comanda (Cod ${item.orderId})`
                     }
+                });
+
+                await recordInventoryCost(tx, {
+                    productId: item.productId,
+                    location: 'BALCAO',
+                    movementType: 'RETURN',
+                    quantity: item.quantity,
+                    unitCost,
+                    balanceQty: newQty,
+                    balanceAvgCost: newAvg,
+                    referenceId: movement.id,
+                    notes: `Remoção item comanda ${item.orderId}`,
                 });
             }
         }
@@ -278,23 +360,51 @@ export async function deleteComandaAction(orderId: string) {
         if (!order) throw new Error("Comanda não encontrada");
         if (order.status !== "OPEN") throw new Error("Apenas comandas abertas podem ser canceladas");
 
-        // 1. Estorna estoque de todos os itens
+        // 1. Estorna estoque de todos os itens usando o custo original da venda
         for (const item of order.items) {
             if (item.productId) {
                 const stock = await tx.stock.findUnique({ where: { productId: item.productId } });
                 if (stock) {
+                    const saleMovements = await tx.stockMovement.findMany({
+                        where: { orderId, productId: item.productId, type: 'OUT_SALE' },
+                        select: { quantity: true, unitCost: true }
+                    });
+                    const saleQty = saleMovements.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
+                    const saleValue = saleMovements.reduce((acc, m) => acc + ((Number(m.quantity) || 0) * (Number(m.unitCost) || 0)), 0);
+                    const currentQty = Number(stock.quantity) || 0;
+                    const currentAvg = effectiveAverageCost(stock.averageCost, 0, currentQty);
+                    const unitCost = saleQty > 0 ? Number((saleValue / saleQty).toFixed(6)) : currentAvg;
+                    const newQty = currentQty + item.quantity;
+                    const newAvg = weightedAverageCost(currentQty, currentAvg, item.quantity, unitCost);
+
                     await tx.stock.update({
                         where: { id: stock.id },
-                        data: { quantity: { increment: item.quantity } }
+                        data: { quantity: newQty, averageCost: newAvg }
                     });
 
-                    await tx.stockMovement.create({
+                    const movement = await tx.stockMovement.create({
                         data: {
                             productId: item.productId,
                             type: "IN",
+                            movementKind: "RETURN",
+                            orderId,
+                            orderItemId: item.id,
                             quantity: item.quantity,
+                            unitCost,
                             notes: `Estorno: Comanda Inteira Cancelada (Cod ${orderId})`
                         }
+                    });
+
+                    await recordInventoryCost(tx, {
+                        productId: item.productId,
+                        location: 'BALCAO',
+                        movementType: 'RETURN',
+                        quantity: item.quantity,
+                        unitCost,
+                        balanceQty: newQty,
+                        balanceAvgCost: newAvg,
+                        referenceId: movement.id,
+                        notes: `Cancelamento comanda ${orderId}`,
                     });
                 }
             }
@@ -332,6 +442,7 @@ export async function voidPaymentAction(paymentId: string) {
             });
 
             if (!payment) throw new Error(`Pagamento não encontrado! Tentou ID: [${paymentId}]`);
+            await assertFinancialPeriodOpen(payment.date);
 
             // 1. Remove o pagamento
             await tx.payment.delete({
@@ -381,6 +492,7 @@ export async function editPaymentAction(paymentId: string, newMethod: string, ne
         });
 
         if (!payment) throw new Error("Pagamento não encontrado.");
+        await assertFinancialPeriodOpen(payment.date);
 
         await prisma.payment.update({
             where: { id: paymentId },

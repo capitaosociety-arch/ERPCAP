@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "../../lib/auth-guard";
 import { createAuditLog } from "./audit";
+import { effectiveAverageCost, recordInventoryCost, weightedAverageCost } from "../../lib/inventory-cost";
 
 export async function updateMinStock(productId: string, minQuantity: number) {
     await requirePermission("permStock");
@@ -40,47 +41,80 @@ export async function registerStockMovement(
     const date = new Date();
 
     await prisma.$transaction(async (tx) => {
-        // Obter ou criar o estoque atual
+        const product = await tx.product.findUnique({ where: { id: productId } });
         const stock = await tx.stock.upsert({
             where: { productId },
             update: {},
             create: { productId, quantity: 0, minQuantity: 5, unit: "UN" }
         });
 
+        const currentQty = Number(stock.quantity) || 0;
+        const fallbackCost = Number(product?.cost) || 0;
+        const currentAvg = effectiveAverageCost(stock.averageCost, fallbackCost, currentQty);
         const isPositive = type === "IN";
-        const newQuantity = isPositive ? stock.quantity + quantity : stock.quantity - quantity;
+        const incomingCost = unitCost != null && Number.isFinite(unitCost) && unitCost >= 0
+            ? Number(unitCost)
+            : fallbackCost;
 
-        // Atualizar estoque
+        let newQuantity: number;
+        let newAverageCost = currentAvg;
+        let snapshotCost = currentAvg;
+        let movementKind = type;
+
+        if (isPositive) {
+            newQuantity = currentQty + quantity;
+            newAverageCost = weightedAverageCost(currentQty, currentAvg, quantity, incomingCost);
+            snapshotCost = incomingCost;
+            movementKind = "PURCHASE";
+        } else {
+            newQuantity = currentQty - quantity;
+            snapshotCost = currentAvg;
+        }
+
         await tx.stock.update({
             where: { productId },
-            data: { quantity: newQuantity }
+            data: { quantity: newQuantity, averageCost: newAverageCost }
         });
 
-        // Registrar o log (sempre com a data de lançamento atual no sistema)
-        await tx.stockMovement.create({
+        const movement = await tx.stockMovement.create({
             data: {
                 productId,
                 type,
+                movementKind,
                 quantity,
+                unitCost: snapshotCost,
                 notes: notes || null,
                 document: document || null,
                 date
             }
         });
 
-        // Se for Entrada, podemos atualizar o preço de custo e opcionalmente criar um Contas a Pagar
-        if (type === "IN") {
-            if (unitCost && unitCost > 0) {
+        await recordInventoryCost(tx, {
+            productId,
+            location: 'BALCAO',
+            movementType: movementKind,
+            quantity,
+            unitCost: snapshotCost,
+            balanceQty: newQuantity,
+            balanceAvgCost: newAverageCost,
+            referenceId: movement.id,
+            notes: notes || null,
+        });
+
+        if (isPositive) {
+            if (incomingCost > 0) {
                 await tx.product.update({
                     where: { id: productId },
-                    data: { cost: unitCost }
+                    data: { cost: incomingCost }
                 });
                 
                 await tx.priceHistory.create({
                     data: {
                         productId,
                         price: 0,
-                        cost: unitCost,
+                        cost: incomingCost,
+                        quantity,
+                        landedUnitCost: incomingCost,
                         invoice: document || null,
                         date
                     }
@@ -88,18 +122,18 @@ export async function registerStockMovement(
             }
 
             if (dueDateString) {
-                const product = await tx.product.findUnique({ where: { id: productId } });
-                const cost = unitCost || product?.cost || 0;
-                const totalCost = quantity * cost;
+                const totalCost = quantity * incomingCost;
                 
                 if (totalCost > 0) {
                     await tx.financialEntry.create({
                         data: {
                             description: `Compra - ${product?.name || 'Insumo'} (Qtd: ${quantity}) - Balcão`,
                             type: 'PAYABLE',
+                            category: 'Fornecedor',
+                            entryKind: 'INVENTORY_PURCHASE',
+                            competenceDate: new Date(dueDateString),
                             amount: totalCost,
                             dueDate: new Date(dueDateString),
-                            category: 'Fornecedor',
                             notes: notes || `Entrada manual de estoque para ${product?.name || 'Insumo'}`,
                             status: 'PENDING',
                             reference: `${new Date().getMonth() + 1}/${new Date().getFullYear()}`
@@ -110,7 +144,6 @@ export async function registerStockMovement(
         }
     });
 
-    // Registrar Log de Auditoria
     await createAuditLog("Movimentação de Estoque", `${type === 'IN' ? 'Entrada' : 'Saída'} manual de ${quantity} unidades.`);
 
     revalidatePath("/estoque");
@@ -146,25 +179,32 @@ export async function registerBatchStockMovement(
 
                 if (qty <= 0) continue;
 
-                // 1. Upsert do estoque
-                await tx.stock.upsert({
+                const product = await tx.product.findUnique({ where: { id: mov.productId } });
+                const stock = await tx.stock.upsert({
                     where: { productId: mov.productId },
                     update: {},
                     create: { productId: mov.productId, quantity: 0, minQuantity: 5, unit: "UN" }
                 });
 
-                // 2. Atualizar estoque
+                const currentQty = Number(stock.quantity) || 0;
+                const fallbackCost = Number(product?.cost) || 0;
+                const currentAvg = effectiveAverageCost(stock.averageCost, fallbackCost, currentQty);
+                const incomingCost = costPrice > 0 ? costPrice : fallbackCost;
+                const newQuantity = currentQty + qty;
+                const newAverageCost = weightedAverageCost(currentQty, currentAvg, qty, incomingCost);
+
                 await tx.stock.update({
                     where: { productId: mov.productId },
-                    data: { quantity: { increment: qty } }
+                    data: { quantity: newQuantity, averageCost: newAverageCost }
                 });
 
-                // 3. Registrar movimentação (data atual)
-                await tx.stockMovement.create({
+                const movement = await tx.stockMovement.create({
                     data: {
                         productId: mov.productId,
                         type: "IN",
+                        movementKind: "PURCHASE",
                         quantity: qty,
+                        unitCost: incomingCost,
                         notes: notes || "Entrada via NF (IA)",
                         document: document || null,
                         // Guarda o caminho do Storage; a URL assinada é gerada na leitura.
@@ -173,18 +213,31 @@ export async function registerBatchStockMovement(
                     }
                 });
 
-                // 4. Atualizar preço de custo do produto se válido
-                if (costPrice > 0) {
+                await recordInventoryCost(tx, {
+                    productId: mov.productId,
+                    location: 'BALCAO',
+                    movementType: 'PURCHASE',
+                    quantity: qty,
+                    unitCost: incomingCost,
+                    balanceQty: newQuantity,
+                    balanceAvgCost: newAverageCost,
+                    referenceId: movement.id,
+                    notes: notes || null,
+                });
+
+                if (incomingCost > 0) {
                     await tx.product.update({
                         where: { id: mov.productId },
-                        data: { cost: costPrice }
+                        data: { cost: incomingCost }
                     });
                     
                     await tx.priceHistory.create({
                         data: {
                             productId: mov.productId,
                             price: 0, 
-                            cost: costPrice,
+                            cost: incomingCost,
+                            quantity: qty,
+                            landedUnitCost: incomingCost,
                             invoice: document || null,
                             date
                         }
@@ -201,6 +254,8 @@ export async function registerBatchStockMovement(
                         amount: totalCost,
                         dueDate: new Date(dueDateString),
                         category: 'Fornecedor',
+                        entryKind: 'INVENTORY_PURCHASE',
+                        competenceDate: new Date(dueDateString),
                         notes: notes || 'Gerado automaticamente via importação de NF no Estoque',
                         status: 'PENDING',
                         reference: `${new Date().getMonth() + 1}/${new Date().getFullYear()}`

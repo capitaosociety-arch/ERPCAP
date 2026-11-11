@@ -147,6 +147,7 @@ model Product {
   depotMovements   DepotMovement[]
   transferRequests TransferRequest[]
   stockCounts      StockCount[]
+  inventoryCostLedger InventoryCostLedger[]
 
   @@index([name])
   @@index([categoryId])
@@ -183,6 +184,7 @@ model Stock {
   productId   String   @unique
   quantity    Float    @default(0)
   minQuantity Float    @default(5)
+  averageCost Float    @default(0)
   unit        String   @default("UN")
   
   product     Product  @relation(fields: [productId], references: [id])
@@ -194,6 +196,9 @@ model StockMovement {
   type        String   // IN, OUT_SALE, OUT_MANUAL, LOSS
   quantity    Float
   unitCost    Float?   // Custo unitário no momento da saída (snapshot p/ DRE)
+  movementKind String? // IN, OUT_SALE, OUT_MANUAL, LOSS, TRANSFER_IN, TRANSFER_OUT, RETURN
+  orderId     String?
+  orderItemId String?
   notes       String?
   document    String?  // Number of NF or receipt
   imageUrl    String?  // Link to the uploaded invoice image
@@ -203,6 +208,9 @@ model StockMovement {
 
   @@index([productId])
   @@index([date])
+  @@index([movementKind])
+  @@index([orderId])
+  @@index([orderItemId])
 }
 
 model CashRegister {
@@ -292,6 +300,8 @@ model PriceHistory {
   productId   String
   price       Float    // Preço de venda
   cost        Float?   // Preço de custo
+  quantity    Float?   // Quantidade adquirida nesta entrada
+  landedUnitCost Float? // Custo unitário com frete/tributos não recuperáveis
   invoice     String?  // Número da NF
   date        DateTime @default(now())
 
@@ -357,6 +367,8 @@ model FinancialEntry {
   paymentDate      DateTime?
   status           String   @default("PENDING") // 'PENDING', 'PAID', 'CANCELED'
   category         String   // Ex: Aluguel, Fornecedor, Salário, Internet, Diversos
+  entryKind        String?  // INVENTORY_PURCHASE, OPERATING, FINANCIAL, TAX, OTHER_REVENUE
+  competenceDate   DateTime? // Data de competência para o DRE
   method           String?  // PIX, CASH, CARD, BOLETO, TRANSFER, etc
   reference        String?  // Mês/Ano de referência (MM/YYYY)
   installmentGroup String?  // ID para agrupar parcelas
@@ -373,11 +385,70 @@ model FinancialEntry {
   @@index([category])
 }
 
+model InventoryCostLedger {
+  id             String   @id @default(cuid())
+  productId      String
+  location       String   // BALCAO | DEPOT
+  movementType   String   // OPENING, PURCHASE, SALE, TRANSFER_IN, TRANSFER_OUT, LOSS, ADJUSTMENT, RETURN
+  quantity       Float
+  unitCost       Float
+  totalCost      Float
+  balanceQty     Float
+  balanceAvgCost Float
+  referenceId    String?
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  product        Product  @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@index([location])
+  @@index([movementType])
+  @@index([createdAt])
+}
+
+model FinancialPeriodClose {
+  id             String   @id @default(cuid())
+  period         String   @unique // YYYY-MM
+  status         String   @default("OPEN") // OPEN | CLOSED
+  snapshot       Json
+  revenue        Float
+  cmv            Float
+  expenses       Float
+  result         Float
+  version        Int      @default(1)
+  closedAt       DateTime?
+  closedById     String?
+  reopenedAt     DateTime?
+  reopenedById   String?
+  reopenReason   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status])
+  @@index([period])
+}
+
+model FinancialPeriodAudit {
+  id             String   @id @default(cuid())
+  period         String
+  action         String   // CLOSE | REOPEN | RETIFICATION
+  userId         String
+  reason         String?
+  before         Json?
+  after          Json?
+  createdAt      DateTime @default(now())
+
+  @@index([period])
+  @@index([createdAt])
+}
+
 model DepotStock {
   id          String   @id @default(cuid())
   productId   String   @unique
   quantity    Float    @default(0)
   minQuantity Float    @default(5)
+  averageCost Float    @default(0)
   unit        String   @default("UN")
   
   product     Product  @relation(fields: [productId], references: [id])
@@ -388,6 +459,8 @@ model DepotMovement {
   productId    String
   type         String    // IN, OUT_TRANSFER, LOSS, ADJUSTMENT
   quantity     Float
+  unitCost     Float?
+  movementKind String?   // IN, TRANSFER_OUT, LOSS, ADJUSTMENT
   notes        String?
   document     String?   // Number of NF ou Recibo
   imageUrl     String?   // Link para imagem da nota

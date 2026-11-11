@@ -5,6 +5,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '../api/auth/[...nextauth]/route';
 import { revalidatePath } from 'next/cache';
 import { createAuditLog } from './audit';
+import { effectiveAverageCost, recordInventoryCost, weightedAverageCost } from '../../lib/inventory-cost';
 
 async function verifyAuth(requiredPerm: string = 'permDepot') {
     const session = await getServerSession(authOptions);
@@ -50,40 +51,66 @@ export async function addDepotStock(
     await verifyAuth();
 
     await prisma.$transaction(async (tx) => {
-        // Upsert do Saldo no Depósito
-        await tx.depotStock.upsert({
+        const date = new Date();
+        const product = await tx.product.findUnique({ where: { id: productId } });
+        const depot = await tx.depotStock.upsert({
             where: { productId },
-            update: { quantity: { increment: quantity } },
-            create: { productId, quantity }
+            update: {},
+            create: { productId, quantity: 0, minQuantity: 5, unit: "UN" }
         });
 
-        const date = new Date();
+        const currentQty = Number(depot.quantity) || 0;
+        const fallbackCost = Number(product?.cost) || 0;
+        const currentAvg = effectiveAverageCost(depot.averageCost, fallbackCost, currentQty);
+        const incomingCost = unitCost != null && Number.isFinite(unitCost) && unitCost >= 0
+            ? Number(unitCost)
+            : fallbackCost;
+        const newQuantity = currentQty + quantity;
+        const newAverageCost = weightedAverageCost(currentQty, currentAvg, quantity, incomingCost);
 
-        // Registrar o Histórico no Depósito (sempre data do sistema)
-        await tx.depotMovement.create({
+        await tx.depotStock.update({
+            where: { productId },
+            data: { quantity: newQuantity, averageCost: newAverageCost }
+        });
+
+        const movement = await tx.depotMovement.create({
             data: {
                 productId,
                 type: 'IN',
+                movementKind: 'PURCHASE',
                 quantity,
+                unitCost: incomingCost,
                 document,
                 notes: notes || 'Entrada manual em Depósito',
                 date
             }
         });
 
-        const product = await tx.product.findUnique({ where: { id: productId } });
+        await recordInventoryCost(tx, {
+            productId,
+            location: 'DEPOT',
+            movementType: 'PURCHASE',
+            quantity,
+            unitCost: incomingCost,
+            balanceQty: newQuantity,
+            balanceAvgCost: newAverageCost,
+            referenceId: movement.id,
+            notes: notes || null,
+        });
 
-        if (unitCost && unitCost > 0) {
+        if (incomingCost > 0) {
             await tx.product.update({
                 where: { id: productId },
-                data: { cost: unitCost }
+                data: { cost: incomingCost }
             });
             
             await tx.priceHistory.create({
                 data: {
                     productId,
                     price: 0,
-                    cost: unitCost,
+                    cost: incomingCost,
+                    quantity,
+                    landedUnitCost: incomingCost,
                     invoice: document || null,
                     date
                 }
@@ -91,8 +118,7 @@ export async function addDepotStock(
         }
 
         if (dueDateString) {
-            const cost = unitCost || product?.cost || 0;
-            const totalCost = quantity * cost;
+            const totalCost = quantity * incomingCost;
             
             if (totalCost > 0) {
                 await tx.financialEntry.create({
@@ -102,6 +128,8 @@ export async function addDepotStock(
                         amount: totalCost,
                         dueDate: new Date(dueDateString),
                         category: 'Fornecedor',
+                        entryKind: 'INVENTORY_PURCHASE',
+                        competenceDate: new Date(dueDateString),
                         notes: notes || `Entrada manual de depósito para ${product?.name || 'Insumo'}`,
                         status: 'PENDING',
                         reference: `${new Date().getMonth() + 1}/${new Date().getFullYear()}`
@@ -175,40 +203,82 @@ export async function authorizeTransfer(requestId: string) {
             throw new Error('Solicitação não encontrada ou já processada.');
         }
 
+        const product = await tx.product.findUnique({ where: { id: request.productId } });
         const depot = await tx.depotStock.findUnique({ where: { productId: request.productId } });
         if (!depot || depot.quantity < request.quantity) {
             throw new Error(`Saldo insuficiente no depósito! Tentativa: ${request.quantity}, Disponível: ${depot?.quantity || 0}`);
         }
 
-        // A) Deduzir do Depósito
+        const fallbackCost = Number(product?.cost) || 0;
+        const depotAvg = effectiveAverageCost(depot.averageCost, fallbackCost, depot.quantity);
+        const newDepotQty = Number(depot.quantity) - request.quantity;
+
+        // A) Deduzir do Depósito, mantendo o custo médio da origem
         await tx.depotStock.update({
             where: { productId: request.productId },
-            data: { quantity: { decrement: request.quantity } }
+            data: { quantity: newDepotQty }
         });
         
-        await tx.depotMovement.create({
+        const depotMovement = await tx.depotMovement.create({
             data: {
                 productId: request.productId,
                 type: 'OUT_TRANSFER',
+                movementKind: 'TRANSFER_OUT',
                 quantity: request.quantity,
+                unitCost: depotAvg,
                 notes: `Transferência Autorizada por ${user.name} [Ref: ${request.id.slice(-4)}]`
             }
         });
 
-        // B) Abastecer Estoque "Frente de Loja"
-        await tx.stock.upsert({
-            where: { productId: request.productId },
-            update: { quantity: { increment: request.quantity } },
-            create: { productId: request.productId, quantity: request.quantity }
+        await recordInventoryCost(tx, {
+            productId: request.productId,
+            location: 'DEPOT',
+            movementType: 'TRANSFER_OUT',
+            quantity: request.quantity,
+            unitCost: depotAvg,
+            balanceQty: newDepotQty,
+            balanceAvgCost: depotAvg,
+            referenceId: depotMovement.id,
+            notes: `Transferência para Balcão [Ref: ${request.id.slice(-4)}]`,
         });
 
-        await tx.stockMovement.create({
+        // B) Abastecer Estoque "Frente de Loja" pelo custo da origem
+        const stock = await tx.stock.upsert({
+            where: { productId: request.productId },
+            update: {},
+            create: { productId: request.productId, quantity: 0, minQuantity: 5, unit: "UN" }
+        });
+        const stockQty = Number(stock.quantity) || 0;
+        const stockAvg = effectiveAverageCost(stock.averageCost, fallbackCost, stockQty);
+        const newStockQty = stockQty + request.quantity;
+        const newStockAvg = weightedAverageCost(stockQty, stockAvg, request.quantity, depotAvg);
+
+        await tx.stock.update({
+            where: { productId: request.productId },
+            data: { quantity: newStockQty, averageCost: newStockAvg }
+        });
+
+        const stockMovement = await tx.stockMovement.create({
             data: {
                 productId: request.productId,
                 type: 'IN',
+                movementKind: 'TRANSFER_IN',
                 quantity: request.quantity,
+                unitCost: depotAvg,
                 notes: `RECEBIMENTO VIA DEPÓSITO (Autorizado por ${user.name})`
             }
+        });
+
+        await recordInventoryCost(tx, {
+            productId: request.productId,
+            location: 'BALCAO',
+            movementType: 'TRANSFER_IN',
+            quantity: request.quantity,
+            unitCost: depotAvg,
+            balanceQty: newStockQty,
+            balanceAvgCost: newStockAvg,
+            referenceId: stockMovement.id,
+            notes: `Recebimento do Depósito [Ref: ${request.id.slice(-4)}]`,
         });
 
         // C) Atualizar Status da Solicitação
@@ -258,22 +328,40 @@ export async function adjustDepotStockLoss(productId: string, quantityLost: numb
         if (!depot || depot.quantity < quantityLost) {
             throw new Error(`Estoque insuficiente no depósito para declarar perda!`);
         }
+
+        const product = await tx.product.findUnique({ where: { id: productId } });
+        const fallbackCost = Number(product?.cost) || 0;
+        const depotAvg = effectiveAverageCost(depot.averageCost, fallbackCost, depot.quantity);
+        const newQty = Number(depot.quantity) - quantityLost;
         
         await tx.depotStock.update({
             where: { productId },
-            data: { quantity: { decrement: quantityLost } }
+            data: { quantity: newQty, averageCost: depotAvg }
         });
 
-        await tx.depotMovement.create({
+        const movement = await tx.depotMovement.create({
             data: {
                 productId,
                 type: 'LOSS',
+                movementKind: 'LOSS',
                 quantity: quantityLost,
+                unitCost: depotAvg,
                 notes: notes || 'Perda registrada no Depósito'
             }
         });
 
-        const product = await tx.product.findUnique({ where: { id: productId } });
+        await recordInventoryCost(tx, {
+            productId,
+            location: 'DEPOT',
+            movementType: 'LOSS',
+            quantity: quantityLost,
+            unitCost: depotAvg,
+            balanceQty: newQty,
+            balanceAvgCost: depotAvg,
+            referenceId: movement.id,
+            notes: notes || 'Perda registrada no Depósito',
+        });
+
         await createAuditLog("Baixa em Depósito", `Perda/Quebra de ${quantityLost} unidades de ${product?.name} registrada no Depósito central.`);
     });
     
@@ -286,28 +374,66 @@ export async function directTransfer(productId: string, quantity: number, notes?
     if (user.role !== 'ADMIN') throw new Error('Apenas administradores podem realizar transferência direta sem autorização prévia.');
 
     await prisma.$transaction(async (tx) => {
+        const product = await tx.product.findUnique({ where: { id: productId } });
         const depot = await tx.depotStock.findUnique({ where: { productId } });
         if (!depot || depot.quantity < quantity) {
             throw new Error(`Saldo insuficiente no depósito!`);
         }
 
+        const fallbackCost = Number(product?.cost) || 0;
+        const depotAvg = effectiveAverageCost(depot.averageCost, fallbackCost, depot.quantity);
+        const newDepotQty = Number(depot.quantity) - quantity;
+
         await tx.depotStock.update({
             where: { productId },
-            data: { quantity: { decrement: quantity } }
+            data: { quantity: newDepotQty }
         });
 
-        await tx.stock.upsert({
+        const depotMovement = await tx.depotMovement.create({
+            data: { productId, type: 'OUT_TRANSFER', movementKind: 'TRANSFER_OUT', quantity, unitCost: depotAvg, notes: notes || 'Transferência Direta (Admin)' }
+        });
+
+        await recordInventoryCost(tx, {
+            productId,
+            location: 'DEPOT',
+            movementType: 'TRANSFER_OUT',
+            quantity,
+            unitCost: depotAvg,
+            balanceQty: newDepotQty,
+            balanceAvgCost: depotAvg,
+            referenceId: depotMovement.id,
+            notes: notes || 'Transferência Direta (Admin)',
+        });
+
+        const stock = await tx.stock.upsert({
             where: { productId },
-            update: { quantity: { increment: quantity } },
-            create: { productId, quantity }
+            update: {},
+            create: { productId, quantity: 0, minQuantity: 5, unit: "UN" }
+        });
+        const stockQty = Number(stock.quantity) || 0;
+        const stockAvg = effectiveAverageCost(stock.averageCost, fallbackCost, stockQty);
+        const newStockQty = stockQty + quantity;
+        const newStockAvg = weightedAverageCost(stockQty, stockAvg, quantity, depotAvg);
+
+        await tx.stock.update({
+            where: { productId },
+            data: { quantity: newStockQty, averageCost: newStockAvg }
         });
 
-        await tx.depotMovement.create({
-            data: { productId, type: 'OUT_TRANSFER', quantity, notes: notes || 'Transferência Direta (Admin)' }
+        const stockMovement = await tx.stockMovement.create({
+            data: { productId, type: 'IN', movementKind: 'TRANSFER_IN', quantity, unitCost: depotAvg, notes: 'Transferência Direta vinda do Depósito' }
         });
 
-        await tx.stockMovement.create({
-            data: { productId, type: 'IN', quantity, notes: 'Transferência Direta vinda do Depósito' }
+        await recordInventoryCost(tx, {
+            productId,
+            location: 'BALCAO',
+            movementType: 'TRANSFER_IN',
+            quantity,
+            unitCost: depotAvg,
+            balanceQty: newStockQty,
+            balanceAvgCost: newStockAvg,
+            referenceId: stockMovement.id,
+            notes: notes || 'Transferência Direta (Admin)',
         });
     });
 
@@ -364,25 +490,32 @@ export async function registerBatchDepotStockMovement(
 
                 if (qty <= 0) continue;
 
-                // 1. Upsert do estoque do depósito
-                await tx.depotStock.upsert({
+                const product = await tx.product.findUnique({ where: { id: mov.productId } });
+                const depot = await tx.depotStock.upsert({
                     where: { productId: mov.productId },
                     update: {},
                     create: { productId: mov.productId, quantity: 0, minQuantity: 5, unit: "UN" }
                 });
 
-                // 2. Atualizar estoque depósito (incremento)
+                const currentQty = Number(depot.quantity) || 0;
+                const fallbackCost = Number(product?.cost) || 0;
+                const currentAvg = effectiveAverageCost(depot.averageCost, fallbackCost, currentQty);
+                const incomingCost = costPrice > 0 ? costPrice : fallbackCost;
+                const newQuantity = currentQty + qty;
+                const newAverageCost = weightedAverageCost(currentQty, currentAvg, qty, incomingCost);
+
                 await tx.depotStock.update({
                     where: { productId: mov.productId },
-                    data: { quantity: { increment: qty } }
+                    data: { quantity: newQuantity, averageCost: newAverageCost }
                 });
 
-                // 3. Registrar movimentação no depósito
-                await tx.depotMovement.create({
+                const movement = await tx.depotMovement.create({
                     data: {
                         productId: mov.productId,
                         type: "IN",
+                        movementKind: "PURCHASE",
                         quantity: qty,
+                        unitCost: incomingCost,
                         notes: notes || "Entrada via NF (IA) no Depósito",
                         document: document || null,
                         // Guarda o caminho do Storage; a URL assinada é gerada na leitura.
@@ -393,18 +526,31 @@ export async function registerBatchDepotStockMovement(
                     }
                 });
 
-                // 4. Atualizar preço de custo do produto se válido
-                if (costPrice > 0) {
+                await recordInventoryCost(tx, {
+                    productId: mov.productId,
+                    location: 'DEPOT',
+                    movementType: 'PURCHASE',
+                    quantity: qty,
+                    unitCost: incomingCost,
+                    balanceQty: newQuantity,
+                    balanceAvgCost: newAverageCost,
+                    referenceId: movement.id,
+                    notes: notes || null,
+                });
+
+                if (incomingCost > 0) {
                     await tx.product.update({
                         where: { id: mov.productId },
-                        data: { cost: costPrice }
+                        data: { cost: incomingCost }
                     });
                     
                     await tx.priceHistory.create({
                         data: {
                             productId: mov.productId,
                             price: 0, 
-                            cost: costPrice,
+                            cost: incomingCost,
+                            quantity: qty,
+                            landedUnitCost: incomingCost,
                             invoice: document || null,
                             date
                         }
@@ -421,6 +567,8 @@ export async function registerBatchDepotStockMovement(
                         amount: totalCost,
                         dueDate: new Date(dueDateString),
                         category: 'Fornecedor',
+                        entryKind: 'INVENTORY_PURCHASE',
+                        competenceDate: new Date(dueDateString),
                         notes: notes || 'Gerado automaticamente via importação de NF no Depósito',
                         status: 'PENDING',
                         reference: `${new Date().getMonth() + 1}/${new Date().getFullYear()}`

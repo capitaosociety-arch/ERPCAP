@@ -138,7 +138,7 @@ export async function getDashboardKpis() {
     const startOfDay = new Date(`${todayStr}T00:00:00-04:00`);
     const endOfDay = new Date(`${todayStr}T23:59:59-04:00`);
 
-    const [rentals, payments, orderItems, closedOrders, subPayments] = await Promise.all([
+    const [rentals, payments, costMovements, closedOrders, subPayments] = await Promise.all([
       prisma.rental.findMany({ 
         where: { startTime: { gte: startOfDay, lte: endOfDay } } 
       }),
@@ -155,12 +155,9 @@ export async function getDashboardKpis() {
           } 
         }
       }),
-      prisma.orderItem.findMany({
-        where: { 
-          status: 'ACTIVE',
-          order: { status: 'CLOSED', closedAt: { gte: startOfDay, lte: endOfDay } } 
-        },
-        include: { product: true }
+      prisma.stockMovement.findMany({
+        where: { type: 'OUT_SALE', date: { gte: startOfDay, lte: endOfDay } },
+        select: { quantity: true, unitCost: true }
       }),
       prisma.order.findMany({
           where: { status: 'CLOSED', closedAt: { gte: startOfDay, lte: endOfDay } },
@@ -222,7 +219,7 @@ export async function getDashboardKpis() {
     // 4. Lucro Líquido do Dia (Faturamento Total - Custo dos Produtos)
     const subRevenue = subPayments.reduce((acc, sp) => acc + sp.amount, 0);
     const todayRevenue = payments.reduce((acc, p) => acc + p.amount, 0) + subRevenue;
-    const totalCost = orderItems.reduce((acc, it) => acc + ((it.product?.cost || 0) * it.quantity), 0);
+    const totalCost = costMovements.reduce((acc, movement) => acc + ((Number(movement.unitCost) || 0) * movement.quantity), 0);
     const dailyProfit = todayRevenue - totalCost;
 
     return {
