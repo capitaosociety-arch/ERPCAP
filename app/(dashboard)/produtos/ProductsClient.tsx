@@ -1,16 +1,18 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { Plus, Edit3, X, DollarSign, ToggleLeft, ToggleRight, Sheet, Upload, CheckCircle2, RefreshCw, Trash2, Search, Printer } from 'lucide-react';
+import { useMemo, useState, useTransition } from 'react';
+import { Plus, Edit3, X, DollarSign, ToggleLeft, ToggleRight, Sheet, Upload, CheckCircle2, RefreshCw, Trash2, Search, Printer, ArrowUpDown } from 'lucide-react';
 import { updateProductPrice, upsertProduct, toggleProductStatus, deleteProduct } from '../../actions/products';
 import { processProductsWithAI, saveBatchProducts } from '../../actions/import-actions';
 import { downloadExcel } from '../../../lib/excel-export';
+import { PRODUCT_SORT_OPTIONS, ProductSortOption, sortProducts } from '../../../lib/product-sort';
 import * as XLSX from 'xlsx';
 import CardapioPrint from './CardapioPrint';
 
 export default function ProductsClient({ initialProducts, categories = [] }: any) {
   const [products, setProducts] = useState(initialProducts);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<ProductSortOption>('name-asc');
   
   // Price Modal
   const [isPriceModalOpen, setPriceModalOpen] = useState(false);
@@ -199,12 +201,19 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
     downloadExcel(exportData, "Relatorio_Produtos");
   };
 
-  const filteredProducts = products.filter((p: any) => {
-      if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) {
-          return false;
-      }
-      return true;
-  });
+  const filteredProducts = useMemo(() => {
+      const filtered = products.filter((p: any) => {
+          if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+              return false;
+          }
+          return true;
+      });
+
+      return sortProducts(filtered, sortBy, {
+          getQuantity: (p: any) => p.stock?.quantity,
+          getMinQuantity: (p: any) => p.stock?.minQuantity,
+      });
+  }, [products, searchQuery, sortBy]);
 
   return (
     <div className="animate-in fade-in duration-500">
@@ -223,6 +232,19 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                  onChange={(e) => setSearchQuery(e.target.value)}
                  className="pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-mrts-blue w-full sm:w-64 transition-all"
              />
+          </div>
+          <div className="relative">
+             <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+             <select
+                 aria-label="Ordenar produtos"
+                 value={sortBy}
+                 onChange={(e) => setSortBy(e.target.value as ProductSortOption)}
+                 className="appearance-none bg-white border border-gray-200 text-slate-600 pl-9 pr-8 py-2.5 rounded-xl text-sm font-bold shadow-sm focus:outline-none focus:ring-2 focus:ring-mrts-blue cursor-pointer w-full sm:w-auto"
+             >
+                 {PRODUCT_SORT_OPTIONS.map((option) => (
+                     <option key={option.value} value={option.value}>{option.label}</option>
+                 ))}
+             </select>
           </div>
           <label className={`cursor-pointer bg-white border border-gray-200 text-slate-600 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm flex items-center gap-2 hover:bg-gray-50 transition-all ${isProcessingAI ? 'opacity-50 pointer-events-none' : ''}`}>
             {isProcessingAI ? <RefreshCw size={18} className="animate-spin" /> : <Upload size={18} />}

@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useTransition, useMemo } from 'react';
-import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search, Upload, Plus, ClipboardList, Sheet, CalendarRange, Eye } from 'lucide-react';
+import { Package, Camera, X, RefreshCw, CheckCircle, Check, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, PackagePlus, AlertCircle, AlertTriangle, Edit, Filter, TrendingDown, TrendingUp, Search, Upload, Plus, ClipboardList, Sheet, CalendarRange, Eye, ArrowUpDown } from 'lucide-react';
 import { registerStockMovement, updateMinStock, registerBatchStockMovement } from '../../actions/stock';
 import { quickCreateProductFromInvoice } from '../../actions/products';
 import { saveStockCounts } from '../../actions/stock-count';
 import { downloadExcel } from '../../../lib/excel-export';
+import { PRODUCT_SORT_OPTIONS, ProductSortOption, sortProducts } from '../../../lib/product-sort';
 
 interface Product {
   id: string;
@@ -27,6 +28,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
   const [products, setProducts] = useState<Product[]>(initialProducts || []);
   const [filter, setFilter] = useState('ALL'); // ALL, LOW, HISTORY, COUNT
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<ProductSortOption>('name-asc');
 
   // Contagem diária de estoque (Balcão)
   const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
@@ -414,18 +416,32 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
       setExcludedRows(newE);
   };
 
-  const filteredProducts = products.filter((p: any) => {
-      if (p.isActive === false) return false;
-      if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) {
-          return false;
-      }
-      if (filter === 'LOW') {
-          const qty = p.stock?.quantity || 0;
-          const min = p.stock?.minQuantity || 5;
-          return qty <= min;
-      }
-      return true;
-  });
+  const filteredProducts = useMemo(() => {
+      const filtered = products.filter((p: any) => {
+          if (p.isActive === false) return false;
+          if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+              return false;
+          }
+          if (filter === 'LOW') {
+              const qty = p.stock?.quantity || 0;
+              const min = p.stock?.minQuantity || 5;
+              return qty <= min;
+          }
+          return true;
+      });
+
+      return sortProducts(filtered, sortBy, {
+          getQuantity: (p: any) => p.stock?.quantity,
+          getMinQuantity: (p: any) => p.stock?.minQuantity,
+      });
+  }, [products, searchQuery, filter, sortBy]);
+
+  const activeProducts = useMemo(() => products.filter((p: any) => p.isActive !== false), [products]);
+  const sortedActiveProducts = useMemo(() => sortProducts(activeProducts, sortBy, {
+      getQuantity: (p: any) => p.stock?.quantity,
+      getMinQuantity: (p: any) => p.stock?.minQuantity,
+  }), [activeProducts, sortBy]);
+  const productsForSelect = useMemo(() => sortProducts(activeProducts, 'name-asc'), [activeProducts]);
 
   // Itens ativos (não excluídos) para o controle de verificação da NF
   const activeItemsCount = parsedNfData?.produtos
@@ -461,6 +477,19 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-mrts-blue w-full sm:w-64 transition-all"
                 />
+            </div>
+            <div className="relative">
+                <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={15} />
+                <select
+                    aria-label="Ordenar produtos"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as ProductSortOption)}
+                    className="appearance-none bg-white border border-gray-200 text-slate-600 pl-8 pr-7 py-2 rounded-xl text-xs font-bold shadow-sm focus:outline-none focus:ring-2 focus:ring-mrts-blue cursor-pointer w-full sm:w-auto"
+                >
+                    {PRODUCT_SORT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                </select>
             </div>
             <button onClick={() => {
                 setNfModalOpen(true);
@@ -518,7 +547,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {products.filter((p: any) => p.isActive !== false).map((product: any) => {
+                {sortedActiveProducts.map((product: any) => {
                     const qty = product.stock?.quantity || 0;
                     const unit = product.stock?.unit || product.unit || "UN";
                     const raw = (countQty[product.id] || '').replace(',', '.');
@@ -561,7 +590,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                       </tr>
                     )
                 })}
-                {products.filter((p: any) => p.isActive !== false).length === 0 && (
+                {sortedActiveProducts.length === 0 && (
                     <tr>
                         <td colSpan={4} className="p-8 text-center text-gray-500 font-medium">Nenhum produto localizado.</td>
                     </tr>
@@ -571,7 +600,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
           </div>
 
           <div className="md:hidden divide-y divide-gray-100">
-            {products.filter((p: any) => p.isActive !== false).map((product: any) => {
+            {sortedActiveProducts.map((product: any) => {
                 const qty = product.stock?.quantity || 0;
                 const unit = product.stock?.unit || product.unit || "UN";
                 const raw = (countQty[product.id] || '').replace(',', '.');
@@ -607,7 +636,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                     </div>
                 );
             })}
-            {products.filter((p: any) => p.isActive !== false).length === 0 && (
+            {sortedActiveProducts.length === 0 && (
                 <div className="p-8 text-center text-gray-500 font-medium">Nenhum produto localizado.</div>
             )}
           </div>
@@ -1256,7 +1285,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                                                                     >
                                                                         <option value="" disabled className="text-gray-400">--- Seleção no Sistema ---</option>
                                                                         <option value="NEW" className="font-bold text-emerald-600 bg-emerald-50">✨ Criar Novo Produto</option>
-                                                                        {products.map((p) => (
+                                                                        {productsForSelect.map((p) => (
                                                                             <option key={p.id} value={p.id}>{p.iconUrl} {p.name}</option>
                                                                         ))}
                                                                     </select>

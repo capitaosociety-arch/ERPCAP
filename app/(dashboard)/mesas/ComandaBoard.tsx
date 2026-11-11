@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Plus, Search, Coffee, X, ShoppingBag, Eye, Banknote, QrCode, CreditCard, Receipt, Trash2, RotateCcw, Minus } from 'lucide-react';
 import { createComanda, closeComanda, addItemToOrder, processPayment, removeItemFromOrder, deleteComandaAction, voidPaymentAction, updateOrderItemQuantity } from '../../actions/comandas';
 import { createCustomerQuick } from '../../actions/customers';
+import { sortProducts } from '../../../lib/product-sort';
 
 export default function ComandaBoard({ openOrders, products, openRegister, customers }: { openOrders: any[], products: any[], openRegister?: any, customers?: { id: string; name: string; phone: string | null }[] }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -165,8 +166,11 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
     };
 
     const filtered = openOrders.filter(o => (o.notes || "").toLowerCase().includes(search.toLowerCase()));
-    const availableProducts = products.filter(p => p.stock && p.stock.quantity > 0);
-    const filteredModalProducts = availableProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()));
+    const availableProducts = useMemo(() => sortProducts(products.filter(p => p.stock && p.stock.quantity > 0), 'name-asc'), [products]);
+    const filteredModalProducts = useMemo(
+        () => sortProducts(availableProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())), 'name-asc'),
+        [availableProducts, productSearch]
+    );
     const activeViewOrder = viewOrder ? openOrders.find(o => o.id === viewOrder.id) : null;
     const activePaymentOrder = paymentOrder ? openOrders.find(o => o.id === paymentOrder.id) : null; // Se ele ainda estiver em aberto, se fechou sumiu
 

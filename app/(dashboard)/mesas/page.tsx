@@ -20,7 +20,8 @@ export default async function MesasRoute() {
     }),
     prisma.product.findMany({
       where: { isActive: true },
-      include: { stock: true }
+      include: { stock: true },
+      orderBy: { name: 'asc' }
     }),
     prisma.cashRegister.findFirst({ where: { status: 'OPEN' } }),
     prisma.customer.findMany({

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { processCheckoutAction, getOrderWithPayments, cancelOrderAction } from '../../actions/checkout';
 import { processPayment, addItemToOrder, updateOrderItemQuantity } from '../../actions/comandas';
 import { openGlobalCashRegister, closeGlobalCashRegister, getRegisterSummary } from '../../actions/caixa';
 import { Check, Search, X, Receipt, QrCode, CreditCard, Banknote, ShoppingCart, Plus, Minus, ShoppingBag, Lock, Unlock } from 'lucide-react';
+import { sortProducts } from '../../../lib/product-sort';
 
 export default function PDVClient({ products, services = [], categories, user, openRegister }: any) {
   const [cart, setCart] = useState<any[]>([]);
@@ -36,24 +37,24 @@ export default function PDVClient({ products, services = [], categories, user, o
   const [itemSearch, setItemSearch] = useState('');
 
   const virtualCategories = [...categories, { id: 'SERVICES', name: 'Serviços' }];
-  const allItems = [
+  const allItems = useMemo(() => sortProducts([
     ...products.map((p: any) => ({ ...p, isService: false })),
     ...services.map((s: any) => ({ ...s, isService: true, categoryId: 'SERVICES', iconUrl: '🛠️', stock: { quantity: '∞' } }))
-  ];
+  ], 'name-asc'), [products, services]);
 
   // Filtra em tempo real (Geral)
-  const filteredProducts = allItems.filter((p: any) => {
+  const filteredProducts = useMemo(() => sortProducts(allItems.filter((p: any) => {
     const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchCat = activeCat ? p.categoryId === activeCat : true;
     if (p.isService) return matchSearch && matchCat;
     return matchSearch && matchCat && !!p.stock && p.stock.quantity > 0;
-  });
+  }), 'name-asc'), [allItems, searchTerm, activeCat]);
 
-  const filteredCorrectionProducts = allItems.filter((p: any) => {
+  const filteredCorrectionProducts = useMemo(() => sortProducts(allItems.filter((p: any) => {
     const matchSearch = p.name.toLowerCase().includes(itemSearch.toLowerCase());
     if (p.isService) return matchSearch; // Serviços sempre aparecem se bater a busca
     return matchSearch && !!p.stock && p.stock.quantity > 0;
-  });
+  }), 'name-asc'), [allItems, itemSearch]);
 
   const addItem = (product: any) => {
     const step = product.allowFractional ? 0.5 : 1;

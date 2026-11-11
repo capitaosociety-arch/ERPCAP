@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useTransition } from 'react';
-import { Search, Warehouse, ArrowRightLeft, PackagePlus, AlertTriangle, X, Check, Box, Clock, ShieldCheck, ThumbsDown, Camera, Edit, RefreshCw, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, AlertCircle, Upload, Plus, CalendarRange, ClipboardList, Sheet, Eye } from 'lucide-react';
+import { useState, useTransition, useMemo } from 'react';
+import { Search, Warehouse, ArrowRightLeft, PackagePlus, AlertTriangle, X, Check, Box, Clock, ShieldCheck, ThumbsDown, Camera, Edit, RefreshCw, ZoomIn, ZoomOut, Maximize, Download, ArrowRight, AlertCircle, Upload, Plus, CalendarRange, ClipboardList, Sheet, Eye, ArrowUpDown } from 'lucide-react';
 import { addDepotStock, requestTransfer, authorizeTransfer, rejectTransfer, adjustDepotStockLoss, directTransfer, updateDepotMinStock, registerBatchDepotStockMovement } from '../../actions/depot';
 import { quickCreateProductFromInvoice } from '../../actions/products';
 import { saveStockCounts } from '../../actions/stock-count';
 import { downloadExcel } from '../../../lib/excel-export';
+import { PRODUCT_SORT_OPTIONS, ProductSortOption, sortProducts } from '../../../lib/product-sort';
 
 export default function DepotClient({ 
     initialInventory, 
@@ -23,6 +24,7 @@ export default function DepotClient({
     const [activeTab, setActiveTab] = useState<'inventory' | 'requests'>('inventory');
     const [filter, setFilter] = useState<'ALL' | 'LOW' | 'HISTORY' | 'COUNT'>('ALL');
     const [search, setSearch] = useState("");
+    const [sortBy, setSortBy] = useState<ProductSortOption>('name-asc');
     const [movFrom, setMovFrom] = useState("");
     const [movTo, setMovTo] = useState("");
     const [isPending, startTransition] = useTransition();
@@ -143,20 +145,39 @@ export default function DepotClient({
     const isManager = userRole === 'MANAGER';
     const canAuthorize = isAdmin || isManager;
 
-    const filtered = initialInventory.filter(p => {
-        if (p.isActive === false) return false;
+    const activeInventory = useMemo(
+        () => initialInventory.filter(p => p.isActive !== false),
+        [initialInventory]
+    );
 
-        const matchSearch = (p.name || '').toLowerCase().includes((search || '').toLowerCase()) || 
-                           (p.code && p.code.toLowerCase().includes((search || '').toLowerCase()));
-        
-        if (filter === 'LOW') {
-            const depotQty = p.depotStock?.quantity || 0;
-            const minQty = p.depotStock?.minQuantity || 5;
-            return matchSearch && depotQty <= minQty;
-        }
-        
-        return matchSearch;
-    });
+    const filtered = useMemo(() => {
+        const filteredInventory = initialInventory.filter(p => {
+            if (p.isActive === false) return false;
+
+            const matchSearch = (p.name || '').toLowerCase().includes((search || '').toLowerCase()) ||
+                               (p.code && p.code.toLowerCase().includes((search || '').toLowerCase()));
+
+            if (filter === 'LOW') {
+                const depotQty = p.depotStock?.quantity || 0;
+                const minQty = p.depotStock?.minQuantity || 5;
+                return matchSearch && depotQty <= minQty;
+            }
+
+            return matchSearch;
+        });
+
+        return sortProducts(filteredInventory, sortBy, {
+            getQuantity: (p: any) => p.depotStock?.quantity,
+            getMinQuantity: (p: any) => p.depotStock?.minQuantity,
+        });
+    }, [initialInventory, search, filter, sortBy]);
+
+    const sortedCountInventory = useMemo(() => sortProducts(activeInventory, sortBy, {
+        getQuantity: (p: any) => p.depotStock?.quantity,
+        getMinQuantity: (p: any) => p.depotStock?.minQuantity,
+    }), [activeInventory, sortBy]);
+
+    const inventoryForSelect = useMemo(() => sortProducts(activeInventory, 'name-asc'), [activeInventory]);
 
     const pendingRequests = requests.filter(r => r.status === 'PENDING');
     const processedRequests = requests.filter(r => r.status !== 'PENDING');
@@ -406,6 +427,20 @@ export default function DepotClient({
                             <input type="text" placeholder="Buscar produto ou NF..." value={search} onChange={e => setSearch(e.target.value)} className="bg-white border-2 border-gray-100 pl-10 pr-4 py-2 rounded-xl text-sm outline-none w-full font-medium focus:border-mrts-blue"/>
                         </div>
 
+                        <div className="relative w-full md:w-auto">
+                            <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={15} />
+                            <select
+                                aria-label="Ordenar produtos"
+                                value={sortBy}
+                                onChange={e => setSortBy(e.target.value as ProductSortOption)}
+                                className="appearance-none bg-white border-2 border-gray-100 text-slate-600 pl-8 pr-7 py-2 rounded-xl text-xs font-bold outline-none w-full md:w-auto focus:border-mrts-blue cursor-pointer"
+                            >
+                                {PRODUCT_SORT_OPTIONS.map(option => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </select>
+                        </div>
+
                         <div className="grid grid-cols-2 md:flex bg-white rounded-xl shadow-sm border border-gray-100 p-0.5 gap-0.5">
                             <button onClick={() => setFilter('ALL')} className={`px-2.5 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${filter === 'ALL' ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
                                 <Box size={14}/> Produtos
@@ -482,7 +517,7 @@ export default function DepotClient({
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-50 text-sm font-medium">
-                                        {initialInventory.filter(p => p.isActive !== false).map(product => {
+                                        {sortedCountInventory.map(product => {
                                             const depotQty = product.depotStock?.quantity || 0;
                                             const raw = (countQty[product.id] || '').replace(',', '.');
                                             const counted = raw === '' ? null : Number(raw);
@@ -526,7 +561,7 @@ export default function DepotClient({
                                                 </tr>
                                             );
                                         })}
-                                        {initialInventory.filter(p => p.isActive !== false).length === 0 && (
+                                        {sortedCountInventory.length === 0 && (
                                             <tr><td colSpan={4} className="p-10 text-center text-slate-400 font-bold">Nenhum produto localizado.</td></tr>
                                         )}
                                     </tbody>
@@ -534,7 +569,7 @@ export default function DepotClient({
                             </div>
 
                             <div className="md:hidden divide-y divide-gray-100">
-                                {initialInventory.filter(p => p.isActive !== false).map(product => {
+                                {sortedCountInventory.map(product => {
                                     const depotQty = product.depotStock?.quantity || 0;
                                     const raw = (countQty[product.id] || '').replace(',', '.');
                                     const counted = raw === '' ? null : Number(raw);
@@ -571,7 +606,7 @@ export default function DepotClient({
                                         </div>
                                     );
                                 })}
-                                {initialInventory.filter(p => p.isActive !== false).length === 0 && (
+                                {sortedCountInventory.length === 0 && (
                                     <div className="p-8 text-center text-slate-400 font-bold">Nenhum produto localizado.</div>
                                 )}
                             </div>
@@ -992,7 +1027,7 @@ export default function DepotClient({
                                                                     >
                                                                         <option value="">-- Selecionar --</option>
                                                                         <option value="NEW" className="bg-blue-50 font-bold text-mrts-blue">+ CADASTRAR NOVO</option>
-                                                                        {initialInventory.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                                        {inventoryForSelect.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                                                     </select>
                                                                     <button 
                                                                         onClick={() => handleQuickCreate(idx, item.nome, item.preco_unitario || 0)}

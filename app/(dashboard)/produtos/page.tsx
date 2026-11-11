@@ -13,7 +13,7 @@ export default async function ProductsRoute() {
           stockCounts: { where: { location: 'BALCAO' }, orderBy: { date: 'desc' } },
           priceHistories: { orderBy: { date: 'desc' } }
       },
-      orderBy: { category: { name: 'asc' } }
+      orderBy: { name: 'asc' }
     }),
     prisma.productCategory.findMany()
   ]);

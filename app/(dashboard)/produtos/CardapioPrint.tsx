@@ -2,6 +2,9 @@
 
 import React, { useRef, useState } from 'react';
 import { X, Printer, Phone, Globe, Info, Zap, Settings, Minus, Plus } from 'lucide-react';
+import { sortProducts } from '../../../lib/product-sort';
+
+const categoryCollator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true });
 
 interface Product {
   id: string;
@@ -28,7 +31,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
   const PIX_PAYLOAD = "00020126360014br.gov.bcb.pix0114422616910001275204000053039865802BR5915CAPITAO SOCIETY6009Sao Paulo610901227-20062230519daqr34077869834053663049AF4";
 
   // Filtrar produtos ativos e remover aluguéis/churrasqueiras para otimizar espaço
-  const activeProducts = products.filter(p => {
+  const activeProducts = sortProducts(products.filter(p => {
     if (!p.isActive) return false;
     const cat = (p.category?.name || '').toLowerCase();
     const name = p.name.toLowerCase();
@@ -36,7 +39,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
     if (cat.includes('campo') || cat.includes('quadra') || cat.includes('churrasqueira')) return false;
     if (name.includes('aluguel') || name.includes('locação') || name.includes('churrasqueira')) return false;
     return true;
-  });
+  }), 'name-asc');
 
   // Mapear categorias e renomear "Geral" para "SALGADINHOS", e forçar Energéticos para sua própria categoria
   const rawCategories = Array.from(new Set(activeProducts.map(p => {
@@ -50,7 +53,7 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
 
     const catDisplayName = p.category?.name || 'SALGADINHOS';
     return catDisplayName === 'Geral' ? 'SALGADINHOS' : catDisplayName;
-  }))).sort();
+  }))).sort((a, b) => categoryCollator.compare(a, b));
 
   const handlePrint = () => {
     window.print();
@@ -188,6 +191,10 @@ export default function CardapioPrint({ products, onClose }: CardapioPrintProps)
                 const group = getSubGroup(p.name);
                 if (!groups[group]) groups[group] = [];
                 groups[group].push(p);
+              });
+
+              Object.keys(groups).forEach(group => {
+                groups[group] = sortProducts(groups[group], 'name-asc');
               });
 
               return (

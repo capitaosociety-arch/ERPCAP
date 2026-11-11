@@ -10,8 +10,8 @@ export default async function PDVRoute() {
   const session = await getServerSession(authOptions);
   
   // Buscar catálogo completo no banco
-  const products = await prisma.product.findMany({ where: { isActive: true }, include: { category: true, stock: true } });
-  const services = await prisma.service.findMany({ where: { isActive: true } });
+  const products = await prisma.product.findMany({ where: { isActive: true }, include: { category: true, stock: true }, orderBy: { name: 'asc' } });
+  const services = await prisma.service.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } });
   const categories = await prisma.productCategory.findMany();
   
   // Buscar se existe um caixa aberto

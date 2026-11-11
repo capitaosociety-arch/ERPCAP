@@ -15,7 +15,7 @@ export default async function EstoqueRoute() {
               take: 10 
           }
       },
-      orderBy: { category: { name: 'asc' } },
+      orderBy: { name: 'asc' },
       where: { isActive: true } // Oculta produtos de menu apagados da contagem padrao
     }),
     prisma.stockCount.findMany({
