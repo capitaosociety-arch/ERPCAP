@@ -34,7 +34,7 @@ async function assertRentalAvailable(
     endTime: Date,
     excludeIds: string[] = []
 ) {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${resource}))`;
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${resource}))::text`;
     const conflict = await tx.rental.findFirst({
         where: {
             resource,
@@ -82,7 +82,24 @@ export type CustomerDossierInput = {
     subscriptionPaymentAmount?: number | null;
 };
 
+function publicDossierError(error: any): string {
+    const message = String(error?.message || '').trim();
+    if (error?.code || /prisma|deserialize|transaction|timeout/i.test(message)) {
+        return "Nao foi possivel salvar o dossie. Tente novamente.";
+    }
+    return message || "Nao foi possivel salvar o dossie. Tente novamente.";
+}
+
 export async function saveCustomerDossier(data: CustomerDossierInput) {
+    try {
+        return await saveCustomerDossierInternal(data);
+    } catch (error: any) {
+        console.error("ERRO_SAVE_CUSTOMER_DOSSIER:", error);
+        return { success: false, error: publicDossierError(error) };
+    }
+}
+
+async function saveCustomerDossierInternal(data: CustomerDossierInput) {
     const actor = await requirePermission("permCustomers");
     const idempotencyKey = String(data.idempotencyKey || '').trim();
     if (!/^[A-Za-z0-9-]{16,100}$/.test(idempotencyKey)) {
@@ -107,7 +124,7 @@ export async function saveCustomerDossier(data: CustomerDossierInput) {
     const auditActions: string[] = [];
 
     await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyMarker}))`;
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyMarker}))::text`;
         const prior = await tx.auditLog.findFirst({
             where: {
                 userId: actor.id,
@@ -271,7 +288,7 @@ export async function saveCustomerDossier(data: CustomerDossierInput) {
             if (!Number.isFinite(data.subscriptionPaymentAmount) || data.subscriptionPaymentAmount <= 0) {
                 throw new Error("Valor do pagamento da mensalidade invalido.");
             }
-            await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`subscription-payment:${subscriptionRow.id}`}))`;
+            await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`subscription-payment:${subscriptionRow.id}`}))::text`;
             const currentSubscription = await tx.subscription.findUnique({ where: { id: subscriptionRow.id } });
             if (!currentSubscription) throw new Error("Assinatura nao encontrada.");
             const existingPayment = await tx.subscriptionPayment.findFirst({

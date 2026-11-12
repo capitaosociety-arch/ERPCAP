@@ -228,6 +228,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           setCustomerModalOpen(false);
           window.location.reload();
       } catch (error: any) {
+          setIsSavingDossier(false);
           alert(error?.message || "Erro ao salvar o dossie. Nenhuma alteracao foi confirmada.");
       } finally {
           setIsSavingDossier(false);
