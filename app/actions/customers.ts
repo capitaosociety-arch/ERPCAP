@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "../../lib/auth-guard";
 import { buildRentalWindow, formatRentalPeriod } from "../../lib/rental-time";
 import { roundMoney } from "../../lib/rental-renewal";
+import { addMonthClamped, addMonthForDay, nextDueDateForDay, parseDateOnlyInput } from "../../lib/subscription-date";
 import { createAuditLog } from "./audit";
 import { recalcScore } from "./score";
 
@@ -20,13 +21,7 @@ function validateRentalAmount(amount: number) {
     return amount;
 }
 
-function nextDueDateForDay(day: number): Date {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const candidate = new Date(now.getFullYear(), now.getMonth(), day);
-    if (candidate < today) candidate.setMonth(candidate.getMonth() + 1);
-    return candidate;
-}
+
 
 async function lockRentalResources(tx: any, resources: string[]) {
     const unique = Array.from(new Set(resources.map(resource => resource.trim().toLowerCase()).filter(Boolean))).sort();
@@ -81,7 +76,7 @@ export type CustomerDossierInput = {
         name: string;
         phone: string;
         notes: string;
-        subscription?: { planName: string; amount: number; dueDate: number } | null;
+        subscription?: { planName: string; amount: number; dueDate: number; nextDueDate?: string | null; keepDueDay?: boolean } | null;
     };
     rentals: CustomerDossierRental[];
     rentalDeleteIds: string[];
@@ -164,24 +159,27 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
 
         if (subscription) {
             const existingSubscription = await tx.subscription.findUnique({ where: { customerId: customerId! } });
-            const dueDayChanged = !!existingSubscription && existingSubscription.dueDate !== subscription.dueDate;
-            let nextDue = existingSubscription?.nextDueDate;
-            if (!nextDue || dueDayChanged) {
-                nextDue = nextDueDateForDay(subscription.dueDate);
+            const requestedNextDue = subscription.nextDueDate ? parseDateOnlyInput(subscription.nextDueDate) : null;
+            const keepDueDay = subscription.keepDueDay !== false;
+            const effectiveDueDay = requestedNextDue && keepDueDay ? requestedNextDue.getUTCDate() : subscription.dueDate;
+            const dueDayChanged = !!existingSubscription && existingSubscription.dueDate !== effectiveDueDay;
+            let nextDue = requestedNextDue ?? existingSubscription?.nextDueDate;
+            if (!nextDue || (!requestedNextDue && dueDayChanged)) {
+                nextDue = nextDueDateForDay(effectiveDueDay);
             }
             await tx.subscription.upsert({
                 where: { customerId: customerId! },
                 update: {
                     planName: subscription.planName.trim(),
                     amount: subscription.amount,
-                    dueDate: subscription.dueDate,
-                    ...(dueDayChanged ? { nextDueDate: nextDue } : {}),
+                    dueDate: effectiveDueDay,
+                    ...(requestedNextDue || dueDayChanged ? { nextDueDate: nextDue } : {}),
                 },
                 create: {
                     customerId: customerId!,
                     planName: subscription.planName.trim(),
                     amount: subscription.amount,
-                    dueDate: subscription.dueDate,
+                    dueDate: effectiveDueDay,
                     nextDueDate: nextDue,
                 },
             });
@@ -334,8 +332,10 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
                     referenceMonth: currentSubscription.nextDueDate,
                 },
             });
-            const newDueDate = new Date(currentSubscription.nextDueDate);
-            newDueDate.setMonth(newDueDate.getMonth() + 1);
+            const keepDueDay = subscription?.keepDueDay !== false;
+            const newDueDate = keepDueDay
+                ? addMonthForDay(currentSubscription.nextDueDate, currentSubscription.dueDate)
+                : addMonthClamped(currentSubscription.nextDueDate);
             await tx.subscription.update({
                 where: { id: currentSubscription.id },
                 data: { nextDueDate: newDueDate },

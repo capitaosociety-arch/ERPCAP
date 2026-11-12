@@ -7,6 +7,7 @@ import { deleteCustomer, saveCustomerDossier } from '../../actions/customers';
 import { getScores, saveScoreConfig, recalcScore, getScoreHistory, getScoreConfig } from '../../actions/score';
 import { buildRentalWindow, defaultRentalDateInput, formatRentalDateInput, formatRentalTimeInput } from '../../../lib/rental-time';
 import { calculateRenewalTotal, generateRenewalDraftsFromPattern, inferRentalPattern, resolveRenewalTotal, sortRentalDraftsDesc } from '../../../lib/rental-renewal';
+import { formatDateDisplay, formatDateOnlyInput, parseDateOnlyInput } from '../../../lib/subscription-date';
 
 const TZ = 'America/Cuiaba';
 
@@ -142,7 +143,9 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
               hasSubscription: !!customer.subscription,
               planName: customer.subscription?.planName || "Mensalidade PadrÇœo",
               amount: customer.subscription?.amount || 100,
-              dueDate: customer.subscription?.dueDate || 5
+              dueDate: customer.subscription?.dueDate || 5,
+              nextDueDate: customer.subscription ? formatDateOnlyInput(customer.subscription.nextDueDate) : '',
+              keepDueDay: customer.subscription ? customer.subscription.dueDate === Number(formatDateOnlyInput(customer.subscription.nextDueDate).slice(8, 10)) : true
           });
       } else {
           setFormData({
@@ -202,6 +205,8 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                       planName: formData.planName.trim(),
                       amount: parseFloat(String(formData.amount).replace(',', '.')),
                       dueDate: parseInt(String(formData.dueDate), 10),
+                      nextDueDate: formData.nextDueDate || null,
+                      keepDueDay: formData.keepDueDay !== false,
                   } : null,
               },
               rentals: rentalDrafts.map((rental: any) => ({
@@ -258,6 +263,8 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           amount: pattern?.amount ?? Number(amount) / 4,
           games: 4,
           negotiatedTotal: '',
+          nextDueDate: formData.nextDueDate || (selectedCustomer.subscription ? formatDateOnlyInput(selectedCustomer.subscription.nextDueDate) : ''),
+          keepDueDay: formData.keepDueDay !== false,
           occurrences: pattern?.occurrences ?? 0,
           confident: pattern?.confident ?? false,
           fromHistory: !!pattern,
@@ -286,8 +293,9 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       }
       try {
           buildRentalWindow(defaultRentalDateInput(), renewalPatternForm.start, renewalPatternForm.end);
+          parseDateOnlyInput(renewalPatternForm.nextDueDate);
       } catch (error: any) {
-          return alert(error?.message || "Horario invalido.");
+          return alert(error?.message || "Horario ou vencimento invalido.");
       }
       const pattern = {
           resource,
@@ -325,6 +333,14 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           alert("Existe conflito entre o padrao configurado e uma reserva existente. Ajuste os horarios antes de renovar.");
           return;
       }
+      const keepDueDay = renewalPatternForm.keepDueDay !== false;
+      const nextDueDay = parseDateOnlyInput(renewalPatternForm.nextDueDate).getUTCDate();
+      setFormData((previous: any) => ({
+          ...previous,
+          nextDueDate: renewalPatternForm.nextDueDate,
+          keepDueDay,
+          ...(keepDueDay ? { dueDate: nextDueDay } : {}),
+      }));
       setRentalDrafts(prev => [...prev, ...generated]);
       setPendingSubscriptionPayment(effectiveTotal);
       setIsDirty(true);
@@ -880,7 +896,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                         </div>
                                         <div>
                                             <label className="block text-[10px] text-gray-500 uppercase mb-1">Dia Vencimento</label>
-                                            <input type="number" min="1" max="31" value={formData.dueDate} onChange={e => updateForm({ dueDate: e.target.value })} className="w-full bg-white border border-blue-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 font-bold text-slate-700"/>
+                                            <input type="number" min="1" max="31" value={formData.dueDate} onChange={e => updateForm({ dueDate: e.target.value, nextDueDate: '' })} className="w-full bg-white border border-blue-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 font-bold text-slate-700"/>
                                         </div>
                                     </div>
                                 )}
@@ -906,7 +922,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl mb-4 text-center">
                                     <p className="text-xs text-gray-500 font-medium">PrÃ³ximo Vencimento</p>
                                     <p className={`text-xl font-black mt-1 ${checkIsOverdue(selectedCustomer.subscription) ? 'text-red-500' : 'text-slate-800'}`}>
-                                        {new Date(selectedCustomer.subscription.nextDueDate).toLocaleDateString("pt-BR")}
+                                        {formatDateDisplay(selectedCustomer.subscription.nextDueDate)}
                                     </p>
                                     <button disabled={isSavingDossier || pendingSubscriptionPayment != null} onClick={() => handlePaySubscription(formData.hasSubscription ? Number(formData.amount) : selectedCustomer.subscription.amount)} className="mt-3 w-full bg-green-500 hover:bg-green-600 text-white text-sm font-bold py-2 rounded-lg shadow-sm transition disabled:opacity-50">
                                         {pendingSubscriptionPayment != null ? 'Pagamento agendado' : 'Agendar pagamento'}
@@ -1143,18 +1159,19 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
        )}
 
       {isRenewalModalOpen && renewalPatternForm && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[85] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-gray-100 p-6">
-            <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[85] flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl border border-gray-100 max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex items-start justify-between gap-3 p-4 border-b border-gray-100 bg-gray-50 shrink-0">
               <div>
-                <h2 className="text-xl font-black text-slate-800">Renovacao da mensalidade</h2>
+                <h2 className="text-lg sm:text-xl font-black text-slate-800">Renovacao da mensalidade</h2>
                 <p className="text-xs text-gray-500 font-medium mt-1">Confirme ou ajuste o padrao da renovacao.</p>
               </div>
-              <button onClick={() => setIsRenewalModalOpen(false)} className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center">
+              <button onClick={() => setIsRenewalModalOpen(false)} className="w-9 h-9 bg-white border border-gray-200 rounded-full flex items-center justify-center">
                 <X size={18} className="text-gray-500" />
               </button>
             </div>
 
+            <div className="p-3 sm:p-4 overflow-y-auto min-h-0 flex-1">
             {(!renewalPatternForm.fromHistory || !renewalPatternForm.confident) && (
               <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800">
                 {renewalPatternForm.fromHistory
@@ -1163,8 +1180,8 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+              <div className="col-span-1 sm:col-span-2">
                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Espaco / Mesa</label>
                 <input type="text" value={renewalPatternForm.resource} onChange={e => setRenewalPatternForm({ ...renewalPatternForm, resource: e.target.value })} className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue" />
               </div>
@@ -1199,6 +1216,33 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Hora final</label>
                 <input type="time" value={renewalPatternForm.end} onChange={e => setRenewalPatternForm({ ...renewalPatternForm, end: e.target.value })} className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue" />
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-gray-200 bg-slate-50 p-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Proximo vencimento</label>
+                  <input type="date" value={renewalPatternForm.nextDueDate} onChange={e => {
+                    const nextDueDate = e.target.value;
+                    const keepDueDay = renewalPatternForm.keepDueDay !== false;
+                    setRenewalPatternForm({ ...renewalPatternForm, nextDueDate });
+                    updateForm({
+                      nextDueDate,
+                      keepDueDay,
+                      ...(keepDueDay && nextDueDate ? { dueDate: Number(nextDueDate.slice(8, 10)) } : {}),
+                    });
+                  }} className="w-full border-2 border-gray-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue bg-white" />
+                  <p className="text-[10px] text-gray-500 mt-1">Atual: {selectedCustomer?.subscription ? formatDateDisplay(selectedCustomer.subscription.nextDueDate) : '-'}</p>
+                </div>
+                <label className="flex items-start gap-2 text-xs font-medium text-slate-700 cursor-pointer">
+                  <input type="checkbox" checked={renewalPatternForm.keepDueDay !== false} onChange={e => {
+                    const keepDueDay = e.target.checked;
+                    setRenewalPatternForm({ ...renewalPatternForm, keepDueDay });
+                    updateForm({ keepDueDay, ...(keepDueDay && renewalPatternForm.nextDueDate ? { dueDate: Number(renewalPatternForm.nextDueDate.slice(8, 10)) } : {}) });
+                  }} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-mrts-blue focus:ring-mrts-blue" />
+                  <span>Manter este dia fixo nas proximas mensalidades</span>
+                </label>
               </div>
             </div>
 
@@ -1239,8 +1283,9 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
             )}
 
             <p className="text-[11px] text-gray-500 font-medium mt-3">O pagamento da mensalidade sera agendado e somente sera gravado ao clicar em Salvar e Fechar.</p>
+            </div>
 
-            <div className="flex gap-3 mt-5">
+            <div className="p-3 sm:p-4 border-t border-gray-100 bg-white shrink-0 flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
               <button onClick={() => setIsRenewalModalOpen(false)} className="flex-1 border-2 border-gray-200 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50">Cancelar</button>
               <button onClick={handleConfirmRenewal} className="flex-[1.5] bg-mrts-blue text-white font-black py-3 rounded-xl hover:bg-mrts-hover">Gerar {renewalGames} reservas</button>
             </div>
