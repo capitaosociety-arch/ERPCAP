@@ -348,7 +348,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                                         allowFractional={!!item.product?.allowFractional}
                                                         disabled={loading}
                                                         onCommit={(next) => handleSetItemQuantity(item, next)}
-                                                        className="w-9 text-center text-sm font-black text-slate-800 bg-transparent outline-none"
+                                                        className="w-8 text-center text-xs font-black text-slate-800 bg-transparent outline-none"
                                                         ariaLabel="Quantidade do item"
                                                     />
                                                     <button
@@ -516,38 +516,39 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                 const balance = Math.max(0, activePaymentOrder.total - activePaymentOrder.discount - totalPaid);
 
                 return (
-                <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[70] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl animate-in zoom-in-95 flex flex-col p-6">
-                        <div className="flex justify-between items-start mb-6">
-                            <div>
-                                <h2 className="text-2xl font-black text-slate-800">Pagamento</h2>
-                                <p className="text-sm text-gray-500 font-medium">Acerto financeiro - ({activePaymentOrder.notes})</p>
+                <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-[70] flex items-center justify-center p-2 sm:p-4">
+                    <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] shadow-2xl animate-in zoom-in-95 flex flex-col overflow-hidden">
+                        <div className="flex justify-between items-start gap-3 p-4 border-b border-gray-100 bg-gray-50 shrink-0">
+                            <div className="min-w-0">
+                                <h2 className="text-xl font-black text-slate-800">Pagamento</h2>
+                                <p className="text-xs sm:text-sm text-gray-500 font-medium truncate">Acerto financeiro - ({activePaymentOrder.notes})</p>
                             </div>
-                            <button disabled={loading} onClick={() => { setIsPaymentModalOpen(false); setIsViewModalOpen(true); setViewOrder(activePaymentOrder); }} className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200">
-                                <X size={20} className="text-gray-500" />
+                            <button disabled={loading} onClick={() => { setIsPaymentModalOpen(false); setIsViewModalOpen(true); setViewOrder(activePaymentOrder); }} className="w-9 h-9 shrink-0 bg-white border border-gray-200 rounded-full flex items-center justify-center hover:bg-gray-100 disabled:opacity-50">
+                                <X size={18} className="text-gray-500" />
                             </button>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4 mb-6">
-                            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                                <p className="text-xs text-slate-500 font-bold uppercase tracking-wider mb-1">Mesa Total</p>
-                                <p className="text-xl font-black text-slate-800">R$ {activePaymentOrder.total.toFixed(2)}</p>
+                        <div className="p-3 sm:p-4 overflow-y-auto flex-1 min-h-0">
+                        <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-3">
+                            <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 sm:p-3">
+                                <p className="text-[10px] sm:text-xs text-slate-500 font-bold uppercase tracking-wider mb-0.5">Mesa Total</p>
+                                <p className="text-lg sm:text-xl font-black text-slate-800">R$ {activePaymentOrder.total.toFixed(2)}</p>
                             </div>
-                            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
-                                <p className="text-xs text-blue-500 font-bold uppercase tracking-wider mb-1">Falta Pagar</p>
-                                <p className="text-xl font-black text-mrts-blue">R$ {balance.toFixed(2)}</p>
+                            <div className="bg-blue-50 border border-blue-200 rounded-xl p-2.5 sm:p-3">
+                                <p className="text-[10px] sm:text-xs text-blue-500 font-bold uppercase tracking-wider mb-0.5">Falta Pagar</p>
+                                <p className="text-lg sm:text-xl font-black text-mrts-blue">R$ {balance.toFixed(2)}</p>
                             </div>
                         </div>
 
                         {/* Itens lançados com edição de quantidade */}
                         {activePaymentOrder.items && activePaymentOrder.items.length > 0 && (
-                            <div className="mb-6 p-4 rounded-xl bg-gray-50 border border-gray-200 max-h-48 overflow-y-auto">
-                                <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+                            <div className="mb-3 p-2.5 sm:p-3 rounded-xl bg-gray-50 border border-gray-200 max-h-32 sm:max-h-36 overflow-y-auto">
+                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1.5 flex items-center gap-2">
                                     <ShoppingBag size={14} /> Itens Lançados
                                 </p>
                                 <div className="flex flex-col gap-2">
                                     {activePaymentOrder.items.map((item: any) => (
-                                        <div key={item.id} className="flex items-center justify-between gap-3 bg-white border border-gray-100 rounded-lg px-3 py-2">
+                                        <div key={item.id} className="flex items-center justify-between gap-2 bg-white border border-gray-100 rounded-lg px-2.5 py-1.5">
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-xs font-bold text-slate-800 truncate">{item.product?.name || "Produto"}</p>
                                                 <p className="text-[10px] text-gray-400 font-medium">R$ {Number(item.subtotal || 0).toFixed(2).replace('.', ',')}</p>
@@ -558,7 +559,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                                     onClick={() => {
                                                         handleUpdateItemQuantity(item, -1);
                                                     }}
-                                                    className="w-7 h-7 flex items-center justify-center bg-gray-100 text-gray-600 rounded-lg hover:bg-red-500 hover:text-white transition disabled:opacity-40"
+                                                    className="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-600 rounded-lg hover:bg-red-500 hover:text-white transition disabled:opacity-40"
                                                 >
                                                     <Minus size={14} strokeWidth={3} />
                                                 </button>
@@ -567,7 +568,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                                     allowFractional={!!item.product?.allowFractional}
                                                     disabled={loading}
                                                     onCommit={(next) => handleSetItemQuantity(item, next)}
-                                                    className="w-9 text-center text-sm font-black text-slate-800 bg-transparent outline-none"
+                                                    className="w-8 text-center text-xs font-black text-slate-800 bg-transparent outline-none"
                                                     ariaLabel="Quantidade do item"
                                                 />
                                                 <button
@@ -575,7 +576,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                                     onClick={() => {
                                                         handleUpdateItemQuantity(item, 1);
                                                     }}
-                                                    className="w-7 h-7 flex items-center justify-center bg-gray-100 text-gray-600 rounded-lg hover:bg-green-500 hover:text-white transition disabled:opacity-40"
+                                                    className="w-6 h-6 flex items-center justify-center bg-gray-100 text-gray-600 rounded-lg hover:bg-green-500 hover:text-white transition disabled:opacity-40"
                                                 >
                                                     <Plus size={14} strokeWidth={3} />
                                                 </button>
@@ -586,9 +587,9 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                             </div>
                         )}
 
-                        <div className="space-y-4 mb-6">
+                        <div className="space-y-2.5 mb-3">
                             <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-2">Desconto a aplicar (Opcional)</label>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Desconto a aplicar (Opcional)</label>
                                 <div className="relative">
                                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">R$</span>
                                     <input 
@@ -602,8 +603,8 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                             const totalPaid = activePaymentOrder.payments?.reduce((acc: any, p: any) => acc + p.amount, 0) || 0;
                                             const newBalance = Math.max(0, activePaymentOrder.total - activePaymentOrder.discount - totalPaid - disc);
                                             setPaymentAmount(newBalance.toFixed(2));
-                                        }} 
-                                        className="w-full border-2 border-gray-200 rounded-xl py-3 pl-10 pr-4 outline-none focus:border-mrts-blue font-bold text-red-500" 
+                                        }}
+                                        className="w-full border-2 border-gray-200 rounded-xl py-2.5 pl-10 pr-4 outline-none focus:border-mrts-blue font-bold text-red-500"
                                     />
                                 </div>
                                 <p className="text-xs text-gray-400 mt-1">Isso abaterá no valor da mesa para todos os próximos pagamentos.</p>
@@ -614,32 +615,38 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                 <div className="relative">
                                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">R$</span>
                                     {/* Subtrai o desconto em tempo real se o usuario alterar ele, ou seja, mantem dinamico, senao deixa paymentAmount cru */}
-                                    <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border-2 border-mrts-blue rounded-xl py-4 pl-10 pr-4 outline-none ring-4 ring-mrts-blue/10 font-bold text-xl text-slate-800 bg-blue-50/50" />
+                                    <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-full border-2 border-mrts-blue rounded-xl py-3 pl-10 pr-4 outline-none ring-4 ring-mrts-blue/10 font-bold text-lg text-slate-800 bg-blue-50/50" />
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-2">Forma de Pagamento</label>
+                                <label className="block text-xs font-bold text-slate-700 mb-1">Forma de Pagamento</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={() => setPaymentMethod("PIX")} className={`py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-bold border-2 transition ${paymentMethod === "PIX" ? "border-green-500 bg-green-50 text-green-700" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
-                                        <QrCode size={18} /> PIX
+                                    <button onClick={() => setPaymentMethod("PIX")} className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 text-xs sm:text-sm font-bold border-2 transition ${paymentMethod === "PIX" ? "border-green-500 bg-green-50 text-green-700" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
+                                        <QrCode size={16} /> PIX
                                     </button>
-                                    <button onClick={() => setPaymentMethod("CREDIT")} className={`py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-bold border-2 transition ${paymentMethod === "CREDIT" ? "border-mrts-blue bg-blue-50 text-mrts-blue" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
+                                    <button onClick={() => setPaymentMethod("CREDIT")} className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 text-xs sm:text-sm font-bold border-2 transition ${paymentMethod === "CREDIT" ? "border-mrts-blue bg-blue-50 text-mrts-blue" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
                                         <CreditCard size={18} /> Crédito
                                     </button>
-                                    <button onClick={() => setPaymentMethod("DEBIT")} className={`py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-bold border-2 transition ${paymentMethod === "DEBIT" ? "border-purple-500 bg-purple-50 text-purple-700" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
+                                    <button onClick={() => setPaymentMethod("DEBIT")} className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 text-xs sm:text-sm font-bold border-2 transition ${paymentMethod === "DEBIT" ? "border-purple-500 bg-purple-50 text-purple-700" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
                                         <CreditCard size={18} /> Débito
                                     </button>
-                                    <button onClick={() => setPaymentMethod("CASH")} className={`py-3 px-4 rounded-xl flex items-center justify-center gap-2 font-bold border-2 transition ${paymentMethod === "CASH" ? "border-orange-500 bg-orange-50 text-orange-700" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
-                                        <Banknote size={18} /> Dinheiro
+                                    <button onClick={() => setPaymentMethod("CASH")} className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 text-xs sm:text-sm font-bold border-2 transition ${paymentMethod === "CASH" ? "border-orange-500 bg-orange-50 text-orange-700" : "border-gray-200 text-gray-500 hover:bg-gray-50"}`}>
+                                        <Banknote size={16} /> Dinheiro
                                     </button>
                                 </div>
                             </div>
                         </div>
+                        </div>
 
-                        <button disabled={loading} onClick={handleConfirmPayment} className="w-full bg-mrts-blue text-white font-black py-4 rounded-xl hover:bg-mrts-hover shadow-xl shadow-mrts-blue/30 transition text-lg flex items-center justify-center gap-2">
-                            {loading ? <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin"></div> : <><Receipt size={22} /> Confirmar Lançamento</>}
-                        </button>
+                        <div className="p-3 sm:p-4 border-t border-gray-100 bg-white shrink-0 flex flex-col-reverse sm:flex-row gap-2">
+                            <button disabled={loading} onClick={() => { setIsPaymentModalOpen(false); setIsViewModalOpen(true); setViewOrder(activePaymentOrder); }} className="w-full sm:w-auto px-5 py-2.5 rounded-xl border-2 border-gray-200 text-gray-600 font-bold hover:bg-gray-50 disabled:opacity-50">
+                                Cancelar
+                            </button>
+                            <button disabled={loading} onClick={handleConfirmPayment} className="flex-1 bg-mrts-blue text-white font-black py-3 rounded-xl hover:bg-mrts-hover shadow-lg shadow-mrts-blue/25 transition text-base flex items-center justify-center gap-2 disabled:opacity-50">
+                                {loading ? <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin"></div> : <><Receipt size={20} /> Confirmar Lancamento</>}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )})()}
