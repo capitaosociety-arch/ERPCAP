@@ -3,8 +3,9 @@
 import { useState, useMemo, useTransition, useEffect } from 'react';
 import { Plus, Edit3, X, User as UserIcon, Calendar, CheckCircle, AlertTriangle, Clock, CreditCard, Trash2, Trophy, DollarSign, Gauge, Settings, RefreshCw, Star, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend } from 'recharts';
-import { upsertCustomer, paySubscription, createRental, deleteCustomer, updateSubscriptionPayment, deleteSubscriptionPayment, updateRental, deleteRental, setRentalStatus } from '../../actions/customers';
+import { deleteCustomer, saveCustomerDossier } from '../../actions/customers';
 import { getScores, saveScoreConfig, recalcScore, getScoreHistory, getScoreConfig } from '../../actions/score';
+import { buildRentalWindow, defaultRentalDateInput, formatRentalDateInput, formatRentalTimeInput } from '../../../lib/rental-time';
 
 const TZ = 'America/Cuiaba';
 
@@ -19,15 +20,15 @@ const CLASS_META: Record<string, { label: string; color: string; bg: string }> =
 };
 
 const FATOR_LABEL: Record<string, string> = {
-    frequencia: 'Frequência',
-    gastoAluguel: 'Gasto em Aluguéis',
+    frequencia: 'FrequÃªncia',
+    gastoAluguel: 'Gasto em AluguÃ©is',
     consumoBar: 'Consumo no Bar',
     pontualidade: 'Pontualidade',
     cancelamentos: 'Cancelamentos',
     faltas: 'Faltas',
-    recencia: 'Recência',
-    recorrencia: 'Recorrência',
-    inadimplencia: 'Inadimplência',
+    recencia: 'RecÃªncia',
+    recorrencia: 'RecorrÃªncia',
+    inadimplencia: 'InadimplÃªncia',
 };
 
 function toDateStr(d: Date): string {
@@ -66,11 +67,49 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   // Modals
   const [isCustomerModalOpen, setCustomerModalOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [rentalDrafts, setRentalDrafts] = useState<any[]>([]);
+  const [paymentDrafts, setPaymentDrafts] = useState<any[]>([]);
+  const [pendingSubscriptionPayment, setPendingSubscriptionPayment] = useState<number | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSavingDossier, setIsSavingDossier] = useState(false);
+  const [dossierRequestKey, setDossierRequestKey] = useState('');
   
   // Forms
   const [formData, setFormData] = useState<any>({});
   
   const [isPending, startTransition] = useTransition();
+
+  const rentalDraftFromCustomer = (rent: any) => ({
+      id: rent.id,
+      resource: rent.resource,
+      startDate: formatRentalDateInput(rent.startTime),
+      endDate: formatRentalDateInput(rent.endTime),
+      start: formatRentalTimeInput(rent.startTime),
+      end: formatRentalTimeInput(rent.endTime),
+      amount: Number(rent.totalAmount) || 0,
+      status: rent.status,
+  });
+
+  const createRequestKey = () => {
+      const cryptoApi = globalThis.crypto;
+      if (cryptoApi?.randomUUID) return cryptoApi.randomUUID();
+      return `dossie-${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  };
+
+  const updateForm = (patch: Record<string, any>) => {
+      setFormData((previous: any) => ({ ...previous, ...patch }));
+      setIsDirty(true);
+  };
+
+  const displayDraftDate = (value: string) => value.split('-').reverse().join('/');
+
+  const draftPeriodLabel = (draft: any) => {
+      const start = displayDraftDate(draft.startDate);
+      const end = displayDraftDate(draft.endDate);
+      return draft.startDate === draft.endDate
+          ? `${start} das ${draft.start} as ${draft.end}`
+          : `${start} ${draft.start} ate ${end} ${draft.end}`;
+  };
 
   // Formata contagens que podem ser fracionadas por pagamento parcial (ex.: meio jogo)
   const fmtCount = (v: any) => {
@@ -80,6 +119,15 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
 
   const openCustomerModal = (customer?: any) => {
       setSelectedCustomer(customer || null);
+      setRentalDrafts((customer?.rentals || []).map(rentalDraftFromCustomer));
+      setPaymentDrafts((customer?.subscription?.payments || []).map((payment: any) => ({
+          id: payment.id,
+          amount: payment.amount,
+          paymentDate: new Date(payment.paymentDate).toLocaleDateString('sv-SE'),
+      })));
+      setPendingSubscriptionPayment(null);
+      setIsDirty(false);
+      setDossierRequestKey(createRequestKey());
       if (customer) {
           setFormData({
               id: customer.id,
@@ -87,56 +135,114 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
               phone: customer.phone || "",
               notes: customer.notes || "",
               hasSubscription: !!customer.subscription,
-              planName: customer.subscription?.planName || "Mensalidade Padrão",
+              planName: customer.subscription?.planName || "Mensalidade PadrÇœo",
               amount: customer.subscription?.amount || 100,
               dueDate: customer.subscription?.dueDate || 5
           });
       } else {
           setFormData({
-              id: undefined, name: "", phone: "", notes: "", hasSubscription: false, planName: "Mensalidade Padrão", amount: 100, dueDate: 5
+              id: undefined, name: "", phone: "", notes: "", hasSubscription: false, planName: "Mensalidade PadrÇœo", amount: 100, dueDate: 5
           });
       }
+      setRentalResource("");
+      setRentalDate(defaultRentalDateInput());
+      setRentalStart("10:00");
+      setRentalEnd("11:00");
+      setRentalAmount(0);
+      setEditingRental(null);
+      setEditingPayment(null);
       setCustomerModalOpen(true);
   };
 
-  const handleSaveCustomer = () => {
-      if (!formData.name) return;
-      
-      const payload: any = {
-          id: formData.id,
-          name: formData.name,
-          phone: formData.phone,
-          notes: formData.notes,
-      };
-
+  const handleSaveDossier = async () => {
+      if (!formData.name?.trim()) {
+          alert("Informe o nome do cliente.");
+          return;
+      }
       if (formData.hasSubscription) {
-          payload.subscription = {
-              planName: formData.planName,
-              amount: parseFloat(formData.amount.toString().replace(',','.')),
-              dueDate: parseInt(formData.dueDate)
-          };
+          const amount = parseFloat(String(formData.amount).replace(',', '.'));
+          const dueDate = parseInt(String(formData.dueDate), 10);
+          if (!formData.planName?.trim()) return alert("Informe o nome do plano.");
+          if (!Number.isFinite(amount) || amount < 0) return alert("Valor da mensalidade invalido.");
+          if (!Number.isInteger(dueDate) || dueDate < 1 || dueDate > 31) return alert("Dia de vencimento invalido.");
       }
 
-      startTransition(async () => {
+      for (const rental of rentalDrafts) {
           try {
-              await upsertCustomer(payload);
-              alert("Registro salvo com sucesso.");
-              setCustomerModalOpen(false);
-              window.location.reload();
-          } catch(e) {
-              alert("Erro ao salvar cliente.");
+              buildRentalWindow(rental.startDate, rental.start, rental.end);
+          } catch (error: any) {
+              return alert(error?.message || "Horario da reserva invalido.");
           }
-      });
+      }
+
+      const originalRentalIds = new Set((selectedCustomer?.rentals || []).map((rental: any) => rental.id));
+      const draftRentalIds = new Set(rentalDrafts.map((rental: any) => rental.id).filter(Boolean));
+      const originalPayments = new Map((selectedCustomer?.subscription?.payments || []).map((payment: any) => [payment.id, {
+          amount: Number(payment.amount),
+          paymentDate: new Date(payment.paymentDate).toLocaleDateString('sv-SE'),
+      }]));
+      const originalPaymentIds = new Set(originalPayments.keys());
+      const draftPaymentIds = new Set(paymentDrafts.map((payment: any) => payment.id));
+
+      setIsSavingDossier(true);
+      try {
+          const result = await saveCustomerDossier({
+              idempotencyKey: dossierRequestKey,
+              customer: {
+                  id: formData.id,
+                  name: formData.name.trim(),
+                  phone: formData.phone || "",
+                  notes: formData.notes || "",
+                  subscription: formData.hasSubscription ? {
+                      planName: formData.planName.trim(),
+                      amount: parseFloat(String(formData.amount).replace(',', '.')),
+                      dueDate: parseInt(String(formData.dueDate), 10),
+                  } : null,
+              },
+              rentals: rentalDrafts.map((rental: any) => ({
+                  id: rental.id && !String(rental.id).startsWith('new-') ? rental.id : undefined,
+                  resource: rental.resource,
+                  date: rental.startDate,
+                  start: rental.start,
+                  end: rental.end,
+                  amount: Number(rental.amount) || 0,
+                  status: rental.status,
+              })),
+              rentalDeleteIds: Array.from(originalRentalIds).filter((id: any) => !draftRentalIds.has(id)).map(String),
+              paymentUpdates: paymentDrafts
+                  .filter((payment: any) => {
+                      const original: any = originalPayments.get(payment.id);
+                      return !original || original.amount !== Number(payment.amount) || original.paymentDate !== payment.paymentDate;
+                  })
+                  .map((payment: any) => ({
+                      id: payment.id,
+                      amount: Number(payment.amount),
+                      paymentDate: payment.paymentDate,
+                  })),
+              paymentDeleteIds: Array.from(originalPaymentIds).filter((id: any) => !draftPaymentIds.has(id)).map(String),
+              subscriptionPaymentAmount: pendingSubscriptionPayment,
+          });
+          if (!result.success) throw new Error((result as any).error || "Nao foi possivel salvar o dossie.");
+          setIsDirty(false);
+          setCustomerModalOpen(false);
+          window.location.reload();
+      } catch (error: any) {
+          alert(error?.message || "Erro ao salvar o dossie. Nenhuma alteracao foi confirmada.");
+      } finally {
+          setIsSavingDossier(false);
+      }
   };
 
-  const handlePaySubscription = (subId: string, amount: number) => {
-      if(!confirm("Registrar pagamento desta mensalidade e avançar vencimento?")) return;
-      
-      startTransition(async () => {
-          await paySubscription(subId, amount);
-          alert("Pagamento registrado!");
-          window.location.reload();
-      });
+  const handleCloseDossier = () => {
+      if (isSavingDossier) return;
+      if (isDirty && !confirm("Existem alteracoes nao salvas. Descartar e fechar o dossie?")) return;
+      setCustomerModalOpen(false);
+  };
+
+  const handlePaySubscription = (amount: number) => {
+      if (!confirm("Agendar este pagamento para ser registrado quando o dossie for salvo?")) return;
+      setPendingSubscriptionPayment(Number(amount));
+      setIsDirty(true);
   };
 
   // Editing Subscription Payment (mensalidade)
@@ -147,92 +253,104 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       setEditingPayment(payment);
       setPaymentForm({
           amount: payment.amount,
-          paymentDate: new Date(payment.paymentDate).toLocaleDateString('sv-SE')
+          paymentDate: payment.paymentDate,
       });
   };
 
   const handleSavePaymentEdit = () => {
       if (!editingPayment) return;
-      const amount = parseFloat(paymentForm.amount.toString().replace(',', '.'));
-      if (isNaN(amount) || amount <= 0) { alert("Valor inválido."); return; }
-
-      startTransition(async () => {
-          await updateSubscriptionPayment(editingPayment.id, amount, paymentForm.paymentDate);
-          alert("Lançamento de mensalidade atualizado!");
-          setEditingPayment(null);
-          window.location.reload();
-      });
+      const amount = parseFloat(String(paymentForm.amount).replace(',', '.'));
+      if (isNaN(amount) || amount <= 0) { alert("Valor invalido."); return; }
+      setPaymentDrafts(prev => prev.map(payment => payment.id === editingPayment.id
+          ? { ...payment, amount, paymentDate: paymentForm.paymentDate }
+          : payment));
+      setEditingPayment(null);
+      setIsDirty(true);
   };
 
   const handleDeletePayment = (payment: any) => {
-      if(!confirm("Excluir este lançamento de mensalidade? Esta ação não pode ser desfeita.")) return;
-      startTransition(async () => {
-          await deleteSubscriptionPayment(payment.id);
-          alert("Lançamento excluído!");
-          window.location.reload();
-      });
+      if (!confirm("Remover este lancamento do dossie? A exclusao sera confirmada somente ao salvar.")) return;
+      setPaymentDrafts(prev => prev.filter(item => item.id !== payment.id));
+      setIsDirty(true);
   };
 
-  // Editing Rental (locação)
+  // Editing Rental (locaÃ§Ã£o)
   const [editingRental, setEditingRental] = useState<any>(null);
 
   const openEditRental = (rent: any) => {
       setEditingRental(rent);
-      const start = new Date(rent.startTime);
-      const end = new Date(rent.endTime);
-      const pad = (n: number) => String(n).padStart(2, '0');
       setRentalResource(rent.resource);
-      setRentalDate(start.toLocaleDateString('sv-SE'));
-      setRentalStart(`${pad(start.getHours())}:${pad(start.getMinutes())}`);
-      setRentalEnd(`${pad(end.getHours())}:${pad(end.getMinutes())}`);
-      setRentalAmount(rent.totalAmount);
+      setRentalDate(rent.startDate);
+      setRentalStart(rent.start);
+      setRentalEnd(rent.end);
+      setRentalAmount(rent.amount);
   };
 
   const handleSaveRentalEdit = () => {
-      if (!editingRental || !rentalResource) return;
-
-      startTransition(async () => {
-          await updateRental(editingRental.id, rentalResource, rentalDate, rentalStart, rentalEnd, parseFloat(rentalAmount.toString().replace(',','.')));
-          alert("Locação atualizada!");
+      if (!editingRental || !rentalResource.trim()) return alert("Informe o espaco/mesa da reserva.");
+      try {
+          const { startTime, endTime } = buildRentalWindow(rentalDate, rentalStart, rentalEnd);
+          const updated = {
+              ...editingRental,
+              resource: rentalResource.trim(),
+              startDate: formatRentalDateInput(startTime),
+              endDate: formatRentalDateInput(endTime),
+              start: formatRentalTimeInput(startTime),
+              end: formatRentalTimeInput(endTime),
+              amount: Number(rentalAmount) || 0,
+          };
+          setRentalDrafts(prev => prev.map(rental => rental.id === editingRental.id ? updated : rental));
           setEditingRental(null);
-          window.location.reload();
-      });
+          setIsDirty(true);
+      } catch (error: any) {
+          alert(error?.message || "Horario da reserva invalido.");
+      }
   };
 
   const handleDeleteRental = (rent: any) => {
-      if(!confirm("Excluir esta locação? Esta ação não pode ser desfeita.")) return;
-      startTransition(async () => {
-          await deleteRental(rent.id);
-          alert("Locação excluída!");
-          window.location.reload();
-      });
+      if (!confirm("Remover esta reserva do dossie? A exclusao sera confirmada somente ao salvar.")) return;
+      setRentalDrafts(prev => prev.filter(item => item.id !== rent.id));
+      setIsDirty(true);
   };
 
   // Reserving Rental fields
   const [rentalResource, setRentalResource] = useState("");
-  const [rentalDate, setRentalDate] = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }));
+  const [rentalDate, setRentalDate] = useState(defaultRentalDateInput());
   const [rentalStart, setRentalStart] = useState("10:00");
   const [rentalEnd, setRentalEnd] = useState("11:00");
   const [rentalAmount, setRentalAmount] = useState(0);
 
   const handleCreateRental = () => {
-      if(!selectedCustomer || !rentalResource) return;
-      
-      startTransition(async () => {
-          await createRental(selectedCustomer.id, rentalResource, rentalDate, rentalStart, rentalEnd, parseFloat(rentalAmount.toString().replace(',','.')));
-          alert("Agendamento criado!");
-          window.location.reload();
-      });
+      if (!selectedCustomer || !rentalResource.trim()) return alert("Informe o espaco/mesa da reserva.");
+      try {
+          const { startTime, endTime } = buildRentalWindow(rentalDate, rentalStart, rentalEnd);
+          const draft = {
+              id: `new-${Date.now()}`,
+              resource: rentalResource.trim(),
+              startDate: formatRentalDateInput(startTime),
+              endDate: formatRentalDateInput(endTime),
+              start: formatRentalTimeInput(startTime),
+              end: formatRentalTimeInput(endTime),
+              amount: Number(rentalAmount) || 0,
+              status: 'PENDING',
+          };
+          setRentalDrafts(prev => [...prev, draft]);
+          setRentalResource("");
+          setRentalAmount(0);
+          setIsDirty(true);
+      } catch (error: any) {
+          alert(error?.message || "Horario da reserva invalido.");
+      }
   };
 
   const handleDeleteCustomer = () => {
       if (!selectedCustomer) return;
-      if (!confirm("CUIDADO: Tem certeza que deseja excluir permanentemente este cliente? Esta ação não pode ser desfeita e removerá também assinaturas e agendamentos vinculados.")) return;
+      if (!confirm("CUIDADO: Tem certeza que deseja excluir permanentemente este cliente? Esta aÃ§Ã£o nÃ£o pode ser desfeita e removerÃ¡ tambÃ©m assinaturas e agendamentos vinculados.")) return;
 
       startTransition(async () => {
           const res = await deleteCustomer(selectedCustomer.id);
           if (res.success) {
-              alert("Cliente excluído com sucesso.");
+              alert("Cliente excluÃ­do com sucesso.");
               setCustomerModalOpen(false);
               window.location.reload();
           } else {
@@ -274,10 +392,10 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           setShowScoreConfig(false);
           window.location.reload();
         } else {
-          alert(res?.error || "Erro ao salvar configuração.");
+          alert(res?.error || "Erro ao salvar configuraÃ§Ã£o.");
         }
       } catch (e: any) {
-        alert(e?.message || "Erro ao salvar configuração.");
+        alert(e?.message || "Erro ao salvar configuraÃ§Ã£o.");
       } finally {
         setPesosSaving(false);
       }
@@ -304,21 +422,14 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       setScoreHistory(res?.history || []);
       setShowHistory(true);
     } catch (e) {
-      alert("Erro ao carregar histórico.");
+      alert("Erro ao carregar histÃ³rico.");
     }
   };
 
   const handleRentalStatus = (rent: any, status: string) => {
     if (!rent) return;
-    startTransition(async () => {
-      try {
-        await setRentalStatus(rent.id, status);
-        alert("Status da reserva atualizado.");
-        window.location.reload();
-      } catch (e: any) {
-        alert(e?.message || "Erro ao atualizar status.");
-      }
-    });
+    setRentalDrafts(prev => prev.map(item => item.id === rent.id ? { ...item, status } : item));
+    setIsDirty(true);
   };
 
   const checkIsOverdue = (sub: any) => {
@@ -339,11 +450,11 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       const isFut5 = (name: string) => /fut5|fut\s*5|futebol\s*5/i.test(name);
       const isFut7 = (name: string) => /fut7|fut\s*7|futebol\s*7/i.test(name);
 
-      // Jogos lançados nas sessões de caixa (PDV/comandas), fonte da verdade
+      // Jogos lanÃ§ados nas sessÃµes de caixa (PDV/comandas), fonte da verdade
       const lancamentos: any[] = fieldRentalLancamentos || [];
       const filtered = lancamentos.filter((l: any) => l.day >= from && l.day <= to);
 
-      // Inicializar todos os dias do período
+      // Inicializar todos os dias do perÃ­odo
       const dailySeries: Record<string, { day: string; fut5Count: number; fut7Count: number; totalCount: number; fut5Amount: number; fut7Amount: number; totalAmount: number }> = {};
       const cursor = new Date(from + 'T00:00:00');
       const last = new Date(to + 'T00:00:00');
@@ -386,7 +497,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       <div className="flex justify-between items-end mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Clientes & Assinaturas</h1>
-          <p className="text-gray-500 text-sm mt-1">CRM, Mensalidades e locação de horários (Mesas).</p>
+          <p className="text-gray-500 text-sm mt-1">CRM, Mensalidades e locaÃ§Ã£o de horÃ¡rios (Mesas).</p>
         </div>
         <div className="flex gap-4">
             <div className="flex bg-white rounded-xl shadow-sm border border-gray-200 p-1">
@@ -406,7 +517,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
         </div>
       </div>
 
-      {/* FILTRO POR CLASSIFICAÇÃO DO SCORE */}
+      {/* FILTRO POR CLASSIFICAÃ‡ÃƒO DO SCORE */}
       <div className="mb-6 flex flex-wrap items-center gap-2">
           <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5 mr-1">
               <Gauge size={15} className="text-mrts-blue" /> Score
@@ -422,13 +533,13 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                   </button>
               );
           })}
-          {scoresLoading && <span className="text-[10px] text-gray-400 font-bold uppercase">Calculando…</span>}
+          {scoresLoading && <span className="text-[10px] text-gray-400 font-bold uppercase">Calculandoâ€¦</span>}
       </div>
 
-      {/* CARDS E GRÁFICOS DE JOGOS */}
+      {/* CARDS E GRÃFICOS DE JOGOS */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-              <Trophy size={16} className="text-emerald-500" /> Jogos & Locações
+              <Trophy size={16} className="text-emerald-500" /> Jogos & LocaÃ§Ãµes
           </h2>
           <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
@@ -441,7 +552,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                       className="bg-white border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none w-40"
                   />
               </div>
-              <span className="text-[10px] font-black text-gray-400 uppercase">até</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase">atÃ©</span>
               <div className="relative">
                   <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
@@ -455,9 +566,9 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
               <button
                   onClick={() => { setDateFrom(monthStartStr()); setDateTo(todayStr()); }}
                   className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 px-2 py-2 rounded-lg hover:bg-emerald-50 transition"
-                  title="Voltar para o mês atual"
+                  title="Voltar para o mÃªs atual"
               >
-                  Este mês
+                  Este mÃªs
               </button>
           </div>
       </div>
@@ -477,7 +588,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                   <span className="text-[10px] font-black text-sky-400 bg-sky-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT7: {fmtCount(gamesStats.fut7Count)}</span>
                   <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">Total: {fmtCount(gamesStats.totalGames)}</span>
               </div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Jogos no Período</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Jogos no PerÃ­odo</p>
               <h3 className="text-3xl font-black text-white tracking-tight">{fmtCount(gamesStats.totalGames)}</h3>
               <div className="w-full h-56 mt-4">
                   <ResponsiveContainer width="100%" height="100%">
@@ -583,9 +694,9 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                         <td className="p-4">
                             {sc ? (
                                 <span className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2 py-1 rounded-lg border ${CLASS_META[sc.classificacao]?.bg || 'bg-gray-100 border-gray-200'} ${CLASS_META[sc.classificacao]?.color || 'text-gray-600'}`}>
-                                    {sc.score} · {CLASS_META[sc.classificacao]?.label || sc.classificacao}
+                                    {sc.score} Â· {CLASS_META[sc.classificacao]?.label || sc.classificacao}
                                 </span>
-                            ) : <span className="text-xs text-gray-300">—</span>}
+                            ) : <span className="text-xs text-gray-300">â€”</span>}
                         </td>
                         <td className="p-4 text-right">
                             <button onClick={() => openCustomerModal(customer)} className="w-9 h-9 inline-flex items-center justify-center text-gray-400 bg-white border border-gray-200 hover:text-mrts-blue hover:border-mrts-blue rounded-xl shadow-sm transition hover:-translate-y-0.5 ml-auto">
@@ -612,11 +723,11 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                 <div className="flex justify-between items-center p-6 border-b border-gray-100 bg-gray-50 z-10 shrink-0">
                     <div>
                         <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
-                            <UserIcon size={22} className="text-mrts-blue" /> {selectedCustomer ? 'Dossiê do Cliente' : 'Novo Cliente'}
+                            <UserIcon size={22} className="text-mrts-blue" /> {selectedCustomer ? 'DossiÃª do Cliente' : 'Novo Cliente'}
                         </h2>
                         {selectedCustomer && <p className="text-sm text-gray-500 mt-1 font-medium">{selectedCustomer.name}</p>}
                     </div>
-                    <button onClick={() => setCustomerModalOpen(false)} className="w-10 h-10 flex items-center justify-center bg-white border border-gray-200 hover:bg-gray-100 rounded-full transition">
+                    <button onClick={handleCloseDossier} disabled={isSavingDossier} className="w-10 h-10 flex items-center justify-center bg-white border border-gray-200 hover:bg-gray-100 rounded-full transition disabled:opacity-50">
                         <X size={20} className="text-gray-500" />
                     </button>
                 </div>
@@ -629,38 +740,34 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                             <h3 className="font-bold text-slate-800 text-sm">Dados Cadastrais</h3>
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Nome Completo</label>
-                                <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue focus:ring-1 focus:ring-mrts-blue font-bold text-slate-700"/>
+                                <input type="text" value={formData.name} onChange={e => updateForm({ name: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue focus:ring-1 focus:ring-mrts-blue font-bold text-slate-700"/>
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1.5">Telefone/WhatsApp</label>
-                                <input type="text" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue focus:ring-1 focus:ring-mrts-blue font-medium text-slate-700"/>
+                                <input type="text" value={formData.phone} onChange={e => updateForm({ phone: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-mrts-blue focus:ring-1 focus:ring-mrts-blue font-medium text-slate-700"/>
                             </div>
                             
                             <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl mt-2 flex flex-col gap-3">
                                 <label className="flex items-center gap-2 font-bold text-sm text-mrts-blue cursor-pointer">
-                                    <input type="checkbox" checked={formData.hasSubscription} onChange={e => setFormData({...formData, hasSubscription: e.target.checked})} className="w-4 h-4 rounded border-gray-300 text-mrts-blue focus:ring-mrts-blue"/>
+                                    <input type="checkbox" checked={formData.hasSubscription} onChange={e => updateForm({ hasSubscription: e.target.checked })} className="w-4 h-4 rounded border-gray-300 text-mrts-blue focus:ring-mrts-blue"/>
                                     Vincular Plano / Assinatura
                                 </label>
                                 {formData.hasSubscription && (
                                     <div className="grid grid-cols-2 gap-3 mt-1">
                                         <div className="col-span-2">
-                                            <input type="text" placeholder="Nome do plano" value={formData.planName} onChange={e => setFormData({...formData, planName: e.target.value})} className="w-full bg-white border border-blue-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 font-medium text-slate-700"/>
+                                            <input type="text" placeholder="Nome do plano" value={formData.planName} onChange={e => updateForm({ planName: e.target.value })} className="w-full bg-white border border-blue-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 font-medium text-slate-700"/>
                                         </div>
                                         <div>
                                             <label className="block text-[10px] text-gray-500 uppercase mb-1">Valor (R$)</label>
-                                            <input type="number" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} className="w-full bg-white border border-blue-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 font-bold text-slate-700"/>
+                                            <input type="number" value={formData.amount} onChange={e => updateForm({ amount: e.target.value })} className="w-full bg-white border border-blue-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 font-bold text-slate-700"/>
                                         </div>
                                         <div>
                                             <label className="block text-[10px] text-gray-500 uppercase mb-1">Dia Vencimento</label>
-                                            <input type="number" min="1" max="31" value={formData.dueDate} onChange={e => setFormData({...formData, dueDate: e.target.value})} className="w-full bg-white border border-blue-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 font-bold text-slate-700"/>
+                                            <input type="number" min="1" max="31" value={formData.dueDate} onChange={e => updateForm({ dueDate: e.target.value })} className="w-full bg-white border border-blue-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 font-bold text-slate-700"/>
                                         </div>
                                     </div>
                                 )}
                             </div>
-
-                            <button disabled={isPending} onClick={handleSaveCustomer} className="w-full bg-slate-900 text-white font-bold py-3.5 rounded-xl hover:bg-slate-800 transition shadow-md mt-2 disabled:opacity-50">
-                                {isPending ? 'Salvando...' : 'Salvar Ficha'}
-                            </button>
 
                             {selectedCustomer && (
                                 <button disabled={isPending} onClick={handleDeleteCustomer} className="w-full bg-red-50 text-red-600 border border-red-100 font-bold py-2.5 rounded-xl hover:bg-red-100 transition mt-1 disabled:opacity-50 flex items-center justify-center gap-2">
@@ -680,32 +787,33 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                 </div>
                                
                                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl mb-4 text-center">
-                                    <p className="text-xs text-gray-500 font-medium">Próximo Vencimento</p>
+                                    <p className="text-xs text-gray-500 font-medium">PrÃ³ximo Vencimento</p>
                                     <p className={`text-xl font-black mt-1 ${checkIsOverdue(selectedCustomer.subscription) ? 'text-red-500' : 'text-slate-800'}`}>
                                         {new Date(selectedCustomer.subscription.nextDueDate).toLocaleDateString("pt-BR")}
                                     </p>
-                                    <button disabled={isPending} onClick={() => handlePaySubscription(selectedCustomer.subscription.id, selectedCustomer.subscription.amount)} className="mt-3 w-full bg-green-500 hover:bg-green-600 text-white text-sm font-bold py-2 rounded-lg shadow-sm transition">
-                                        Renovar / Pagar Agora
+                                    <button disabled={isSavingDossier || pendingSubscriptionPayment != null} onClick={() => handlePaySubscription(formData.hasSubscription ? Number(formData.amount) : selectedCustomer.subscription.amount)} className="mt-3 w-full bg-green-500 hover:bg-green-600 text-white text-sm font-bold py-2 rounded-lg shadow-sm transition disabled:opacity-50">
+                                        {pendingSubscriptionPayment != null ? 'Pagamento agendado' : 'Agendar pagamento'}
                                     </button>
+                                    {pendingSubscriptionPayment != null && <p className="text-[10px] text-green-700 font-bold mt-2">Sera registrado ao clicar em Salvar e Fechar.</p>}
                                 </div>
 
                                 <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-2">
-                                    {selectedCustomer.subscription.payments?.map((payment: any) => (
+                                    {paymentDrafts.map((payment: any) => (
                                         editingPayment?.id === payment.id ? (
                                             <div key={payment.id} className="flex flex-col gap-2 p-2 bg-blue-50 border border-blue-100 rounded-xl">
                                                 <div className="grid grid-cols-2 gap-2">
                                                     <div>
                                                         <label className="block text-[10px] text-gray-500 uppercase mb-1">Valor (R$)</label>
-                                                        <input type="number" step="0.01" value={paymentForm.amount} onChange={e => setPaymentForm({...paymentForm, amount: e.target.value})} className="w-full bg-white border border-blue-100 rounded-lg px-2 py-1.5 text-sm focus:outline-none font-bold text-slate-700"/>
+                                                        <input type="number" step="0.01" value={paymentForm.amount} onChange={e => { setPaymentForm({ ...paymentForm, amount: e.target.value }); setIsDirty(true); }} className="w-full bg-white border border-blue-100 rounded-lg px-2 py-1.5 text-sm focus:outline-none font-bold text-slate-700"/>
                                                     </div>
                                                     <div>
                                                         <label className="block text-[10px] text-gray-500 uppercase mb-1">Data</label>
-                                                        <input type="date" value={paymentForm.paymentDate} onChange={e => setPaymentForm({...paymentForm, paymentDate: e.target.value})} className="w-full bg-white border border-blue-100 rounded-lg px-2 py-1.5 text-sm focus:outline-none font-medium text-slate-700"/>
+                                                        <input type="date" value={paymentForm.paymentDate} onChange={e => { setPaymentForm({ ...paymentForm, paymentDate: e.target.value }); setIsDirty(true); }} className="w-full bg-white border border-blue-100 rounded-lg px-2 py-1.5 text-sm focus:outline-none font-medium text-slate-700"/>
                                                     </div>
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <button onClick={() => setEditingPayment(null)} className="flex-1 text-[10px] font-bold text-gray-500 bg-white border border-gray-200 rounded-lg py-1.5 hover:bg-gray-100 transition">Cancelar</button>
-                                                    <button disabled={isPending} onClick={handleSavePaymentEdit} className="flex-1 text-[10px] font-bold text-white bg-mrts-blue rounded-lg py-1.5 hover:bg-mrts-hover transition disabled:opacity-50">Salvar</button>
+                                                    <button disabled={isSavingDossier} onClick={handleSavePaymentEdit} className="flex-1 text-[10px] font-bold text-white bg-mrts-blue rounded-lg py-1.5 hover:bg-mrts-hover transition disabled:opacity-50">Aplicar</button>
                                                 </div>
                                             </div>
                                         ) : (
@@ -713,17 +821,17 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                                 <span className="text-gray-500 font-medium">{new Date(payment.paymentDate).toLocaleDateString('pt-BR')}</span>
                                                 <span className="flex items-center gap-2">
                                                     <span className="font-bold text-slate-700">R$ {payment.amount.toFixed(2).replace('.',',')}</span>
-                                                    <button onClick={() => openEditPayment(payment)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar lançamento">
+                                                    <button onClick={() => openEditPayment(payment)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar lanÃ§amento">
                                                         <Edit3 size={12} />
                                                     </button>
-                                                    <button onClick={() => handleDeletePayment(payment)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg transition" title="Excluir lançamento">
+                                                    <button onClick={() => handleDeletePayment(payment)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg transition" title="Excluir lanÃ§amento">
                                                         <Trash2 size={12} />
                                                     </button>
                                                 </span>
                                             </div>
                                         )
                                     ))}
-                                    {selectedCustomer.subscription.payments?.length === 0 && <span className="text-xs text-gray-400 text-center block">Nenhum pagamento registrado</span>}
+                                    {paymentDrafts.length === 0 && <span className="text-xs text-gray-400 text-center block">Nenhum pagamento registrado</span>}
                                 </div>
                             </div>
                         )}
@@ -734,7 +842,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                        {!selectedCustomer ? (
                            <div className="h-full flex items-center justify-center text-center px-8 flex-col text-gray-400">
                                <Calendar size={40} className="mb-4 opacity-50"/>
-                               <p className="font-medium text-sm">Salve o cliente primeiro para liberar a ferramenta de Aluguéis e Agendamentos.</p>
+                               <p className="font-medium text-sm">Salve o cliente primeiro para liberar a ferramenta de AluguÃ©is e Agendamentos.</p>
                            </div>
                        ) : (
                            <div className="flex flex-col gap-6">
@@ -746,7 +854,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                            {(() => { const sc = scores[selectedCustomer.id]; const meta = CLASS_META[sc?.classificacao]; return (
                                                <>
                                                    <div className="flex items-end gap-3 mt-3">
-                                                       <span className="text-5xl font-black text-white tracking-tight">{sc ? sc.score : '—'}</span>
+                                                       <span className="text-5xl font-black text-white tracking-tight">{sc ? sc.score : 'â€”'}</span>
                                                        {meta && <span className={`mb-1.5 inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-1 rounded-lg border ${meta.bg} ${meta.color}`}>{meta.label}</span>}
                                                    </div>
                                                    {sc?.recomendacao && <p className="text-xs text-slate-400 mt-2 leading-relaxed">{sc.recomendacao}</p>}
@@ -757,19 +865,19 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                            <button disabled={isPending} onClick={() => handleRecalcScore(selectedCustomer.id)} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-300 bg-slate-800 border border-slate-700 px-2.5 py-1.5 rounded-lg hover:bg-slate-700 transition disabled:opacity-50" title="Recalcular score agora">
                                                <RefreshCw size={12}/> Recalcular
                                            </button>
-                                           <button onClick={() => handleShowHistory(selectedCustomer.id)} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-300 bg-slate-800 border border-slate-700 px-2.5 py-1.5 rounded-lg hover:bg-slate-700 transition" title="Histórico de scores">
-                                               <TrendingUp size={12}/> Histórico
+                                           <button onClick={() => handleShowHistory(selectedCustomer.id)} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-300 bg-slate-800 border border-slate-700 px-2.5 py-1.5 rounded-lg hover:bg-slate-700 transition" title="HistÃ³rico de scores">
+                                               <TrendingUp size={12}/> HistÃ³rico
                                            </button>
                                        </div>
                                    </div>
 
                                    {(() => { const sc = scores[selectedCustomer.id]; if (!sc) return (
-                                       <div className="text-xs text-slate-500 font-medium py-2">Calculando score deste cliente…</div>
+                                       <div className="text-xs text-slate-500 font-medium py-2">Calculando score deste clienteâ€¦</div>
                                    ); return (
                                        <>
                                            <div className="grid grid-cols-3 gap-2">
                                                <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
-                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Frequência</p>
+                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">FrequÃªncia</p>
                                                    <p className="text-sm font-black text-white mt-0.5">{sc.frequencia}</p>
                                                </div>
                                                <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
@@ -781,8 +889,8 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                                    <p className="text-sm font-black text-white mt-0.5">R$ {Number(sc.gastoAcumulado || 0).toFixed(2).replace('.', ',')}</p>
                                                </div>
                                                <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
-                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Última Reserva</p>
-                                                   <p className="text-[10px] font-bold text-white mt-0.5">{sc.ultimaReserva ? new Date(sc.ultimaReserva).toLocaleDateString('pt-BR') : '—'}</p>
+                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Ãšltima Reserva</p>
+                                                   <p className="text-[10px] font-bold text-white mt-0.5">{sc.ultimaReserva ? new Date(sc.ultimaReserva).toLocaleDateString('pt-BR') : 'â€”'}</p>
                                                </div>
                                                <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Cancel. praz.</p>
@@ -809,59 +917,59 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                </div>
 
                                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col gap-4">
-                                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5"><Clock size={16}/> Agendar Espaço / Mesa</h3>
+                                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5"><Clock size={16}/> Agendar EspaÃ§o / Mesa</h3>
                                     
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">O que está alugando? (Ex: Mesa 5)</label>
-                                        <input type="text" value={rentalResource} onChange={e => setRentalResource(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:border-mrts-blue text-sm font-medium text-slate-700"/>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">O que estÃ¡ alugando? (Ex: Mesa 5)</label>
+                                        <input type="text" value={rentalResource} onChange={e => { setRentalResource(e.target.value); setIsDirty(true); }} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:border-mrts-blue text-sm font-medium text-slate-700"/>
                                     </div>
 
                                     <div className="grid grid-cols-3 gap-2">
                                          <div className="col-span-3">
                                             <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Data</label>
-                                            <input type="date" value={rentalDate} onChange={e => setRentalDate(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-mrts-blue text-sm font-medium text-slate-700"/>
+                                            <input type="date" value={rentalDate} onChange={e => { setRentalDate(e.target.value); setIsDirty(true); }} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-mrts-blue text-sm font-medium text-slate-700"/>
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Hora Início</label>
-                                            <input type="time" value={rentalStart} onChange={e => setRentalStart(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-mrts-blue text-sm font-bold text-slate-700"/>
+                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Hora InÃ­cio</label>
+                                            <input type="time" value={rentalStart} onChange={e => { setRentalStart(e.target.value); setIsDirty(true); }} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-mrts-blue text-sm font-bold text-slate-700"/>
                                         </div>
                                         <div>
                                             <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Fim Estimado</label>
-                                            <input type="time" value={rentalEnd} onChange={e => setRentalEnd(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-mrts-blue text-sm font-bold text-slate-700"/>
+                                            <input type="time" value={rentalEnd} onChange={e => { setRentalEnd(e.target.value); setIsDirty(true); }} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-mrts-blue text-sm font-bold text-slate-700"/>
                                         </div>
                                          <div>
                                             <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Valor (R$)</label>
-                                            <input type="number" step="0.01" value={rentalAmount} onChange={e => setRentalAmount(parseFloat(e.target.value) || 0)} className="w-full bg-blue-50/50 border border-mrts-blue/30 text-mrts-blue rounded-lg px-3 py-2 focus:outline-none focus:border-mrts-blue text-sm font-bold"/>
+                                            <input type="number" step="0.01" value={rentalAmount} onChange={e => { setRentalAmount(parseFloat(e.target.value) || 0); setIsDirty(true); }} className="w-full bg-blue-50/50 border border-mrts-blue/30 text-mrts-blue rounded-lg px-3 py-2 focus:outline-none focus:border-mrts-blue text-sm font-bold"/>
                                         </div>
                                     </div>
-                                     <button disabled={isPending} onClick={() => editingRental ? handleSaveRentalEdit() : handleCreateRental()} className="w-full bg-mrts-blue text-white text-sm font-bold py-2.5 rounded-lg shadow-sm hover:bg-mrts-hover transition disabled:opacity-50 mt-1">
-                                        {editingRental ? 'Salvar Alterações' : 'Confirmar Reserva'}
+                                     <button disabled={isSavingDossier} onClick={() => editingRental ? handleSaveRentalEdit() : handleCreateRental()} className="w-full bg-mrts-blue text-white text-sm font-bold py-2.5 rounded-lg shadow-sm hover:bg-mrts-hover transition disabled:opacity-50 mt-1">
+                                        {editingRental ? 'Aplicar Alteracoes' : 'Adicionar Reserva'}
                                      </button>
                                      {editingRental && (
-                                        <button disabled={isPending} onClick={() => { setEditingRental(null); setRentalResource(""); setRentalAmount(0); }} className="w-full text-[11px] font-bold text-gray-500 bg-white border border-gray-200 py-2 rounded-lg hover:bg-gray-100 transition">
-                                            Cancelar Edição
+                                        <button disabled={isSavingDossier} onClick={() => { setEditingRental(null); setRentalResource(""); setRentalAmount(0); setRentalDate(defaultRentalDateInput()); }} className="w-full text-[11px] font-bold text-gray-500 bg-white border border-gray-200 py-2 rounded-lg hover:bg-gray-100 transition disabled:opacity-50">
+                                            Cancelar EdiÃ§Ã£o
                                         </button>
                                      )}
                                </div>
 
                                <div>
-                                   <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5 py-2"><Calendar size={14}/> Histórico de Locações</h3>
+                                   <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5 py-2"><Calendar size={14}/> HistÃ³rico de LocaÃ§Ãµes</h3>
                                    <div className="flex flex-col gap-2">
-                                        {selectedCustomer.rentals?.map((rent: any) => (
+                                        {rentalDrafts.map((rent: any) => (
                                             <div key={rent.id} className="bg-white border text-left border-gray-200 rounded-xl p-3 flex flex-col gap-2 shadow-sm">
                                                 <div className="flex justify-between items-center">
                                                     <div className="flex flex-col">
                                                         <span className="font-bold text-slate-800 text-xs">{rent.resource}</span>
                                                         <span className="text-[10px] text-gray-500 font-medium">
-                                                            {new Date(rent.startTime).toLocaleDateString('pt-BR')} das {new Date(rent.startTime).getHours()}:{new Date(rent.startTime).getMinutes().toString().padStart(2, '0')} as {new Date(rent.endTime).getHours()}:{new Date(rent.endTime).getMinutes().toString().padStart(2, '0')}
+                                                            {draftPeriodLabel(rent)}
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-xs font-black text-slate-600">R$ {rent.totalAmount.toFixed(2).replace('.',',')}</span>
-                                                        <button onClick={() => openEditRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar locação">
+                                                        <span className="text-xs font-black text-slate-600">R$ {Number(rent.amount || 0).toFixed(2).replace('.',',')}</span>
+                                                        <button onClick={() => openEditRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar locaÃ§Ã£o">
                                                             <Edit3 size={13} />
                                                         </button>
-                                                        <button onClick={() => handleDeleteRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg transition" title="Excluir locação">
+                                                        <button onClick={() => handleDeleteRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg transition" title="Excluir locaÃ§Ã£o">
                                                             <Trash2 size={13} />
                                                         </button>
                                                     </div>
@@ -881,7 +989,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                                     <select
                                                         value={rent.status}
                                                         onChange={(e) => handleRentalStatus(rent, e.target.value)}
-                                                        disabled={isPending}
+                                                        disabled={isSavingDossier}
                                                         className="text-[10px] font-bold text-slate-600 bg-gray-50 border border-gray-200 rounded-lg px-1.5 py-1 outline-none focus:border-mrts-blue disabled:opacity-50"
                                                         title="Alterar status da reserva"
                                                     >
@@ -894,18 +1002,30 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                                 </div>
                                             </div>
                                         ))}
-                                       {selectedCustomer.rentals?.length === 0 && <p className="text-xs text-center text-gray-400 py-4 font-medium">Nenhuma reserva localizada</p>}
+                                       {rentalDrafts.length === 0 && <p className="text-xs text-center text-gray-400 py-4 font-medium">Nenhuma reserva localizada</p>}
                                    </div>
                                </div>
                            </div>
                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-      )}
+                     </div>
+                 </div>
+                 <div className="shrink-0 border-t border-gray-100 bg-white p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                     <p className="text-xs font-medium text-gray-500">
+                         {isDirty ? 'Alteracoes pendentes. Nada foi gravado ainda.' : 'Nenhuma alteracao pendente.'}
+                     </p>
+                     <button
+                         disabled={isSavingDossier}
+                         onClick={handleSaveDossier}
+                         className="w-full sm:w-auto bg-slate-900 text-white font-black px-8 py-3 rounded-xl hover:bg-slate-800 transition shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
+                     >
+                         {isSavingDossier ? <><RefreshCw size={16} className="animate-spin" /> Salvando...</> : 'Salvar e Fechar'}
+                     </button>
+                 </div>
+             </div>
+         </div>
+       )}
 
-      {/* MODAL: CONFIGURAÇÃO DE PESOS DO SCORE */}
+      {/* MODAL: CONFIGURAÃ‡ÃƒO DE PESOS DO SCORE */}
       {showScoreConfig && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl animate-in zoom-in-95 flex flex-col border border-gray-100 max-h-[85vh] overflow-hidden">
@@ -914,7 +1034,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                         <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
                             <Settings size={18} className="text-mrts-blue" /> Configurar Score
                         </h2>
-                        <p className="text-xs text-gray-500 mt-0.5 font-medium">Pesos de cada fator — a soma deve ser 100.</p>
+                        <p className="text-xs text-gray-500 mt-0.5 font-medium">Pesos de cada fator â€” a soma deve ser 100.</p>
                     </div>
                     <button onClick={() => setShowScoreConfig(false)} className="w-9 h-9 flex items-center justify-center bg-white border border-gray-200 hover:bg-gray-100 rounded-full transition">
                         <X size={18} className="text-gray-500" />
@@ -940,27 +1060,27 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                         return (
                             <div className={`mt-2 px-4 py-2.5 rounded-xl border font-bold text-sm flex items-center justify-between ${Math.abs(soma - 100) <= 0.01 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
                                 <span>Soma</span>
-                                <span>{soma.toLocaleString('pt-BR')} / 100 {Math.abs(soma - 100) <= 0.01 ? '✓' : '✗'}</span>
+                                <span>{soma.toLocaleString('pt-BR')} / 100 {Math.abs(soma - 100) <= 0.01 ? 'âœ“' : 'âœ—'}</span>
                             </div>
                         );
                     })()}
                 </div>
                 <div className="p-5 pt-2 border-t border-gray-100 bg-gray-50 shrink-0">
                     <button disabled={pesosSaving} onClick={handleSaveScoreConfig} className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition disabled:opacity-50">
-                        {pesosSaving ? 'Salvando e recalculando…' : 'Salvar e recalcular todos'}
+                        {pesosSaving ? 'Salvando e recalculandoâ€¦' : 'Salvar e recalcular todos'}
                     </button>
                 </div>
             </div>
         </div>
       )}
 
-      {/* MODAL: HISTÓRICO DE SCORE */}
+      {/* MODAL: HISTÃ“RICO DE SCORE */}
       {showHistory && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95 flex flex-col border border-gray-100 max-h-[70vh] overflow-hidden">
                 <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50 shrink-0">
                     <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
-                        <TrendingUp size={18} className="text-mrts-blue" /> Histórico de Score
+                        <TrendingUp size={18} className="text-mrts-blue" /> HistÃ³rico de Score
                     </h2>
                     <button onClick={() => setShowHistory(false)} className="w-9 h-9 flex items-center justify-center bg-white border border-gray-200 hover:bg-gray-100 rounded-full transition">
                         <X size={18} className="text-gray-500" />
@@ -974,7 +1094,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                             <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-slate-50 border border-gray-200 rounded-xl">
                                 <span className="text-xs text-gray-500 font-medium">{new Date(h.snapshotAt).toLocaleString('pt-BR')}</span>
                                 <span className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2 py-1 rounded-lg border ${meta?.bg || 'bg-gray-100 border-gray-200'} ${meta?.color || 'text-gray-600'}`}>
-                                    {h.score} · {meta?.label || h.classificacao}
+                                    {h.score} Â· {meta?.label || h.classificacao}
                                 </span>
                             </div>
                         );

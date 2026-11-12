@@ -3,8 +3,313 @@
 import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "../../lib/auth-guard";
+import { buildRentalWindow, formatRentalPeriod } from "../../lib/rental-time";
 import { createAuditLog } from "./audit";
 import { recalcScore } from "./score";
+
+function validateRentalStatus(status?: string) {
+    if (status && !['PENDING', 'CONFIRMED', 'PAID', 'CANCELED', 'NO_SHOW'].includes(status)) {
+        throw new Error("Status invalido.");
+    }
+    return status || 'PENDING';
+}
+
+function validateRentalAmount(amount: number) {
+    if (!Number.isFinite(amount) || amount < 0) throw new Error("Valor da reserva invalido.");
+    return amount;
+}
+
+async function assertRentalAvailable(
+    tx: any,
+    resource: string,
+    startTime: Date,
+    endTime: Date,
+    excludeIds: string[] = []
+) {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${resource}))`;
+    const conflict = await tx.rental.findFirst({
+        where: {
+            resource,
+            status: { not: 'CANCELED' },
+            startTime: { lt: endTime },
+            endTime: { gt: startTime },
+            ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
+        },
+        select: { id: true, resource: true, startTime: true, endTime: true },
+    });
+    if (conflict) {
+        throw new Error(`Horario indisponivel para ${resource}: ${formatRentalPeriod(conflict.startTime, conflict.endTime)}.`);
+    }
+}
+
+export type CustomerDossierRental = {
+    id?: string;
+    resource: string;
+    date: string;
+    start: string;
+    end: string;
+    amount: number;
+    status?: string;
+};
+
+export type CustomerDossierPaymentUpdate = {
+    id: string;
+    amount: number;
+    paymentDate?: string;
+};
+
+export type CustomerDossierInput = {
+    idempotencyKey: string;
+    customer: {
+        id?: string;
+        name: string;
+        phone: string;
+        notes: string;
+        subscription?: { planName: string; amount: number; dueDate: number } | null;
+    };
+    rentals: CustomerDossierRental[];
+    rentalDeleteIds: string[];
+    paymentUpdates: CustomerDossierPaymentUpdate[];
+    paymentDeleteIds: string[];
+    subscriptionPaymentAmount?: number | null;
+};
+
+export async function saveCustomerDossier(data: CustomerDossierInput) {
+    const actor = await requirePermission("permCustomers");
+    const idempotencyKey = String(data.idempotencyKey || '').trim();
+    if (!/^[A-Za-z0-9-]{16,100}$/.test(idempotencyKey)) {
+        throw new Error("Chave idempotente invalida.");
+    }
+    const idempotencyMarker = `dossie-idempotency:${idempotencyKey}`;
+
+    const name = String(data.customer?.name || '').trim();
+    if (!name) throw new Error("Nome e obrigatorio.");
+
+    const subscription = data.customer.subscription;
+    if (subscription) {
+        if (!subscription.planName?.trim()) throw new Error("Nome do plano e obrigatorio.");
+        if (!Number.isFinite(subscription.amount) || subscription.amount < 0) throw new Error("Valor da mensalidade invalido.");
+        if (!Number.isInteger(subscription.dueDate) || subscription.dueDate < 1 || subscription.dueDate > 31) {
+            throw new Error("Dia de vencimento invalido.");
+        }
+    }
+
+    let customerId = data.customer.id;
+    let alreadyApplied = false;
+    const auditActions: string[] = [];
+
+    await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyMarker}))`;
+        const prior = await tx.auditLog.findFirst({
+            where: {
+                userId: actor.id,
+                action: 'DossieIdempotency',
+                details: idempotencyMarker,
+            },
+            select: { id: true },
+        });
+        if (prior) {
+            alreadyApplied = true;
+            return;
+        }
+
+        if (customerId) {
+            const existing = await tx.customer.findUnique({ where: { id: customerId }, select: { id: true } });
+            if (!existing) throw new Error("Cliente nao encontrado.");
+            await tx.customer.update({
+                where: { id: customerId },
+                data: { name, phone: data.customer.phone || '', notes: data.customer.notes || '' },
+            });
+            auditActions.push('dados cadastrais');
+        } else {
+            const created = await tx.customer.create({
+                data: { name, phone: data.customer.phone || '', notes: data.customer.notes || '' },
+            });
+            customerId = created.id;
+            auditActions.push('cadastro');
+        }
+
+        if (subscription) {
+            const existingSubscription = await tx.subscription.findUnique({ where: { customerId: customerId! } });
+            let nextDue = existingSubscription?.nextDueDate;
+            if (!nextDue) {
+                nextDue = new Date();
+                nextDue.setDate(subscription.dueDate);
+                if (nextDue < new Date()) nextDue.setMonth(nextDue.getMonth() + 1);
+            }
+            await tx.subscription.upsert({
+                where: { customerId: customerId! },
+                update: {
+                    planName: subscription.planName.trim(),
+                    amount: subscription.amount,
+                    dueDate: subscription.dueDate,
+                },
+                create: {
+                    customerId: customerId!,
+                    planName: subscription.planName.trim(),
+                    amount: subscription.amount,
+                    dueDate: subscription.dueDate,
+                    nextDueDate: nextDue,
+                },
+            });
+            auditActions.push('plano/mensalidade');
+        }
+
+        const existingRentals = await tx.rental.findMany({
+            where: { customerId: customerId! },
+            select: { id: true, resource: true, status: true, startTime: true, endTime: true, totalAmount: true },
+        });
+        const existingById = new Map(existingRentals.map((rental: any) => [rental.id, rental]));
+        const deleteIds = Array.from(new Set((data.rentalDeleteIds || []).map(String)));
+
+        const preparedRentals = (data.rentals || []).map((rental) => {
+            const resource = String(rental.resource || '').trim();
+            if (!resource) throw new Error("Informe o espaco/mesa da reserva.");
+            const status = validateRentalStatus(rental.status);
+            const amount = validateRentalAmount(Number(rental.amount));
+            const { startTime, endTime } = buildRentalWindow(rental.date, rental.start, rental.end);
+            if (endTime <= startTime) throw new Error("Horario final invalido.");
+            if (rental.id && !existingById.has(rental.id)) throw new Error("Reserva nao pertence a este cliente.");
+            const previous: any = rental.id ? existingById.get(rental.id) : null;
+            const timeChanged = !previous
+                || resource !== String(previous.resource || '')
+                || startTime.getTime() !== new Date(previous.startTime).getTime()
+                || endTime.getTime() !== new Date(previous.endTime).getTime();
+            const changed = timeChanged || !previous || status !== previous.status || amount !== Number(previous.totalAmount);
+            return { ...rental, resource, status, amount, startTime, endTime, changed, timeChanged };
+        });
+        const changedIds = preparedRentals
+            .filter((rental) => rental.timeChanged && rental.id)
+            .map((rental) => rental.id!);
+        const excludedIds = [...changedIds, ...deleteIds];
+
+        const conflictsToCheck = preparedRentals
+            .filter((rental) => rental.timeChanged && rental.status !== 'CANCELED')
+            .sort((a, b) => a.resource.localeCompare(b.resource));
+        for (const rental of conflictsToCheck) {
+            await assertRentalAvailable(tx, rental.resource, rental.startTime, rental.endTime, excludedIds);
+        }
+        for (let i = 0; i < preparedRentals.length; i++) {
+            for (let j = i + 1; j < preparedRentals.length; j++) {
+                const a = preparedRentals[i];
+                const b = preparedRentals[j];
+                if ((!a.timeChanged && !b.timeChanged) || a.status === 'CANCELED' || b.status === 'CANCELED' || a.resource !== b.resource) continue;
+                if (a.startTime < b.endTime && a.endTime > b.startTime) {
+                    throw new Error(`Conflito de horario entre reservas de ${a.resource}.`);
+                }
+            }
+        }
+
+        for (const id of deleteIds) {
+            if (!existingById.has(id)) throw new Error("Reserva para exclusao nao pertence a este cliente.");
+            await tx.rental.delete({ where: { id } });
+        }
+        for (const rental of preparedRentals) {
+            if (rental.id) {
+                if (!rental.changed) continue;
+                const previous = existingById.get(rental.id)!;
+                await tx.rental.update({
+                    where: { id: rental.id },
+                    data: {
+                        resource: rental.resource,
+                        startTime: rental.startTime,
+                        endTime: rental.endTime,
+                        totalAmount: rental.amount,
+                        status: rental.status,
+                        cancelledAt: rental.status === 'CANCELED' ? (previous.status === 'CANCELED' ? undefined : new Date()) : null,
+                    },
+                });
+            } else {
+                await tx.rental.create({
+                    data: {
+                        customerId: customerId!,
+                        resource: rental.resource,
+                        startTime: rental.startTime,
+                        endTime: rental.endTime,
+                        totalAmount: rental.amount,
+                        status: rental.status,
+                        cancelledAt: rental.status === 'CANCELED' ? new Date() : null,
+                    },
+                });
+            }
+        }
+        if (preparedRentals.length || deleteIds.length) auditActions.push('reservas');
+
+        const subscriptionRow = await tx.subscription.findUnique({ where: { customerId: customerId! } });
+        const allowedPaymentIds = new Set(
+            subscriptionRow
+                ? (await tx.subscriptionPayment.findMany({ where: { subscriptionId: subscriptionRow.id }, select: { id: true } })).map((p: any) => p.id)
+                : []
+        );
+        for (const payment of data.paymentUpdates || []) {
+            if (!allowedPaymentIds.has(payment.id)) throw new Error("Pagamento nao pertence a este cliente.");
+            if (!Number.isFinite(payment.amount) || payment.amount <= 0) throw new Error("Valor do pagamento invalido.");
+            await tx.subscriptionPayment.update({
+                where: { id: payment.id },
+                data: {
+                    amount: payment.amount,
+                    paymentDate: payment.paymentDate ? new Date(payment.paymentDate) : undefined,
+                },
+            });
+        }
+        for (const id of Array.from(new Set(data.paymentDeleteIds || []))) {
+            if (!allowedPaymentIds.has(id)) throw new Error("Pagamento para exclusao nao pertence a este cliente.");
+            await tx.subscriptionPayment.delete({ where: { id } });
+        }
+        if ((data.paymentUpdates || []).length || (data.paymentDeleteIds || []).length) auditActions.push('historico de mensalidades');
+
+        if (data.subscriptionPaymentAmount != null) {
+            if (!subscriptionRow) throw new Error("O cliente nao possui assinatura para pagamento.");
+            if (!Number.isFinite(data.subscriptionPaymentAmount) || data.subscriptionPaymentAmount <= 0) {
+                throw new Error("Valor do pagamento da mensalidade invalido.");
+            }
+            await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`subscription-payment:${subscriptionRow.id}`}))`;
+            const currentSubscription = await tx.subscription.findUnique({ where: { id: subscriptionRow.id } });
+            if (!currentSubscription) throw new Error("Assinatura nao encontrada.");
+            const existingPayment = await tx.subscriptionPayment.findFirst({
+                where: {
+                    subscriptionId: currentSubscription.id,
+                    referenceMonth: currentSubscription.nextDueDate,
+                },
+                select: { id: true },
+            });
+            if (existingPayment) throw new Error("Ja existe pagamento registrado para este vencimento.");
+            await tx.subscriptionPayment.create({
+                data: {
+                    subscriptionId: currentSubscription.id,
+                    amount: data.subscriptionPaymentAmount,
+                    referenceMonth: currentSubscription.nextDueDate,
+                },
+            });
+            const newDueDate = new Date(currentSubscription.nextDueDate);
+            newDueDate.setMonth(newDueDate.getMonth() + 1);
+            await tx.subscription.update({
+                where: { id: currentSubscription.id },
+                data: { nextDueDate: newDueDate },
+            });
+            auditActions.push('pagamento de mensalidade');
+        }
+
+        await tx.auditLog.create({
+            data: {
+                userId: actor.id,
+                action: 'DossieIdempotency',
+                details: idempotencyMarker,
+            },
+        });
+    });
+
+    if (alreadyApplied) {
+        return { success: true, customerId, idempotent: true };
+    }
+
+    revalidatePath("/clientes");
+    if (customerId) await recalcScore(customerId).catch(() => {});
+    if (auditActions.length > 0) {
+        await createAuditLog("Dossie do Cliente", `Cliente ${name}: ${auditActions.join(', ')}.`).catch(() => {});
+    }
+    return { success: true, customerId };
+}
 
 export async function upsertCustomer(data: {
     id?: string;
@@ -115,15 +420,14 @@ export async function createRental(customerId: string, resource: string, date: s
 
     if (!customerId || !resource) throw new Error("Faltam dados do agendamento.");
 
-    const [sy, sm, sd] = date.split('-').map(Number);
-    const [sh, smin] = startHour.split(':').map(Number);
-    const [eh, emin] = endHour.split(':').map(Number);
+    const validAmount = validateRentalAmount(Number(amount));
+    const { startTime, endTime } = buildRentalWindow(date, startHour, endHour);
 
-    const startTime = new Date(sy, sm-1, sd, sh, smin);
-    const endTime = new Date(sy, sm-1, sd, eh, emin);
-
-    await prisma.rental.create({
-        data: { customerId, resource, startTime, endTime, totalAmount: amount, status: 'PENDING' }
+    await prisma.$transaction(async (tx) => {
+        await assertRentalAvailable(tx, resource.trim(), startTime, endTime);
+        await tx.rental.create({
+            data: { customerId, resource: resource.trim(), startTime, endTime, totalAmount: validAmount, status: 'PENDING' }
+        });
     });
 
     revalidatePath("/clientes");
@@ -201,16 +505,17 @@ export async function updateRental(rentalId: string, resource: string, date: str
 
     if (!rentalId || !resource) throw new Error("Faltam dados do agendamento.");
 
-    const [sy, sm, sd] = date.split('-').map(Number);
-    const [sh, smin] = startHour.split(':').map(Number);
-    const [eh, emin] = endHour.split(':').map(Number);
+    const validAmount = validateRentalAmount(Number(amount));
+    const { startTime, endTime } = buildRentalWindow(date, startHour, endHour);
 
-    const startTime = new Date(sy, sm-1, sd, sh, smin);
-    const endTime = new Date(sy, sm-1, sd, eh, emin);
-
-    await prisma.rental.update({
-        where: { id: rentalId },
-        data: { resource, startTime, endTime, totalAmount: amount }
+    await prisma.$transaction(async (tx) => {
+        const current = await tx.rental.findUnique({ where: { id: rentalId }, select: { id: true } });
+        if (!current) throw new Error("Reserva nao encontrada.");
+        await assertRentalAvailable(tx, resource.trim(), startTime, endTime, [rentalId]);
+        await tx.rental.update({
+            where: { id: rentalId },
+            data: { resource: resource.trim(), startTime, endTime, totalAmount: validAmount }
+        });
     });
 
     revalidatePath("/clientes");

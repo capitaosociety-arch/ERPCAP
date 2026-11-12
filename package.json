@@ -15,6 +15,7 @@
     "test:strategic": "tsx scripts/tests/strategic-analytics.test.ts",
     "test:pricing": "tsx scripts/tests/pricing-intelligence.test.ts",
     "test:quantity": "tsx scripts/tests/quantity-input.test.ts",
+    "test:rental-time": "tsx scripts/tests/rental-time.test.ts",
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
