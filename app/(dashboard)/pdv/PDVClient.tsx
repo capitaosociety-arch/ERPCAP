@@ -38,8 +38,8 @@ export default function PDVClient({ products, services = [], categories, user, o
 
   const virtualCategories = [...categories, { id: 'SERVICES', name: 'Serviços' }];
   const allItems = useMemo(() => sortProducts([
-    ...products.map((p: any) => ({ ...p, isService: false })),
-    ...services.map((s: any) => ({ ...s, isService: true, categoryId: 'SERVICES', iconUrl: '🛠️', stock: { quantity: '∞' } }))
+    ...products.map((p: any) => ({ ...p, isService: p.isService === true, catalogType: 'product' })),
+    ...services.map((s: any) => ({ ...s, isService: true, catalogType: 'service', categoryId: 'SERVICES', iconUrl: '🛠️', stock: { quantity: '∞' } }))
   ], 'name-asc'), [products, services]);
 
   // Filtra em tempo real (Geral)
@@ -171,7 +171,7 @@ export default function PDVClient({ products, services = [], categories, user, o
       setAddingItemId(product.id);
       
       // Adiciona o lancamento
-      await addItemToOrder(paymentOrder.id, product.id, 1, product.price, product.isService);
+      await addItemToOrder(paymentOrder.id, product.id, 1, product.price, product.catalogType === 'service');
       
       // Busca fresco e recalcula tudo
       const updatedOrder = await getOrderWithPayments(paymentOrder.id);

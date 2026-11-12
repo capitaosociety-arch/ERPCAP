@@ -22,13 +22,19 @@ async function verifyAuth(requiredPerm: string = 'permDepot') {
     return dbUser;
 }
 
+function assertStockControlled(product: { isService: boolean; stockControlled: boolean } | null) {
+    if (!product || product.isService === true || product.stockControlled === false) {
+        throw new Error('Este item nao controla estoque.');
+    }
+}
+
 
 // 1. Listar todo o inventário (visão geral do Depósito)
 export async function getDepotInventory() {
     await verifyAuth();
     
     return await prisma.product.findMany({
-        where: { isActive: true },
+        where: { isActive: true, isService: false, stockControlled: true },
         include: {
             depotStock: true,
             category: true,
@@ -53,6 +59,7 @@ export async function addDepotStock(
     await prisma.$transaction(async (tx) => {
         const date = new Date();
         const product = await tx.product.findUnique({ where: { id: productId } });
+        assertStockControlled(product);
         const depot = await tx.depotStock.upsert({
             where: { productId },
             update: {},
@@ -150,6 +157,8 @@ export async function requestTransfer(productId: string, quantity: number, notes
     const user = await verifyAuth();
 
     // Validar se tem saldo no depósito antes de sequer solicitar (opcional mas recomendado)
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    assertStockControlled(product);
     const depot = await prisma.depotStock.findUnique({ where: { productId } });
     if (!depot || depot.quantity < quantity) {
         throw new Error(`Saldo insuficiente no depósito para solicitar transferência. Disponível: ${depot?.quantity || 0}`);
@@ -165,7 +174,6 @@ export async function requestTransfer(productId: string, quantity: number, notes
         }
     });
 
-    const product = await prisma.product.findUnique({ where: { id: productId } });
     await createAuditLog("Solicitação de Transferência", `Solicitou a transferência de ${quantity} unidades de ${product?.name} para o estoque de vendas.`);
 
     revalidatePath('/deposito');
@@ -204,6 +212,7 @@ export async function authorizeTransfer(requestId: string) {
         }
 
         const product = await tx.product.findUnique({ where: { id: request.productId } });
+        assertStockControlled(product);
         const depot = await tx.depotStock.findUnique({ where: { productId: request.productId } });
         if (!depot || depot.quantity < request.quantity) {
             throw new Error(`Saldo insuficiente no depósito! Tentativa: ${request.quantity}, Disponível: ${depot?.quantity || 0}`);
@@ -330,6 +339,7 @@ export async function adjustDepotStockLoss(productId: string, quantityLost: numb
         }
 
         const product = await tx.product.findUnique({ where: { id: productId } });
+        assertStockControlled(product);
         const fallbackCost = Number(product?.cost) || 0;
         const depotAvg = effectiveAverageCost(depot.averageCost, fallbackCost, depot.quantity);
         const newQty = Number(depot.quantity) - quantityLost;
@@ -375,6 +385,7 @@ export async function directTransfer(productId: string, quantity: number, notes?
 
     await prisma.$transaction(async (tx) => {
         const product = await tx.product.findUnique({ where: { id: productId } });
+        assertStockControlled(product);
         const depot = await tx.depotStock.findUnique({ where: { productId } });
         if (!depot || depot.quantity < quantity) {
             throw new Error(`Saldo insuficiente no depósito!`);
@@ -446,6 +457,8 @@ export async function updateDepotMinStock(productId: string, minQuantity: number
     const user = await verifyAuth();
     if (user.role !== 'ADMIN' && user.role !== 'MANAGER') throw new Error("Acesso negado");
 
+    const product = await prisma.product.findUnique({ where: { id: productId } });
+    assertStockControlled(product);
 
     await prisma.depotStock.upsert({
         where: { productId },
@@ -491,6 +504,7 @@ export async function registerBatchDepotStockMovement(
                 if (qty <= 0) continue;
 
                 const product = await tx.product.findUnique({ where: { id: mov.productId } });
+                if (!product || product.isService === true || product.stockControlled === false) continue;
                 const depot = await tx.depotStock.upsert({
                     where: { productId: mov.productId },
                     update: {},

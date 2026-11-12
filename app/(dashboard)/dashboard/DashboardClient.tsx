@@ -128,7 +128,7 @@ export default function DashboardClient({ stats, payments, userName, userRole }:
                         </div>
                     </div>
                     <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Lucro Líquido Hoje</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Margem de Contribuicao Hoje</p>
                         <h3 className="text-2xl font-black text-white tracking-tight">R$ {stats.dailyProfit.toFixed(2).replace('.',',')}</h3>
                     </div>
                 </div>

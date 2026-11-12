@@ -10,7 +10,12 @@ export async function updateMinStock(productId: string, minQuantity: number) {
     await requirePermission("permStock");
 
     if (!productId || minQuantity < 0) {
-        throw new Error("Valores inválidos");
+        throw new Error("Valores invǭlidos");
+    }
+
+    const product = await prisma.product.findUnique({ where: { id: productId }, select: { isService: true, stockControlled: true } });
+    if (!product || product.isService === true || product.stockControlled === false) {
+        throw new Error("Este item nao controla estoque.");
     }
 
     await prisma.stock.upsert({
@@ -42,6 +47,9 @@ export async function registerStockMovement(
 
     await prisma.$transaction(async (tx) => {
         const product = await tx.product.findUnique({ where: { id: productId } });
+        if (!product || product.isService === true || product.stockControlled === false) {
+            throw new Error("Este item nao controla estoque.");
+        }
         const stock = await tx.stock.upsert({
             where: { productId },
             update: {},
@@ -180,6 +188,7 @@ export async function registerBatchStockMovement(
                 if (qty <= 0) continue;
 
                 const product = await tx.product.findUnique({ where: { id: mov.productId } });
+                if (!product || product.isService === true || product.stockControlled === false) continue;
                 const stock = await tx.stock.upsert({
                     where: { productId: mov.productId },
                     update: {},

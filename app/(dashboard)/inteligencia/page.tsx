@@ -5,6 +5,7 @@ import { prisma } from '../../../lib/prisma';
 import InteligenciaClient from './InteligenciaClient';
 import { getIntelligenceReport } from '../../actions/inteligencia';
 import { isAIEnabled } from '../../../lib/ai/provider';
+import { currentCuiabaMonth } from '../../../lib/official-financials';
 
 export default async function InteligenciaPage() {
     const session = await getServerSession(authOptions) as { user?: { id?: string } } | null;
@@ -18,7 +19,9 @@ export default async function InteligenciaPage() {
         redirect('/dashboard');
     }
 
-    const initial = await getIntelligenceReport('30d');
+    const initialPeriod = currentCuiabaMonth();
+    const initialRegime = 'competence' as const;
+    const initial = await getIntelligenceReport(initialPeriod, initialRegime);
 
     const copilotEnabled = ['1', 'true', 'yes'].includes((process.env.COPILOT_ENABLED || '').toLowerCase());
 
@@ -26,6 +29,9 @@ export default async function InteligenciaPage() {
         <InteligenciaClient
             initialReport={initial.success ? initial.report ?? null : null}
             initialError={initial.success ? undefined : initial.error}
+            initialPeriod={initialPeriod}
+            initialRegime={initialRegime}
+            canManageCosts={dbUser.role === 'ADMIN' || dbUser.permFinance}
             copilot={{
                 enabled: copilotEnabled,
                 hasAI: isAIEnabled(),

@@ -13,7 +13,33 @@ export async function processCheckoutAction(cart: any[]) {
   if (!openRegister) throw new Error("Nenhum caixa aberto! Abra o caixa no menu Financeiro antes de vender.");
 
 
-  const total = cart.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
+  const productIds = cart
+    .filter((item) => item?.product?.catalogType !== 'service' && item?.product?.id)
+    .map((item) => item.product.id);
+  const products = await prisma.product.findMany({
+    where: { id: { in: productIds } },
+    select: { id: true, price: true, cost: true, isService: true, stockControlled: true },
+  });
+  const productById = new Map(products.map((product) => [product.id, product]));
+
+  const safeCart = cart.map((item) => {
+    if (item?.product?.catalogType === 'service') return item;
+    const product = productById.get(item?.product?.id);
+    if (!product) throw new Error('Produto nao encontrado no catalogo.');
+    return {
+      ...item,
+      product: {
+        ...item.product,
+        price: product.price,
+        cost: product.cost,
+        isService: product.isService,
+        stockControlled: product.stockControlled,
+        catalogType: 'product',
+      },
+    };
+  });
+
+  const total = safeCart.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
 
   // Registra a venda como OPEN (Pendente de pagamento para usar Modal)
   const order = await prisma.$transaction(async (tx) => {
@@ -24,9 +50,9 @@ export async function processCheckoutAction(cart: any[]) {
         total,
         notes: "Caixa RÃ¡pido (PDV)",
         items: {
-          create: cart.map(item => ({
-            productId: item.product.isService ? undefined : item.product.id,
-            serviceId: item.product.isService ? item.product.id : undefined,
+          create: safeCart.map(item => ({
+            productId: item.product.catalogType === 'service' ? undefined : item.product.id,
+            serviceId: item.product.catalogType === 'service' ? item.product.id : undefined,
             quantity: item.quantity,
             unitPrice: item.product.price,
             subtotal: item.product.price * item.quantity
@@ -36,8 +62,8 @@ export async function processCheckoutAction(cart: any[]) {
     });
 
     // Baixa AutomÃ¡tica de Estoque imediata
-    for (const item of cart) {
-      if (item.product.isService) continue;
+    for (const item of safeCart) {
+      if (item.product.catalogType === 'service' || item.product.isService === true || item.product.stockControlled === false) continue;
       
       const stock = await tx.stock.findUnique({ where: { productId: item.product.id }});
       if (stock) {
@@ -114,11 +140,15 @@ export async function cancelOrderAction(orderId: string) {
 
     // Estorna Estoque usando o custo originalmente registrado na venda
     for (const item of order.items) {
-      if (item.productId) {
-        const stock = await tx.stock.findUnique({ where: { productId: item.productId } });
+      const product = item.productId
+        ? await tx.product.findUnique({ where: { id: item.productId }, select: { isService: true, stockControlled: true } })
+        : null;
+      const trackStock = !!item.productId && !!product && product.isService !== true && product.stockControlled !== false;
+      if (trackStock) {
+        const stock = await tx.stock.findUnique({ where: { productId: item.productId! } });
         if (stock) {
           const saleMovements = await tx.stockMovement.findMany({
-            where: { orderId: order.id, productId: item.productId, type: 'OUT_SALE' },
+            where: { orderId: order.id, productId: item.productId!, type: 'OUT_SALE' },
             select: { quantity: true, unitCost: true }
           });
           const saleQty = saleMovements.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
@@ -139,7 +169,7 @@ export async function cancelOrderAction(orderId: string) {
 
           const movement = await tx.stockMovement.create({
             data: {
-              productId: item.productId,
+              productId: item.productId!,
               type: 'IN', // Devolução
               movementKind: 'RETURN',
               orderId: order.id,
@@ -150,7 +180,7 @@ export async function cancelOrderAction(orderId: string) {
           });
 
           await recordInventoryCost(tx, {
-            productId: item.productId,
+            productId: item.productId!,
             location: 'BALCAO',
             movementType: 'RETURN',
             quantity: item.quantity,

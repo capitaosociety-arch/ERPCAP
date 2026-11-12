@@ -134,6 +134,8 @@ model Product {
   iconUrl     String?
   unit        String   @default("UN")
   isActive    Boolean  @default(true)
+  isService   Boolean  @default(false)
+  stockControlled Boolean @default(true)
   allowAddons Boolean  @default(false)
   allowFractional Boolean @default(false)
   
@@ -358,6 +360,22 @@ model Rental {
   @@index([startTime])
 }
 
+model RentalOperatingHour {
+  id           String   @id @default(cuid())
+  weekday      Int      // 0 = domingo ... 6 = sábado
+  field        String   // FUT5, FUT7, etc.
+  startMinute  Int      // minutos desde 00:00
+  endMinute    Int      // minutos desde 00:00; deve ser > startMinute
+  demandWeight Float    @default(1)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([weekday, field, startMinute, endMinute])
+  @@index([weekday, field])
+  @@index([isActive])
+}
+
 model FinancialEntry {
   id               String   @id @default(cuid())
   description      String
@@ -378,11 +396,64 @@ model FinancialEntry {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  costAllocations  CostAllocation[]
+
   @@index([type])
   @@index([status])
   @@index([dueDate])
   @@index([paymentDate])
   @@index([category])
+}
+
+model CostCenter {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  name           String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  allocations    CostAllocation[]
+  rules          OperatingCostRule[]
+
+  @@index([isActive])
+}
+
+model CostAllocation {
+  id               String   @id @default(cuid())
+  financialEntryId String
+  costCenterId     String
+  period           String   // YYYY-MM
+  amount           Float
+  driver           String   // HOURS_REGULAR, HOURS_EXTRA, HOURS_TOTAL, REVENUE, MANUAL
+  note             String?
+  createdAt        DateTime @default(now())
+
+  financialEntry   FinancialEntry @relation(fields: [financialEntryId], references: [id], onDelete: Cascade)
+  costCenter       CostCenter     @relation(fields: [costCenterId], references: [id])
+
+  @@unique([financialEntryId, costCenterId, period])
+  @@index([period])
+  @@index([costCenterId])
+}
+
+model OperatingCostRule {
+  id             String   @id @default(cuid())
+  costCenterId   String
+  type           String   // FIXED_MONTHLY, VARIABLE_PER_HOUR, SHARED
+  amount         Float    @default(0)
+  ratePerHour    Float?
+  driver         String?  // HOURS_REGULAR, HOURS_EXTRA, HOURS_TOTAL, REVENUE, MANUAL
+  effectiveFrom  DateTime?
+  effectiveTo    DateTime?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  costCenter     CostCenter @relation(fields: [costCenterId], references: [id])
+
+  @@index([costCenterId])
+  @@index([isActive])
 }
 
 model InventoryCostLedger {

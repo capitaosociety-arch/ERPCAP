@@ -55,7 +55,9 @@ export async function upsertProduct(data: {
     cost: number,
     iconUrl: string,
     unit: string,
-    allowFractional?: boolean
+    allowFractional?: boolean,
+    isService?: boolean,
+    stockControlled?: boolean
 }) {
     await requirePermission("permProducts");
 
@@ -75,7 +77,9 @@ export async function upsertProduct(data: {
                 cost: data.cost,
                 iconUrl: data.iconUrl,
                 unit: data.unit,
-                allowFractional: data.allowFractional ?? false
+                allowFractional: data.allowFractional ?? false,
+                isService: data.isService,
+                stockControlled: data.stockControlled
             }
         });
 
@@ -85,7 +89,9 @@ export async function upsertProduct(data: {
             cost: "Custo",
             unit: "Unidade",
             categoryId: "Categoria",
-            allowFractional: "Permite quantidade quebrada"
+            allowFractional: "Permite quantidade quebrada",
+            isService: "Tratado como servico",
+            stockControlled: "Controla estoque"
         }) : `Editou informações do produto ${data.name}.`;
 
         await createAuditLog("Edição de Produto", details);
@@ -99,6 +105,8 @@ export async function upsertProduct(data: {
                 iconUrl: data.iconUrl,
                 unit: data.unit,
                 allowFractional: data.allowFractional ?? false,
+                isService: data.isService ?? false,
+                stockControlled: data.stockControlled ?? (data.isService ? false : true),
                 isActive: true
             }
         });

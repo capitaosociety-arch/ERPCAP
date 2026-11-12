@@ -16,7 +16,7 @@ export default async function EstoqueRoute() {
           }
       },
       orderBy: { name: 'asc' },
-      where: { isActive: true } // Oculta produtos de menu apagados da contagem padrao
+      where: { isActive: true, isService: false, stockControlled: true } // Oculta servicos e produtos de menu apagados da contagem padrao
     }),
     prisma.stockCount.findMany({
       where: { location: 'BALCAO' }

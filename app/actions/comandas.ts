@@ -55,6 +55,11 @@ export async function addItemToOrder(orderId: string, itemId: string, quantity: 
     await requirePermission([...COMANDAS_ACCESS]);
 
     await prisma.$transaction(async (tx) => {
+        const product = !isService
+            ? await tx.product.findUnique({ where: { id: itemId }, select: { cost: true, isService: true, stockControlled: true } })
+            : null;
+        const trackStock = !isService && !!product && product.isService !== true && product.stockControlled !== false;
+
         const orderItem = await tx.orderItem.create({
             data: {
                 orderId,
@@ -72,12 +77,11 @@ export async function addItemToOrder(orderId: string, itemId: string, quantity: 
             data: { total: { increment: quantity * price } }
         });
 
-        if (!isService) {
+        if (trackStock) {
             const hasStock = await tx.stock.findUnique({ where: { productId: itemId }});
             if(hasStock) {
                const currentQty = Number(hasStock.quantity) || 0;
-               const prod = await tx.product.findUnique({ where: { id: itemId }, select: { cost: true } });
-               const unitCost = effectiveAverageCost(hasStock.averageCost, prod?.cost, currentQty);
+               const unitCost = effectiveAverageCost(hasStock.averageCost, product?.cost, currentQty);
                const newQty = currentQty - quantity;
 
                await tx.stock.update({
@@ -105,7 +109,7 @@ export async function addItemToOrder(orderId: string, itemId: string, quantity: 
                    quantity,
                    unitCost,
                    balanceQty: newQty,
-                   balanceAvgCost: effectiveAverageCost(hasStock.averageCost, prod?.cost, newQty),
+                   balanceAvgCost: effectiveAverageCost(hasStock.averageCost, product?.cost, newQty),
                    referenceId: movement.id,
                    notes: `Venda comanda ${orderId}`,
                });
@@ -194,14 +198,18 @@ export async function processPayment(orderId: string, amount: number, method: st
         if (delta === 0) return;
 
         // Verifica e ajusta o estoque caso seja produto (não serviço)
-        if (item.productId) {
-            const stock = await tx.stock.findUnique({ where: { productId: item.productId } });
+        const product = item.productId
+            ? await tx.product.findUnique({ where: { id: item.productId }, select: { cost: true, isService: true, stockControlled: true } })
+            : null;
+        const trackStock = !!item.productId && !!product && product.isService !== true && product.stockControlled !== false;
+
+        if (trackStock) {
+            const stock = await tx.stock.findUnique({ where: { productId: item.productId! } });
             if (stock) {
                 if (delta > 0 && stock.quantity < delta) {
                     throw new Error(`Estoque insuficiente! Disponível: ${stock.quantity}`);
                 }
 
-                const product = await tx.product.findUnique({ where: { id: item.productId }, select: { cost: true } });
                 const currentQty = Number(stock.quantity) || 0;
                 const currentAvg = effectiveAverageCost(stock.averageCost, product?.cost, currentQty);
                 let unitCost = currentAvg;
@@ -210,7 +218,7 @@ export async function processPayment(orderId: string, amount: number, method: st
 
                 if (delta < 0) {
                     const saleMovements = await tx.stockMovement.findMany({
-                        where: { orderItemId: item.id, productId: item.productId, type: 'OUT_SALE' },
+                        where: { orderItemId: item.id, productId: item.productId!, type: 'OUT_SALE' },
                         select: { quantity: true, unitCost: true }
                     });
                     const saleQty = saleMovements.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
@@ -226,7 +234,7 @@ export async function processPayment(orderId: string, amount: number, method: st
 
                 const movement = await tx.stockMovement.create({
                     data: {
-                        productId: item.productId,
+                        productId: item.productId!,
                         type: delta > 0 ? "OUT_SALE" : "IN",
                         movementKind: delta > 0 ? "SALE" : "RETURN",
                         orderId: item.orderId,
@@ -238,7 +246,7 @@ export async function processPayment(orderId: string, amount: number, method: st
                 });
 
                 await recordInventoryCost(tx, {
-                    productId: item.productId,
+                    productId: item.productId!,
                     location: 'BALCAO',
                     movementType: delta > 0 ? 'SALE' : 'RETURN',
                     quantity: Math.abs(delta),
@@ -282,11 +290,16 @@ export async function removeItemFromOrder(orderItemId: string) {
         if (item.order.status !== "OPEN") throw new Error("Apenas itens de comandas em aberto podem ser removidos");
 
         // 1. Estorna estoque se for produto, usando o custo original da venda
-        if (item.productId) {
-            const stock = await tx.stock.findUnique({ where: { productId: item.productId } });
+        const product = item.productId
+            ? await tx.product.findUnique({ where: { id: item.productId }, select: { isService: true, stockControlled: true } })
+            : null;
+        const trackStock = !!item.productId && !!product && product.isService !== true && product.stockControlled !== false;
+
+        if (trackStock) {
+            const stock = await tx.stock.findUnique({ where: { productId: item.productId! } });
             if (stock) {
                 const saleMovements = await tx.stockMovement.findMany({
-                    where: { orderItemId: item.id, productId: item.productId, type: 'OUT_SALE' },
+                    where: { orderItemId: item.id, productId: item.productId!, type: 'OUT_SALE' },
                     select: { quantity: true, unitCost: true }
                 });
                 const saleQty = saleMovements.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
@@ -304,7 +317,7 @@ export async function removeItemFromOrder(orderItemId: string) {
 
                 const movement = await tx.stockMovement.create({
                     data: {
-                        productId: item.productId,
+                        productId: item.productId!,
                         type: "IN",
                         movementKind: "RETURN",
                         orderId: item.orderId,
@@ -316,7 +329,7 @@ export async function removeItemFromOrder(orderItemId: string) {
                 });
 
                 await recordInventoryCost(tx, {
-                    productId: item.productId,
+                    productId: item.productId!,
                     location: 'BALCAO',
                     movementType: 'RETURN',
                     quantity: item.quantity,
@@ -362,11 +375,16 @@ export async function deleteComandaAction(orderId: string) {
 
         // 1. Estorna estoque de todos os itens usando o custo original da venda
         for (const item of order.items) {
-            if (item.productId) {
-                const stock = await tx.stock.findUnique({ where: { productId: item.productId } });
-                if (stock) {
+        const product = item.productId
+            ? await tx.product.findUnique({ where: { id: item.productId }, select: { cost: true, isService: true, stockControlled: true } })
+            : null;
+        const trackStock = !!item.productId && !!product && product.isService !== true && product.stockControlled !== false;
+
+        if (trackStock) {
+            const stock = await tx.stock.findUnique({ where: { productId: item.productId! } });
+            if (stock) {
                     const saleMovements = await tx.stockMovement.findMany({
-                        where: { orderId, productId: item.productId, type: 'OUT_SALE' },
+                        where: { orderId, productId: item.productId!, type: 'OUT_SALE' },
                         select: { quantity: true, unitCost: true }
                     });
                     const saleQty = saleMovements.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
@@ -384,7 +402,7 @@ export async function deleteComandaAction(orderId: string) {
 
                     const movement = await tx.stockMovement.create({
                         data: {
-                            productId: item.productId,
+                            productId: item.productId!,
                             type: "IN",
                             movementKind: "RETURN",
                             orderId,
@@ -396,7 +414,7 @@ export async function deleteComandaAction(orderId: string) {
                     });
 
                     await recordInventoryCost(tx, {
-                        productId: item.productId,
+                        productId: item.productId!,
                         location: 'BALCAO',
                         movementType: 'RETURN',
                         quantity: item.quantity,

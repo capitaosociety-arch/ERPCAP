@@ -8,6 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "test:finance": "tsx scripts/tests/finance-dre.test.ts",
+    "test:official": "tsx scripts/tests/official-financials.test.ts",
+    "test:commercial": "tsx scripts/tests/commercial-analytics.test.ts",
+    "test:management": "tsx scripts/tests/management-analytics.test.ts",
+    "test:ai": "tsx scripts/tests/ai-resilience.test.ts",
+    "test:strategic": "tsx scripts/tests/strategic-analytics.test.ts",
+    "test:pricing": "tsx scripts/tests/pricing-intelligence.test.ts",
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

@@ -9,9 +9,19 @@ export function isRateLimitError(err: any): boolean {
   return /RESOURCE_EXHAUSTED|quota|429|rate.?limit/i.test(msg);
 }
 
+export function isDailyQuotaError(err: any): boolean {
+  const msg = err?.message || String(err || '');
+  return /per day|daily|free[_\s-]?tier|quota.*day|requests per day/i.test(msg);
+}
+
 export function isModelNotFoundError(err: any): boolean {
   const msg = err?.message || String(err || '');
   return /404|not found|does not exist|model.*not/i.test(msg);
+}
+
+export function isUnavailableError(err: any): boolean {
+  const msg = err?.message || String(err || '');
+  return /503|529|service unavailable|high demand|timed out|timeout|overloaded/i.test(msg);
 }
 
 /**

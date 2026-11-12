@@ -1,24 +1,28 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react';
 import Link from 'next/link';
 import {
   Lightbulb, Target, Activity, ArrowRight, X,
   DollarSign, Wallet, Percent, Landmark, ClipboardList, Users, LoaderCircle,
-  TrendingUp, TrendingDown, Minus, OctagonAlert, BrainCircuit
+  TrendingUp, TrendingDown, Minus, OctagonAlert, BrainCircuit,
+  ChevronLeft, ChevronRight, Database, CalendarDays
 } from 'lucide-react';
 import { getIntelligenceReport, type Analise, type IntelligenceReport, type Secao } from '../../actions/inteligencia';
 import CopilotClient, { type CopilotAccess } from './CopilotClient';
+import HistoricoClient from './HistoricoClient';
+import StrategyClient from './StrategyClient';
+import PricingClient from './PricingClient';
+import CostsClient from './CostsClient';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-type PeriodoKey = '7d' | '30d' | '90d' | 'month';
+type Regime = 'cash' | 'competence';
 
-const PERIODOS: { key: PeriodoKey; label: string }[] = [
-  { key: '7d', label: '7 dias' },
-  { key: '30d', label: '30 dias' },
-  { key: '90d', label: '90 dias' },
-  { key: 'month', label: 'Mês atual' },
-];
+function shiftMonthKey(period: string, delta: number): string {
+  const [year, month] = period.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
 
 const SECTION_META: Record<Secao, { titulo: string; icone: any; cores: { bg: string; border: string; text: string; badge: string; grad: string } }> = {
   RISCO: {
@@ -44,7 +48,7 @@ const SECTION_META: Record<Secao, { titulo: string; icone: any; cores: { bg: str
     }
   },
   RECOMENDACAO: {
-    titulo: 'Recomendações',
+    titulo: 'RecomendaÃ§Ãµes',
     icone: Target,
     cores: {
       bg: 'bg-blue-50/60',
@@ -55,7 +59,7 @@ const SECTION_META: Record<Secao, { titulo: string; icone: any; cores: { bg: str
     }
   },
   TENDENCIA: {
-    titulo: 'Tendências',
+    titulo: 'TendÃªncias',
     icone: Activity,
     cores: {
       bg: 'bg-violet-50/60',
@@ -76,70 +80,134 @@ function money(v: number) {
 export default function InteligenciaClient({
   initialReport,
   initialError,
+  initialPeriod,
+  initialRegime,
+  canManageCosts,
   copilot
 }: {
   initialReport: IntelligenceReport | null;
   initialError?: string;
+  initialPeriod: string;
+  initialRegime: Regime;
+  canManageCosts: boolean;
   copilot: CopilotAccess;
 }) {
-  const [tab, setTab] = useState<'analises' | 'copiloto'>('analises');
-  const [periodo, setPeriodo] = useState<PeriodoKey>('30d');
+  const [tab, setTab] = useState<'analises' | 'copiloto' | 'historico' | 'estrategia' | 'precificacao' | 'custos'>('analises');
+  const [period, setPeriod] = useState(initialPeriod);
+  const [regime, setRegime] = useState<Regime>(initialRegime);
   const [report, setReport] = useState<IntelligenceReport | null>(initialReport);
   const [error, setError] = useState<string | undefined>(initialError);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Analise | null>(null);
   const ModalMeta = selected ? SECTION_META[selected.secao] : null;
 
-  const changePeriod = async (key: PeriodoKey) => {
-    if (key === periodo) return;
-    setPeriodo(key);
+  const loadReport = async (nextPeriod: string, nextRegime: Regime) => {
+    setPeriod(nextPeriod);
+    setRegime(nextRegime);
     setLoading(true);
     setError(undefined);
-    const res = await getIntelligenceReport(key);
+    const res = await getIntelligenceReport(nextPeriod, nextRegime);
     setLoading(false);
     if (res.success) {
       setReport(res.report!);
     } else {
+      setReport(null);
       setError(res.error);
     }
+  };
+
+  const shiftPeriod = (delta: number) => {
+    void loadReport(shiftMonthKey(period, delta), regime);
+  };
+
+  const changeRegime = (nextRegime: Regime) => {
+    if (nextRegime === regime) return;
+    void loadReport(period, nextRegime);
   };
 
   const k = report?.kpis;
 
   const kpiCards = k ? [
-    { label: 'Receita de vendas', value: money(k.receitaVendas), icon: DollarSign, tone: 'text-emerald-600 bg-emerald-50' },
-    { label: 'Mensalidades', value: money(k.receitaMensalidades), icon: Wallet, tone: 'text-sky-600 bg-sky-50' },
-    { label: 'Ticket médio', value: money(k.ticketMedio), icon: Percent, tone: 'text-indigo-600 bg-indigo-50' },
-    { label: 'Margem bruta', value: `${k.margemBruta.toFixed(1).replace('.', ',')}%`, icon: TrendingUp, tone: 'text-amber-600 bg-amber-50' },
-    { label: 'Resultado líquido', value: money(k.resultadoLiquido), icon: Landmark, tone: k.resultadoLiquido >= 0 ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50' },
+    { label: 'Receita de vendas (oficial)', value: money(k.receitaVendas), icon: DollarSign, tone: 'text-emerald-600 bg-emerald-50' },
+    { label: 'Mensalidades (informativo)', value: money(k.receitaMensalidades), icon: Wallet, tone: 'text-sky-600 bg-sky-50' },
+    { label: 'Ticket mÃ©dio', value: money(k.ticketMedio), icon: Percent, tone: 'text-indigo-600 bg-indigo-50' },
+    { label: 'Margem bruta oficial', value: `${k.margemBruta.toFixed(1).replace('.', ',')}%`, icon: TrendingUp, tone: 'text-amber-600 bg-amber-50' },
+    { label: 'Resultado lÃ­quido oficial', value: money(k.resultadoLiquido), icon: Landmark, tone: k.resultadoLiquido >= 0 ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50' },
     { label: 'Comandas pagas', value: k.comandasPagas.toLocaleString('pt-BR'), icon: ClipboardList, tone: 'text-teal-600 bg-teal-50' },
-    { label: 'Estoque abaixo do mínimo', value: k.estoqueAbaixoMinimo.toLocaleString('pt-BR'), icon: Target, tone: k.estoqueAbaixoMinimo > 0 ? 'text-red-600 bg-red-50' : 'text-slate-500 bg-slate-50' },
+    { label: 'Estoque abaixo do mÃ­nimo', value: k.estoqueAbaixoMinimo.toLocaleString('pt-BR'), icon: Target, tone: k.estoqueAbaixoMinimo > 0 ? 'text-red-600 bg-red-50' : 'text-slate-500 bg-slate-50' },
     { label: 'Mensalidades inadimplentes', value: k.mensalidadesInadimplentes.toLocaleString('pt-BR'), icon: Users, tone: k.mensalidadesInadimplentes > 0 ? 'text-orange-600 bg-orange-50' : 'text-slate-500 bg-slate-50' },
   ] : [];
 
   return (
     <div className="animate-in fade-in duration-500 pb-10">
-      {/* Cabeçalho */}
+      {/* CabeÃ§alho */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <BrainCircuit className="text-mrts-blue" /> Central de Inteligência
+            <BrainCircuit className="text-mrts-blue" /> Central de InteligÃªncia
           </h1>
           <p className="text-gray-500 text-sm mt-1">
-            Análises geradas por regras sobre os dados reais do sistema. Período: <span className="font-bold text-gray-700">{report?.periodoLabel || '—'}</span>
+            DRE oficial do mÃªs: <span className="font-bold text-gray-700">{report?.periodoLabel || 'â€”'}</span>
+            {report && (
+              <span className="ml-2 inline-flex items-center gap-1.5 text-[11px] font-bold text-gray-500">
+                <Database size={12} />
+                {report.source === 'snapshot' ? `snapshot v${report.version}` : 'cÃ¡lculo ao vivo'}
+                <span className={`px-2 py-0.5 rounded-full ${report.status === 'CLOSED' ? 'bg-slate-900 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                  {report.status === 'CLOSED' ? `Fechado v${report.version}` : 'Em aberto'}
+                </span>
+              </span>
+            )}
           </p>
+          {report?.methodology && (
+            <p className="text-[11px] text-amber-700 mt-1 max-w-3xl">{report.methodology.note}</p>
+          )}
         </div>
-        <div className="flex items-center gap-2 bg-white rounded-2xl border border-gray-100 p-1.5 shadow-sm">
-          {PERIODOS.map(p => (
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <div className="flex items-center gap-1 bg-white rounded-2xl border border-gray-100 p-1.5 shadow-sm">
             <button
-              key={p.key}
-              onClick={() => changePeriod(p.key)}
+              onClick={() => shiftPeriod(-1)}
               disabled={loading}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${periodo === p.key ? 'bg-mrts-blue text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}
+              className="w-9 h-9 rounded-xl text-slate-500 hover:bg-slate-100 flex items-center justify-center disabled:opacity-40"
+              aria-label="MÃªs anterior"
             >
-              {p.label}
+              <ChevronLeft size={17} />
             </button>
-          ))}
+            <div className="flex items-center gap-1.5 px-2">
+              <CalendarDays size={14} className="text-slate-400" />
+              <input
+                type="month"
+                value={period}
+                onChange={(e) => { if (e.target.value) void loadReport(e.target.value, regime); }}
+                disabled={loading}
+                className="bg-transparent text-sm font-bold text-slate-700 outline-none"
+                aria-label="MÃªs de referÃªncia"
+              />
+            </div>
+            <button
+              onClick={() => shiftPeriod(1)}
+              disabled={loading}
+              className="w-9 h-9 rounded-xl text-slate-500 hover:bg-slate-100 flex items-center justify-center disabled:opacity-40"
+              aria-label="PrÃ³ximo mÃªs"
+            >
+              <ChevronRight size={17} />
+            </button>
+          </div>
+          <div className="flex items-center gap-1 bg-white rounded-2xl border border-gray-100 p-1.5 shadow-sm">
+            <button
+              onClick={() => changeRegime('competence')}
+              disabled={loading}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition ${regime === 'competence' ? 'bg-slate-900 text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+            >
+              CompetÃªncia
+            </button>
+            <button
+              onClick={() => changeRegime('cash')}
+              disabled={loading}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition ${regime === 'cash' ? 'bg-emerald-600 text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+            >
+              Caixa
+            </button>
+          </div>
         </div>
       </div>
 
@@ -149,7 +217,7 @@ export default function InteligenciaClient({
           onClick={() => setTab('analises')}
           className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${tab === 'analises' ? 'bg-slate-900 text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}
         >
-          Análises por regras
+          AnÃ¡lises por regras
         </button>
         <button
           onClick={() => setTab('copiloto')}
@@ -157,9 +225,37 @@ export default function InteligenciaClient({
         >
           <BrainCircuit size={15} /> Copiloto IA
         </button>
+        <button
+          onClick={() => setTab('historico')}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${tab === 'historico' ? 'bg-slate-700 text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}
+        >
+          <Activity size={15} /> HistÃ³rico gerencial
+        </button>
+        <button
+          onClick={() => setTab('estrategia')}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${tab === 'estrategia' ? 'bg-indigo-600 text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}
+        >
+          <Target size={15} /> EstratÃ©gia
+        </button>
+        <button
+          onClick={() => setTab('precificacao')}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${tab === 'precificacao' ? 'bg-amber-600 text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}
+        >
+          <Percent size={15} /> PrecificaÃ§Ã£o
+        </button>
+        <button
+          onClick={() => setTab('custos')}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${tab === 'custos' ? 'bg-rose-600 text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}
+        >
+          <Landmark size={15} /> Custos por centro
+        </button>
       </div>
 
       {tab === 'copiloto' && <CopilotClient access={copilot} />}
+      {tab === 'historico' && <HistoricoClient period={period} regime={regime} />}
+      {tab === 'estrategia' && <StrategyClient period={period} regime={regime} />}
+      {tab === 'precificacao' && <PricingClient period={period} />}
+      {tab === 'custos' && <CostsClient period={period} canManage={canManageCosts} />}
 
       {tab === 'analises' && (
       <div>
@@ -171,7 +267,7 @@ export default function InteligenciaClient({
 
       {loading && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 mb-6 flex items-center justify-center gap-3 text-gray-500 font-bold">
-          <LoaderCircle className="animate-spin" /> Analisando dados do período...
+          <LoaderCircle className="animate-spin" /> Analisando dados do perÃ­odo...
         </div>
       )}
 
@@ -190,13 +286,146 @@ export default function InteligenciaClient({
         ))}
       </div>
 
-      {/* Gráfico de tendência */}
+      {/* DRE oficial */}
+      {report && (
+        <div className="bg-slate-900 text-white rounded-2xl shadow-sm p-5 mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            <div>
+              <h2 className="text-sm font-black uppercase tracking-wider text-white/90">DRE oficial â€” {report.periodoLabel}</h2>
+              <p className="text-[11px] text-white/50 mt-1">
+                {report.regime === 'competence' ? 'Regime de competÃªncia' : 'Regime de caixa'}
+                {' Â· '}
+                {report.source === 'snapshot' ? `snapshot v${report.version}` : 'cÃ¡lculo ao vivo'}
+                {report.status === 'CLOSED' ? ' Â· perÃ­odo fechado' : ' Â· perÃ­odo em aberto'}
+              </p>
+            </div>
+            {!report.comparisonAvailable && (
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300/90">
+                comparaÃ§Ã£o mensal indisponÃ­vel
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+            {[
+              { label: 'Receita total', value: report.dre.totalReceitas },
+              { label: 'CMV', value: -report.dre.cmv },
+              { label: 'Despesas op.', value: -report.dre.totalDespesasOp },
+              { label: 'Lucro bruto', value: report.dre.lucroBruto },
+              { label: 'Resultado operacional', value: report.dre.resultadoOperacional },
+              { label: 'Resultado lÃ­quido', value: report.dre.resultadoLiquido },
+            ].map((item) => (
+              <div key={item.label} className="bg-white/5 border border-white/10 rounded-xl p-3">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-white/45">{item.label}</p>
+                <p className={`text-sm font-black mt-1 ${item.value < 0 ? 'text-rose-300' : 'text-white'}`}>{money(item.value)}</p>
+              </div>
+            ))}
+            <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+              <p className="text-[10px] uppercase tracking-wider font-bold text-white/45">Margem lÃ­quida</p>
+              <p className="text-sm font-black mt-1 text-white">{report.dre.margemLiquida.toFixed(1).replace('.', ',')}%</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Indicadores comerciais P1 */}
+      {report?.commercial && (
+        <div className="mb-8">
+          <div className="flex items-center gap-2 mb-3">
+            <Activity size={16} className="text-mrts-blue" />
+            <h2 className="text-sm font-black uppercase tracking-wider text-slate-600">OperaÃ§Ã£o comercial</h2>
+            <span className="text-[10px] font-bold text-slate-400">agenda, mix, margem e conciliaÃ§Ã£o</span>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <p className="text-[11px] uppercase tracking-wider font-bold text-gray-400">OcupaÃ§Ã£o efetiva</p>
+              <p className="text-2xl font-black text-slate-800 mt-1">
+                {report.commercial.occupancy.available ? `${report.commercial.occupancy.overall.ocupacaoEfetivaPct.toFixed(1).replace('.', ',')}%` : 'â€”'}
+              </p>
+              {report.commercial.occupancy.available ? (
+                <div className="mt-3 space-y-1.5">
+                  {report.commercial.occupancy.fields.map((f: any) => (
+                    <div key={f.campo} className="flex justify-between text-[11px] font-bold">
+                      <span className="text-slate-500">{f.campo}</span>
+                      <span className="text-slate-700">{f.ocupacaoEfetivaPct}% Â· {f.efetivoHoras}h reg.</span>
+                    </div>
+                  ))}
+                  {report.commercial.occupancy.overall.extraHoras > 0 && (
+                    <div className="flex justify-between text-[11px] font-bold text-amber-700 pt-1 border-t border-amber-100">
+                      <span>ExtraordinÃ¡rio</span>
+                      <span>{report.commercial.occupancy.overall.extraHoras}h Â· {money(report.commercial.occupancy.overall.extraReceita)}</span>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-gray-400 leading-relaxed mt-2">{report.commercial.occupancy.config.note}</p>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 mt-2">{report.commercial.occupancy.reason}</p>
+              )}
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <p className="text-[11px] uppercase tracking-wider font-bold text-gray-400">Aluguel Ã— produtos</p>
+              <p className="text-2xl font-black text-slate-800 mt-1">{money(report.commercial.revenueMix.totalComandas)}</p>
+              {report.commercial.revenueMix.available ? (
+                <div className="mt-3 space-y-1.5 text-[11px] font-bold">
+                  <div className="flex justify-between"><span className="text-slate-500">Aluguel em comandas</span><span className="text-emerald-700">{money(report.commercial.revenueMix.aluguelComandas)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Produtos/serviços em comandas</span><span className="text-sky-700">{money(report.commercial.revenueMix.produtosComandas)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Agenda paga</span><span className="text-slate-700">{money(report.commercial.revenueMix.agendaAluguel.pago)}</span></div>
+                  <p className="text-[10px] text-gray-400 leading-relaxed mt-2">{report.commercial.revenueMix.note}</p>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 mt-2">{report.commercial.revenueMix.reason}</p>
+              )}
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <p className="text-[11px] uppercase tracking-wider font-bold text-gray-400">Margem de contribuiÃ§Ã£o</p>
+              <p className="text-2xl font-black text-slate-800 mt-1">
+                {report.commercial.productContribution.margemPct == null ? 'â€”' : `${report.commercial.productContribution.margemPct.toFixed(1).replace('.', ',')}%`}
+              </p>
+              {report.commercial.productContribution.available ? (
+                <div className="mt-3 space-y-1.5">
+                  {report.commercial.productContribution.produtos.slice(0, 4).map((p: any) => (
+                    <div key={p.productId} className="flex justify-between gap-2 text-[11px] font-bold">
+                      <span className="text-slate-500 truncate">{p.produto}</span>
+                      <span className={p.margemPct == null ? 'text-amber-600' : 'text-slate-700'}>
+                        {p.margemPct == null ? 'custo incompleto' : `${p.margemPct.toFixed(1).replace('.', ',')}%`}
+                      </span>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-gray-400 leading-relaxed mt-2">{report.commercial.productContribution.note}</p>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 mt-2">{report.commercial.productContribution.reason}</p>
+              )}
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <p className="text-[11px] uppercase tracking-wider font-bold text-gray-400">ConciliaÃ§Ã£o de estoque</p>
+              <p className={`text-2xl font-black mt-1 ${report.commercial.reconciliation.produtosComDivergencia > 0 ? 'text-amber-600' : 'text-slate-800'}`}>
+                {report.commercial.reconciliation.produtosComDivergencia}
+              </p>
+              {report.commercial.reconciliation.available ? (
+                <div className="mt-3 space-y-1.5">
+                  <div className="flex justify-between text-[11px] font-bold"><span className="text-slate-500">Produtos com diferenÃ§a</span><span className="text-slate-700">{report.commercial.reconciliation.produtosComDivergencia}</span></div>
+                  <div className="flex justify-between text-[11px] font-bold"><span className="text-slate-500">Unidades divergentes</span><span className="text-slate-700">{report.commercial.reconciliation.quantidadeDivergente}</span></div>
+                  <div className="flex justify-between text-[11px] font-bold"><span className="text-slate-500">Sem custo</span><span className={report.commercial.reconciliation.quantidadeSemCusto > 0 ? 'text-amber-600' : 'text-slate-700'}>{report.commercial.reconciliation.quantidadeSemCusto}</span></div>
+                  <p className="text-[10px] text-gray-400 leading-relaxed mt-2">{report.commercial.reconciliation.note}</p>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 mt-2">{report.commercial.reconciliation.reason}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GrÃ¡fico de tendÃªncia */}
       {report && report.tendenciaSerie.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8 relative overflow-hidden">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h2 className="text-lg font-bold text-gray-800">Receita de vendas no período</h2>
-              <p className="text-gray-500 text-xs md:text-sm">Faturamento por dia/semana (fuso Cuiabá)</p>
+              <h2 className="text-lg font-bold text-gray-800">Receita de vendas no perÃ­odo</h2>
+              <p className="text-gray-500 text-xs md:text-sm">Faturamento por dia/semana (fuso CuiabÃ¡)</p>
             </div>
           </div>
           <div className="h-64 w-full">
@@ -233,7 +462,7 @@ export default function InteligenciaClient({
         </div>
       )}
 
-      {/* Seções de análises */}
+      {/* SeÃ§Ãµes de anÃ¡lises */}
       {report && SECTION_ORDER.map(secao => {
         const meta = SECTION_META[secao];
         const itens = report.analises.filter(a => a.secao === secao);
@@ -259,11 +488,13 @@ export default function InteligenciaClient({
       {/* Nota de paridade */}
       {report && (
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-slate-500">
-          <p className="font-bold text-slate-600 mb-1">Sobre o Resultado Líquido</p>
+          <p className="font-bold text-slate-600 mb-1">Sobre a fonte oficial</p>
           <p>
-            O resultado líquido (regime de caixa) usa exatamente o mesmo cálculo do módulo Financeiro:
-            receitas de vendas + outras receitas − CMV − despesas operacionais − impostos − despesas financeiras,
-            no período selecionado. Valores parciais no período podem não coincidir com o DRE mensal do Financeiro.
+            Os valores financeiros desta tela usam a mesma fonte oficial do mÃ³dulo Financeiro.
+            Meses fechados usam o snapshot da versÃ£o vigente; meses abertos usam o cÃ¡lculo ao vivo.
+            Regime atual: <strong>{report.regime === 'competence' ? 'competÃªncia' : 'caixa'}</strong>.
+            {report.source === 'snapshot' && ` VersÃ£o: v${report.version}.`}
+            {report.status === 'OPEN' && ' MÃªs em aberto: valores dinÃ¢micos, incluindo lanÃ§amentos jÃ¡ cadastrados no mÃªs.'}
           </p>
         </div>
       )}
@@ -298,7 +529,7 @@ export default function InteligenciaClient({
 
             <div className="space-y-4 text-sm">
               <div>
-                <p className="text-[11px] uppercase tracking-wider font-bold text-gray-400 mb-1">Comparação</p>
+                <p className="text-[11px] uppercase tracking-wider font-bold text-gray-400 mb-1">ComparaÃ§Ã£o</p>
                 <p className="text-gray-700 font-medium">{selected.comparacao}</p>
               </div>
               <div>
@@ -306,7 +537,7 @@ export default function InteligenciaClient({
                 <p className="text-gray-700 font-medium">{selected.causa}</p>
               </div>
               <div className="bg-mrts-blue/5 border border-mrts-blue/10 rounded-2xl p-4">
-                <p className="text-[11px] uppercase tracking-wider font-bold text-mrts-blue mb-1">Ação sugerida</p>
+                <p className="text-[11px] uppercase tracking-wider font-bold text-mrts-blue mb-1">AÃ§Ã£o sugerida</p>
                 <p className="text-gray-800 font-bold">{selected.acao}</p>
               </div>
               {selected.dados.length > 0 && (
@@ -329,7 +560,7 @@ export default function InteligenciaClient({
                 href={selected.link}
                 className="flex-[1] bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition flex items-center justify-center gap-2"
               >
-                Ver relatório de origem <ArrowRight size={16} />
+                Ver relatÃ³rio de origem <ArrowRight size={16} />
               </Link>
               <button onClick={() => setSelected(null)} className="px-6 font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 py-3 rounded-xl transition">
                 Fechar
@@ -341,7 +572,7 @@ export default function InteligenciaClient({
 
       {!report && !loading && !error && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center text-gray-400 font-medium">
-          Nenhum dado disponível para exibição.
+          Nenhum dado disponÃ­vel para exibiÃ§Ã£o.
         </div>
       )}
       </div>
@@ -374,7 +605,7 @@ function CardAnalise({ analise, onClick }: { analise: Analise; onClick: () => vo
               analise.tendencia === 'CRESCENDO' ? 'bg-emerald-100 text-emerald-700' : analise.tendencia === 'CAINDO' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'
             }`}>
               {analise.tendencia === 'CRESCENDO' ? <TrendingUp size={11} /> : analise.tendencia === 'CAINDO' ? <TrendingDown size={11} /> : <Minus size={11} />}
-              {analise.tendencia === 'CRESCENDO' ? 'Crescendo' : analise.tendencia === 'CAINDO' ? 'Caindo' : 'Estável'}
+              {analise.tendencia === 'CRESCENDO' ? 'Crescendo' : analise.tendencia === 'CAINDO' ? 'Caindo' : 'EstÃ¡vel'}
             </span>
           )}
         </div>

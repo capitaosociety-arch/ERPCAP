@@ -2,6 +2,7 @@ import { prisma } from './prisma';
 import { monthKey, round2 } from './analytics';
 import { evaluateCmvMovement } from './financial-cmv';
 import { classifyDreExpense, isInventoryPurchaseEntry } from './financial-classification';
+import { isNewRulesDate } from './effective-rules';
 
 export interface DreResultado {
   from: string;
@@ -70,7 +71,7 @@ export async function computeDre(from: Date, to: Date): Promise<DreResultado> {
         date: { gte: from, lte: to },
         OR: [{ type: 'OUT_SALE' }, { movementKind: 'RETURN' }],
       },
-      select: { quantity: true, unitCost: true, date: true, movementKind: true, product: { select: { price: true } } },
+      select: { quantity: true, unitCost: true, date: true, movementKind: true, product: { select: { price: true, isService: true } } },
     }),
     prisma.financialEntry.findMany({
       select: {
@@ -92,6 +93,7 @@ export async function computeDre(from: Date, to: Date): Promise<DreResultado> {
 
   let cmv = 0;
   stockMovements.forEach((m) => {
+    if (m.product?.isService === true && isNewRulesDate(m.date)) return;
     const value = evaluateCmvMovement(m).value;
     cmv += m.movementKind === 'RETURN' ? -value : value;
   });
@@ -126,9 +128,9 @@ export async function computeDre(from: Date, to: Date): Promise<DreResultado> {
 }
 
 /**
- * DRE por competência:
- * - receita de vendas reconhecida pela abertura da ordem (data disponível no modelo);
- * - CMV pela data da movimentação de venda;
+ * DRE por competÃªncia:
+ * - receita de vendas reconhecida pela abertura da ordem (data disponÃ­vel no modelo);
+ * - CMV pela data da movimentaÃ§Ã£o de venda;
  * - despesas e outras receitas pela competenceDate, incluindo pendentes.
  */
 export async function computeDreAccrual(from: Date, to: Date): Promise<DreResultado> {
@@ -145,7 +147,7 @@ export async function computeDreAccrual(from: Date, to: Date): Promise<DreResult
         date: { gte: from, lte: to },
         OR: [{ type: 'OUT_SALE' }, { movementKind: 'RETURN' }],
       },
-      select: { quantity: true, unitCost: true, date: true, movementKind: true, product: { select: { price: true } } },
+      select: { quantity: true, unitCost: true, date: true, movementKind: true, product: { select: { price: true, isService: true } } },
     }),
     prisma.financialEntry.findMany({
       where: { status: { not: 'CANCELED' } },
@@ -171,6 +173,7 @@ export async function computeDreAccrual(from: Date, to: Date): Promise<DreResult
 
   let cmv = 0;
   stockMovements.forEach((m) => {
+    if (m.product?.isService === true && isNewRulesDate(m.date)) return;
     const value = evaluateCmvMovement(m).value;
     cmv += m.movementKind === 'RETURN' ? -value : value;
   });

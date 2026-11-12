@@ -17,7 +17,7 @@ export default async function DashboardPage() {
   // Basic KPI queries in parallel for better performance
   const [totalUsers, totalProducts, openOrders, lastRegisterPayments, kpis] = await Promise.all([
     prisma.user.count(),
-    prisma.product.count({ where: { isActive: true } }),
+    prisma.product.count({ where: { isActive: true, isService: false, stockControlled: true } }),
     prisma.order.count({ where: { status: 'OPEN' } }),
     lastRegister ? prisma.payment.findMany({
       where: { cashRegisterId: lastRegister.id },

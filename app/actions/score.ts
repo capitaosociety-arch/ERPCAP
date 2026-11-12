@@ -3,6 +3,7 @@
 import { prisma } from '../../lib/prisma';
 import { requirePermission } from '../../lib/auth-guard';
 import { isRentalItem, getCuiabaDateStr } from '../../lib/analytics';
+import { isNewRulesDate } from '../../lib/effective-rules';
 import {
   computeScore,
   DEFAULT_PESOS,
@@ -61,7 +62,7 @@ export async function saveScoreConfig(pesos: ScorePesos, limiares: ScoreLimiares
 
   const soma = Object.values(pesos).reduce((a, b) => a + (b || 0), 0);
   if (Math.abs(soma - 100) > 0.01) return { success: false, error: 'A soma dos pesos deve ser exatamente 100.' };
-  if (Object.values(pesos).some(v => (v || 0) < 0)) return { success: false, error: 'Pesos não podem ser negativos.' };
+  if (Object.values(pesos).some(v => (v || 0) < 0)) return { success: false, error: 'Pesos nÃ£o podem ser negativos.' };
   if (Object.values(limiares).some(v => (v || 0) <= 0)) return { success: false, error: 'Limiares devem ser maiores que zero.' };
 
   await prisma.scoreConfig.upsert({
@@ -92,7 +93,7 @@ export async function getScoreHistory(customerId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Agregação
+// AgregaÃ§Ã£o
 // ---------------------------------------------------------------------------
 
 interface Agg {
@@ -140,8 +141,9 @@ function buildScoreCliente(c: CustomerAgg, agg: Agg): ScoreCliente {
   });
   let consumoBar = 0;
   comandasPeriodo.forEach(o => {
+    const useNewRules = isNewRulesDate(o.closedAt || o.openedAt);
     (o.items || []).forEach((it: any) => {
-      if (!isRentalItem(it)) consumoBar += it.subtotal || 0;
+      if (!isRentalItem(it, { useNewRules })) consumoBar += it.subtotal || 0;
     });
   });
 
@@ -192,7 +194,7 @@ function buildScoreCliente(c: CustomerAgg, agg: Agg): ScoreCliente {
   const gastoTotal = c.rentals.filter(r => r.status !== 'CANCELED' && r.status !== 'NO_SHOW')
     .reduce((a, r) => a + (r.totalAmount || 0), 0) + c.linkedOrders
       .filter(o => o.status !== 'CANCELED')
-      .reduce((a, o) => a + (o.items || []).filter((it: any) => !isRentalItem(it)).reduce((s: number, it: any) => s + (it.subtotal || 0), 0), 0);
+      .reduce((a, o) => a + (o.items || []).filter((it: any) => !isRentalItem(it, { useNewRules: isNewRulesDate(o.closedAt || o.openedAt) })).reduce((s: number, it: any) => s + (it.subtotal || 0), 0), 0);
 
   return {
     id: c.id,
@@ -259,7 +261,7 @@ async function persistScore(c: CustomerAgg, agg: Agg) {
     });
   }
 
-  // Mantém no máximo os 60 snapshots mais recentes por cliente
+  // MantÃ©m no mÃ¡ximo os 60 snapshots mais recentes por cliente
   const older = await prisma.customerScoreHistory.findMany({
     where: { customerId: c.id },
     orderBy: { snapshotAt: 'desc' },
@@ -272,7 +274,7 @@ async function persistScore(c: CustomerAgg, agg: Agg) {
 }
 
 // Calcula (e persiste) o score de todos os clientes. Usado na carga da tela e
-// nos ganchos de recálculo. Retorna a lista serializável para o cliente.
+// nos ganchos de recÃ¡lculo. Retorna a lista serializÃ¡vel para o cliente.
 export async function computeCustomerScores(): Promise<ScoreCliente[]> {
   await requireSession();
 
@@ -352,7 +354,7 @@ export async function recalcScore(customerId: string) {
       rentals: true
     }
   });
-  if (!c) return { success: false, error: 'Cliente não encontrado.' };
+  if (!c) return { success: false, error: 'Cliente nÃ£o encontrado.' };
 
   const linkedOrders = await prisma.order.findMany({
     where: { customerId },

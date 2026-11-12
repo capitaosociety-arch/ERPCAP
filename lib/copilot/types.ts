@@ -27,6 +27,10 @@ export interface ToolMeta {
   periodo: string; // rótulo amigável do período analisado
   origem: string[]; // tabelas/entidades-fonte
   nota?: string; // regime de caixa, pagamentos parciais, projeção etc.
+  regime?: 'cash' | 'competence';
+  versao?: number | null;
+  status?: 'OPEN' | 'CLOSED';
+  fonte?: 'snapshot' | 'live' | 'unavailable';
 }
 
 export interface ToolResult {

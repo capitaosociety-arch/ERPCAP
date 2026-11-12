@@ -18,7 +18,7 @@ export default async function DepotPage() {
 
     // Carregar Inventário
     const inventory = await prisma.product.findMany({
-        where: { isActive: true },
+        where: { isActive: true, isService: false, stockControlled: true },
         include: {
             depotStock: true,
             category: true,

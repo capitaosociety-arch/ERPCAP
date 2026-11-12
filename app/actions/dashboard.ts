@@ -2,6 +2,7 @@
 
 import { prisma } from "../../lib/prisma";
 import { requireUser } from "../../lib/auth-guard";
+import { getRentalSchedule, regularMinutesForDay, weekDayCuiaba } from "../../lib/rental-schedule";
 
 export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') {
   await requireUser();
@@ -98,7 +99,7 @@ export async function getTopProducts() {
     select: {
       quantity: true,
       product: {
-        select: { name: true }
+        select: { name: true, isService: true, stockControlled: true }
       }
     }
   });
@@ -106,7 +107,7 @@ export async function getTopProducts() {
   const totals: Record<string, number> = {};
 
   orderItems.forEach(item => {
-    if (item.product) {
+    if (item.product && item.product.isService !== true && item.product.stockControlled !== false) {
       totals[item.product.name] = (totals[item.product.name] || 0) + item.quantity;
     }
   });
@@ -156,7 +157,7 @@ export async function getDashboardKpis() {
         }
       }),
       prisma.stockMovement.findMany({
-        where: { type: 'OUT_SALE', date: { gte: startOfDay, lte: endOfDay } },
+        where: { type: 'OUT_SALE', date: { gte: startOfDay, lte: endOfDay }, product: { isService: false } },
         select: { quantity: true, unitCost: true }
       }),
       prisma.order.findMany({
@@ -170,6 +171,7 @@ export async function getDashboardKpis() {
 
     // Helpers de identificação de aluguéis de campo (mesma lógica do Financeiro)
     const isRentalItem = (it: any) => {
+        if (it.product?.isService === true || it.product?.stockControlled === false) return true;
         const prodName = it.product?.name?.toLowerCase() || '';
         const catName = it.product?.category?.name?.toLowerCase() || '';
         const svcName = it.service?.name?.toLowerCase() || '';
@@ -181,11 +183,19 @@ export async function getDashboardKpis() {
     const isFut7 = (name: string) => /fut7|fut\s*7|futebol\s*7/i.test(name);
 
     // 1. Taxa de Ocupação (Capacidade: 16h/dia)
-    const totalBookedHours = rentals.reduce((acc, r) => {
+    const schedule = await getRentalSchedule();
+    const todayDate = new Date(`${todayStr}T12:00:00-04:00`);
+    const capacityHours = ['FUT5', 'FUT7'].reduce(
+      (sum, field) => sum + regularMinutesForDay(schedule.entries, weekDayCuiaba(todayDate), field) / 60,
+      0
+    );
+    const totalBookedHours = rentals
+      .filter(r => r.status !== 'CANCELED' && (isFut5(r.resource) || isFut7(r.resource)))
+      .reduce((acc, r) => {
         const duration = (r.endTime.getTime() - r.startTime.getTime()) / (1000 * 60 * 60);
         return acc + duration;
-    }, 0);
-    const occupancyRate = (totalBookedHours / 16) * 100;
+      }, 0);
+    const occupancyRate = capacityHours > 0 ? (totalBookedHours / capacityHours) * 100 : 0;
 
     // 2. Ticket Médio Bar (Apenas produtos, excluindo aluguéis de campo)
     const barOrdersToday = closedOrders.filter(order => 

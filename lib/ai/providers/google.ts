@@ -6,7 +6,7 @@
 import { GoogleGenerativeAI, type FunctionDeclaration } from '@google/generative-ai';
 import type { AIProvider, AIChatRequest, AIResponse, AIMessage, AIToolCall, AIToolParam } from '../types';
 import { AIProviderError } from '../types';
-import { sleep, isRateLimitError, isModelNotFoundError } from '../retry';
+import { sleep, isRateLimitError, isDailyQuotaError, isModelNotFoundError, isUnavailableError } from '../retry';
 
 export class GoogleProvider implements AIProvider {
   readonly id = 'google';
@@ -101,12 +101,22 @@ export class GoogleProvider implements AIProvider {
         const result = await model.generateContent({ contents });
         return this.parseResponse(result.response);
       } catch (err: any) {
+        if (isDailyQuotaError(err)) {
+          throw new AIProviderError('RATE_LIMIT', 'Limite diário do provedor de IA atingido. Tente novamente mais tarde.');
+        }
         if (isRateLimitError(err) && attempt < 3) {
           await sleep(2000 * attempt);
           continue;
         }
         if (isModelNotFoundError(err)) {
           throw new AIProviderError('NOT_FOUND', `Modelo "${this.model}" não encontrado para este provedor.`);
+        }
+        if (isUnavailableError(err)) {
+          if (attempt < 2) {
+            await sleep(1200);
+            continue;
+          }
+          throw new AIProviderError('UNKNOWN', 'Serviço de IA temporariamente indisponível. Tente novamente em instantes.');
         }
         throw err;
       }

@@ -166,7 +166,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
     };
 
     const filtered = openOrders.filter(o => (o.notes || "").toLowerCase().includes(search.toLowerCase()));
-    const availableProducts = useMemo(() => sortProducts(products.filter(p => p.stock && p.stock.quantity > 0), 'name-asc'), [products]);
+    const availableProducts = useMemo(() => sortProducts(products.filter(p => p.isService === true || p.stockControlled === false || (p.stock && p.stock.quantity > 0)), 'name-asc'), [products]);
     const filteredModalProducts = useMemo(
         () => sortProducts(availableProducts.filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase())), 'name-asc'),
         [availableProducts, productSearch]
@@ -436,7 +436,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                                 <ShoppingBag className="text-gray-400" />
                                                 <div>
                                                     <p className="font-bold text-slate-800">{prod.name}</p>
-                                                    <p className="text-xs text-gray-500 font-medium mt-0.5">Disponível em Estoque: {prod.stock?.quantity} un</p>
+                                                    <p className="text-xs text-gray-500 font-medium mt-0.5">{prod.isService ? 'Servico / aluguel' : `Disponivel em Estoque: ${prod.stock?.quantity} un`}</p>
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-4">

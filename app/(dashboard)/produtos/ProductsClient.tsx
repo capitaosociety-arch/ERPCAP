@@ -82,11 +82,13 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
               cost: (product.cost || 0).toString(),
               iconUrl: product.iconUrl || "",
               unit: product.unit || "UN",
-              allowFractional: product.allowFractional || false
+              allowFractional: product.allowFractional || false,
+              isService: !!product.isService,
+              stockControlled: product.stockControlled !== false
           });
       } else {
           setFormData({
-              id: undefined, name: "", categoryId: categories[0]?.id || "", price: "0", cost: "0", iconUrl: "🍔", unit: "UN", allowFractional: false
+              id: undefined, name: "", categoryId: categories[0]?.id || "", price: "0", cost: "0", iconUrl: "🍔", unit: "UN", allowFractional: false, isService: false, stockControlled: true
           });
       }
       setFormModalOpen(true);
@@ -105,7 +107,9 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                   cost: parseFloat(formData.cost.replace(',', '.')),
                   iconUrl: formData.iconUrl,
                   unit: String(formData.unit).substring(0, 2).toUpperCase(),
-                  allowFractional: !!formData.allowFractional
+                  allowFractional: !!formData.allowFractional,
+                  isService: !!formData.isService,
+                  stockControlled: formData.isService ? false : formData.stockControlled !== false
               });
               alert("Produto salvo com sucesso! (A página vai recarregar)");
               setFormModalOpen(false);
@@ -500,7 +504,20 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                         />
                         <span>
                             <span className="block text-sm font-bold text-slate-800">Permite quantidade quebrada</span>
-                            <span className="block text-xs text-gray-500 mt-0.5">Ex: vender 0,5 (meio) serviço/produto. A quantidade poderá ser editada no PDV e nas Comandas.</span>
+                            <span className="block text-xs text-gray-500 mt-0.5">Ex: vender 0,5 (meio) servi��o/produto. A quantidade poderǭ ser editada no PDV e nas Comandas.</span>
+                        </span>
+                    </label>
+
+                    <label className="col-span-2 flex items-start gap-3 bg-amber-50/50 border border-amber-100 rounded-xl p-4 cursor-pointer select-none hover:border-amber-400 transition">
+                        <input
+                            type="checkbox"
+                            checked={!!formData.isService}
+                            onChange={e => setFormData({...formData, isService: e.target.checked, stockControlled: e.target.checked ? false : true})}
+                            className="w-5 h-5 mt-0.5 accent-amber-600 cursor-pointer shrink-0"
+                        />
+                        <span>
+                            <span className="block text-sm font-bold text-slate-800">Servico / aluguel (nao controla estoque)</span>
+                            <span className="block text-xs text-gray-500 mt-0.5">Use para FUT5, FUT7 e servicos. Vendas nao baixam estoque; CMV e entradas de estoque ficam bloqueados.</span>
                         </span>
                     </label>
 

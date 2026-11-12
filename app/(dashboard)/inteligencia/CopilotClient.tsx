@@ -19,6 +19,10 @@ interface ToolMetaView {
   periodo?: string;
   origem?: string[];
   nota?: string;
+  regime?: 'cash' | 'competence';
+  versao?: number | null;
+  status?: 'OPEN' | 'CLOSED';
+  fonte?: 'snapshot' | 'live' | 'unavailable';
 }
 
 interface Msg {
@@ -30,13 +34,24 @@ interface Msg {
 }
 
 const SUGESTOES = [
-  'Qual foi o faturamento de vendas nos últimos 30 dias?',
-  'Como está o resultado (lucro ou prejuízo) neste mês?',
+  'Qual foi o lucro oficial de outubro de 2026?',
+  'Compare outubro e setembro de 2026 por competência.',
+  'Mostre o histórico gerencial dos últimos 6 meses.',
+  'Quais alertas gerenciais existem para outubro de 2026?',
+  'Qual o CMV e o lucro bruto oficiais de outubro de 2026?',
+  'Mostre a evolução financeira dos últimos 6 meses.',
+  'Como está o resultado oficial do mês atual?',
   'Quais campos têm maior rentabilidade e por quê?',
-  'Quais produtos têm maior margem bruta?',
-  'Quais clientes estão inativos há mais tempo?',
-  'Quais horários têm menor ocupação nas quadras?',
-  'Quais contas a pagar estão pendentes?',
+  'Qual a margem de contribuição por produto?',
+  'Quanto foi aluguel de quadra versus produtos?',
+  'Quais horários das quadras estão mais ociosos?',
+  'Existe diferença entre comandas e saídas de estoque?',
+  'Qual a previsão financeira dos próximos 6 meses?',
+  'Simule +5% no preço das quadras e +2 p.p. de ocupação.',
+  'Quais recomendações estratégicas você sugere?',
+  'Vale a pena oferecer desconto em horários ociosos?',
+  'Uma promoção pode canibalizar os horários nobres?',
+  'Quanto posso faturar com 3 reservas extraordinárias adicionais?',
   'Qual a projeção de fechamento do mês?',
 ];
 
@@ -160,6 +175,13 @@ export default function CopilotClient({ access }: { access: CopilotAccess }) {
                             <span className="font-bold text-gray-600">{t.name}</span>
                             {t.periodo && (
                               <span className="inline-flex items-center gap-1 ml-2"><CalendarDays size={11} /> {t.periodo}</span>
+                            )}
+                            {t.regime && (
+                              <span className="ml-2 text-gray-500">
+                                · {t.regime === 'cash' ? 'caixa' : 'competência'}
+                                {t.status ? ` · ${t.status === 'CLOSED' ? `fechado${t.versao ? ` v${t.versao}` : ''}` : 'aberto'}` : ''}
+                                {t.fonte ? ` · ${t.fonte === 'snapshot' ? 'snapshot oficial' : t.fonte === 'live' ? 'ao vivo' : 'indisponível'}` : ''}
+                              </span>
                             )}
                             {t.origem && t.origem.length > 0 && (
                               <span className="ml-1 text-gray-400">· {t.origem.join(', ')}</span>

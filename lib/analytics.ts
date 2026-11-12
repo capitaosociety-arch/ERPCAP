@@ -1,4 +1,4 @@
-export type PeriodoKey = '7d' | '30d' | '90d' | 'month';
+﻿export type PeriodoKey = '7d' | '30d' | '90d' | 'month';
 
 export interface Periodos {
   label: string;
@@ -40,7 +40,7 @@ export function buildPeriods(periodo: PeriodoKey): Periodos {
     const prevTo = new Date(from.getTime() - 1000);
 
     const fLabel = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'America/Cuiaba' });
-    return { label: `Mês de ${fLabel.format(from)}`, from, to, prevFrom, prevTo };
+    return { label: `MÃªs de ${fLabel.format(from)}`, from, to, prevFrom, prevTo };
   }
 
   const n = periodo === '7d' ? 7 : periodo === '30d' ? 30 : 90;
@@ -48,17 +48,18 @@ export function buildPeriods(periodo: PeriodoKey): Periodos {
   const to = new Date(`${todayStr}T23:59:59-04:00`);
   const prevTo = new Date(`${addDays(todayStr, -n)}T23:59:59-04:00`);
   const prevFrom = new Date(`${addDays(todayStr, -(2 * n - 1))}T00:00:00-04:00`);
-  return { label: `Últimos ${n} dias`, from, to, prevFrom, prevTo };
+  return { label: `Ãšltimos ${n} dias`, from, to, prevFrom, prevTo };
 }
 
-export function isRentalItem(it: any): boolean {
+export function isRentalItem(it: any, options: { useNewRules?: boolean } = {}): boolean {
+  if (options.useNewRules !== false && (it?.product?.isService === true || it?.product?.stockControlled === false)) return true;
   const prodName = it?.product?.name?.toLowerCase() || '';
   const catName = it?.product?.category?.name?.toLowerCase() || '';
   const svcName = it?.service?.name?.toLowerCase() || '';
-  return !!it?.serviceId ||
-    catName.includes('aluguel') || catName.includes('campo') ||
+  return catName.includes('aluguel') || catName.includes('campo') ||
     prodName.includes('aluguel') || prodName.includes('campo') ||
-    svcName.includes('aluguel') || svcName.includes('campo');
+    svcName.includes('aluguel') || svcName.includes('campo') ||
+    svcName.includes('locacao') || svcName.includes('locação');
 }
 
 export function isFut5(name: string): boolean {

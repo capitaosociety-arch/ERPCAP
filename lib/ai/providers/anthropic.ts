@@ -51,12 +51,12 @@ export class AnthropicProvider implements AIProvider {
       const text = await res.text();
       const msg = `${res.status}: ${text.slice(0, 300)}`;
 
-      if (res.status === 429 || res.status === 529) {
+      if (res.status === 429 || res.status === 503 || res.status === 529) {
         if (attempt < 3) {
           await sleep(2000 * attempt);
           continue;
         }
-        throw new AIProviderError('RATE_LIMIT', 'Limite de requisições do Claude atingido. Tente novamente em instantes.');
+        throw new AIProviderError('RATE_LIMIT', 'Serviço de IA temporariamente indisponível. Tente novamente em instantes.');
       }
       if (res.status === 401 || res.status === 403) {
         throw new AIProviderError('NO_KEY', 'Chave do Claude inválida ou sem permissão.');
