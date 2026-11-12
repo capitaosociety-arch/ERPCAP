@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "../../lib/auth-guard";
 import { buildRentalWindow, formatRentalPeriod } from "../../lib/rental-time";
+import { roundMoney } from "../../lib/rental-renewal";
 import { createAuditLog } from "./audit";
 import { recalcScore } from "./score";
 
@@ -311,7 +312,8 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
 
         if (data.subscriptionPaymentAmount != null) {
             if (!subscriptionRow) throw new Error("O cliente nao possui assinatura para pagamento.");
-            if (!Number.isFinite(data.subscriptionPaymentAmount) || data.subscriptionPaymentAmount <= 0) {
+            const paymentAmount = Number(data.subscriptionPaymentAmount);
+            if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
                 throw new Error("Valor do pagamento da mensalidade invalido.");
             }
             await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`subscription-payment:${subscriptionRow.id}`}))::text`;
@@ -328,7 +330,7 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
             await tx.subscriptionPayment.create({
                 data: {
                     subscriptionId: currentSubscription.id,
-                    amount: data.subscriptionPaymentAmount,
+                    amount: roundMoney(paymentAmount),
                     referenceMonth: currentSubscription.nextDueDate,
                 },
             });

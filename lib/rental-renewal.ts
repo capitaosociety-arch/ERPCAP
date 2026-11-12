@@ -189,7 +189,34 @@ export function generateRenewalDrafts(
   return pattern ? generateRenewalDraftsFromPattern(pattern, history, existingDrafts, todayDate, count) : [];
 }
 
+export function roundMoney(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+export function calculateRenewalTotal(unitAmount: number, games: number): number {
+  const unit = Number(unitAmount);
+  const quantity = Math.max(0, Math.floor(Number(games) || 0));
+  return roundMoney(Math.max(0, unit) * quantity);
+}
+
+export function resolveRenewalTotal(unitAmount: number, games: number, negotiatedTotal?: number | null): number {
+  const calculated = calculateRenewalTotal(unitAmount, games);
+  const negotiated = Number(negotiatedTotal);
+  if (negotiatedTotal != null && Number.isFinite(negotiated) && negotiated > 0) {
+    return roundMoney(negotiated);
+  }
+  return calculated;
+}
+
 export function renewalPatternDescription(pattern: RentalPattern): string {
   const weekdays = ['domingo', 'segunda-feira', 'terca-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sabado'];
   return `${weekdays[pattern.weekday]}, ${pattern.start} as ${pattern.end}, ${pattern.resource}`;
+}
+export function sortRentalDraftsDesc<T extends { startDate?: string; start?: string }>(drafts: T[]): T[] {
+  return [...drafts].sort((a, b) => {
+    const aKey = `${a.startDate || ''}T${a.start || ''}`;
+    const bKey = `${b.startDate || ''}T${b.start || ''}`;
+    return bKey.localeCompare(aKey);
+  });
 }

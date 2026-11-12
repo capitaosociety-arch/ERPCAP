@@ -6,7 +6,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Respon
 import { deleteCustomer, saveCustomerDossier } from '../../actions/customers';
 import { getScores, saveScoreConfig, recalcScore, getScoreHistory, getScoreConfig } from '../../actions/score';
 import { buildRentalWindow, defaultRentalDateInput, formatRentalDateInput, formatRentalTimeInput } from '../../../lib/rental-time';
-import { generateRenewalDraftsFromPattern, inferRentalPattern } from '../../../lib/rental-renewal';
+import { calculateRenewalTotal, generateRenewalDraftsFromPattern, inferRentalPattern, resolveRenewalTotal, sortRentalDraftsDesc } from '../../../lib/rental-renewal';
 
 const TZ = 'America/Cuiaba';
 
@@ -256,6 +256,8 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           start: pattern?.start || '20:00',
           end: pattern?.end || '21:00',
           amount: pattern?.amount ?? Number(amount) / 4,
+          games: 4,
+          negotiatedTotal: '',
           occurrences: pattern?.occurrences ?? 0,
           confident: pattern?.confident ?? false,
           fromHistory: !!pattern,
@@ -268,7 +270,20 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       const resource = String(renewalPatternForm.resource || '').trim();
       if (!resource) return alert("Informe o espaco/mesa do padrao.");
       const amount = Number(renewalPatternForm.amount);
-      if (!Number.isFinite(amount) || amount < 0) return alert("Valor da reserva invalido.");
+      const games = Number(renewalPatternForm.games);
+      if (!Number.isFinite(amount) || amount <= 0) return alert("Valor por jogo invalido.");
+      if (!Number.isInteger(games) || games < 4 || games > 15) return alert("A quantidade deve ser entre 4 e 15 jogos.");
+      const negotiatedRaw = String(renewalPatternForm.negotiatedTotal ?? '').trim();
+      const negotiated = negotiatedRaw ? Number(negotiatedRaw.replace(',', '.')) : null;
+      if (negotiated != null && (!Number.isFinite(negotiated) || negotiated <= 0)) {
+          return alert("Valor total negociado invalido.");
+      }
+      const calculatedTotal = calculateRenewalTotal(amount, games);
+      const effectiveTotal = resolveRenewalTotal(amount, games, negotiated);
+      if (effectiveTotal <= 0) return alert("O valor total da mensalidade deve ser maior que zero.");
+      if (negotiated != null && Math.abs(negotiated - calculatedTotal) > 0.005) {
+          if (!confirm(`O valor negociado (R$ ${negotiated.toFixed(2)}) difere do calculado (R$ ${calculatedTotal.toFixed(2)}). Confirmar a cobranca do valor negociado?`)) return;
+      }
       try {
           buildRentalWindow(defaultRentalDateInput(), renewalPatternForm.start, renewalPatternForm.end);
       } catch (error: any) {
@@ -283,7 +298,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           occurrences: Number(renewalPatternForm.occurrences) || 0,
           confident: !!renewalPatternForm.confident,
       };
-      const generated = generateRenewalDraftsFromPattern(pattern, selectedCustomer.rentals || [], rentalDrafts, defaultRentalDateInput());
+      const generated = generateRenewalDraftsFromPattern(pattern, selectedCustomer.rentals || [], rentalDrafts, defaultRentalDateInput(), games);
       const existingWindows = [
           ...(selectedCustomer.rentals || []).filter((rental: any) => rental.status !== 'CANCELED').map((rental: any) => ({
               resource: rental.resource,
@@ -311,13 +326,13 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           return;
       }
       setRentalDrafts(prev => [...prev, ...generated]);
-      setPendingSubscriptionPayment(Number(renewalPatternForm.paymentAmount));
+      setPendingSubscriptionPayment(effectiveTotal);
       setIsDirty(true);
       setIsRenewalModalOpen(false);
       if (generated.length === 0) {
-          alert("As quatro reservas do padrao ja existem no historico; o pagamento sera agendado sem duplicar reservas.");
+          alert(`As ${games} reservas do padrao ja existem no historico; o pagamento sera agendado sem duplicar reservas.`);
       } else {
-          alert(`${generated.length} reserva(s) do padrao foram adicionadas ao dossie. Confirme em Salvar e Fechar.`);
+          alert(`${generated.length} de ${games} reserva(s) foram adicionadas ao dossie. Total a cobrar: R$ ${effectiveTotal.toFixed(2).replace('.', ',')}. Confirme em Salvar e Fechar.`);
       }
   };
 
@@ -567,6 +582,32 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           dailySeries: series
       };
   }, [fieldRentalLancamentos, dateFrom, dateTo]);
+
+  const renewalGames = Number(renewalPatternForm?.games || 4);
+  const renewalUnitAmount = Number(renewalPatternForm?.amount || 0);
+  const renewalCalculatedTotal = calculateRenewalTotal(renewalUnitAmount, renewalGames);
+  const renewalNegotiatedRaw = String(renewalPatternForm?.negotiatedTotal ?? '').trim();
+  const renewalNegotiatedTotal = renewalNegotiatedRaw ? Number(renewalNegotiatedRaw.replace(',', '.')) : null;
+  const renewalEffectiveTotal = resolveRenewalTotal(renewalUnitAmount, renewalGames, renewalNegotiatedTotal);
+
+  let renewalPreview: any[] = [];
+  if (renewalPatternForm?.resource && selectedCustomer) {
+      try {
+          renewalPreview = generateRenewalDraftsFromPattern({
+              resource: String(renewalPatternForm.resource).trim(),
+              weekday: Number(renewalPatternForm.weekday),
+              start: renewalPatternForm.start,
+              end: renewalPatternForm.end,
+              amount: renewalUnitAmount,
+              occurrences: Number(renewalPatternForm.occurrences) || 0,
+              confident: !!renewalPatternForm.confident,
+          }, selectedCustomer.rentals || [], rentalDrafts, defaultRentalDateInput(), renewalGames);
+      } catch {
+          renewalPreview = [];
+      }
+  }
+
+  const sortedRentalDrafts = sortRentalDraftsDesc(rentalDrafts);
 
   return (
     <div className="animate-in fade-in duration-500">
@@ -1031,7 +1072,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                <div>
                                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5 py-2"><Calendar size={14}/> HistÃ³rico de LocaÃ§Ãµes</h3>
                                    <div className="flex flex-col gap-2">
-                                        {rentalDrafts.map((rent: any) => (
+                                        {sortedRentalDrafts.map((rent: any) => (
                                             <div key={rent.id} className="bg-white border text-left border-gray-200 rounded-xl p-3 flex flex-col gap-2 shadow-sm">
                                                 <div className="flex justify-between items-center">
                                                     <div className="flex flex-col">
@@ -1107,7 +1148,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
             <div className="flex items-start justify-between gap-3 mb-4">
               <div>
                 <h2 className="text-xl font-black text-slate-800">Renovacao da mensalidade</h2>
-                <p className="text-xs text-gray-500 font-medium mt-1">Confirme ou ajuste o padrao das quatro reservas.</p>
+                <p className="text-xs text-gray-500 font-medium mt-1">Confirme ou ajuste o padrao da renovacao.</p>
               </div>
               <button onClick={() => setIsRenewalModalOpen(false)} className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center">
                 <X size={18} className="text-gray-500" />
@@ -1140,7 +1181,15 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Valor por reserva</label>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Quantidade de jogos</label>
+                <select value={renewalPatternForm.games} onChange={e => setRenewalPatternForm({ ...renewalPatternForm, games: Number(e.target.value) })} className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue bg-white">
+                  {Array.from({ length: 12 }, (_, index) => index + 4).map(quantity => (
+                    <option key={quantity} value={quantity}>{quantity} jogos</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Valor por jogo</label>
                 <input type="number" min="0" step="0.01" value={renewalPatternForm.amount} onChange={e => setRenewalPatternForm({ ...renewalPatternForm, amount: e.target.value })} className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue" />
               </div>
               <div>
@@ -1153,11 +1202,47 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
               </div>
             </div>
 
+            <div className="mt-4">
+              <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Valor total negociado (opcional)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder={renewalCalculatedTotal.toFixed(2)}
+                value={renewalPatternForm.negotiatedTotal}
+                onChange={e => setRenewalPatternForm({ ...renewalPatternForm, negotiatedTotal: e.target.value })}
+                className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue"
+              />
+            </div>
+
+            <div className="mt-3 rounded-xl bg-slate-50 border border-gray-200 p-3 text-xs text-slate-700 space-y-1">
+              <div className="flex justify-between"><span>Valor unitario</span><span className="font-bold">R$ {renewalUnitAmount.toFixed(2).replace('.', ',')}</span></div>
+              <div className="flex justify-between"><span>Quantidade</span><span className="font-bold">{renewalGames} jogos</span></div>
+              <div className="flex justify-between"><span>Total calculado</span><span className="font-bold">R$ {renewalCalculatedTotal.toFixed(2).replace('.', ',')}</span></div>
+              <div className="flex justify-between border-t border-gray-200 pt-1"><span>Total efetivamente cobrado</span><span className="font-black text-mrts-blue">R$ {renewalEffectiveTotal.toFixed(2).replace('.', ',')}</span></div>
+            </div>
+
+            {renewalPreview.length > 0 && (
+              <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                <p className="text-[10px] font-bold text-mrts-blue uppercase mb-1">Reservas que serao geradas</p>
+                <div className="flex flex-col gap-1 max-h-28 overflow-y-auto">
+                  {renewalPreview.map((item, index) => (
+                    <p key={`${item.startDate}-${item.start}-${index}`} className="text-[11px] font-bold text-slate-700">
+                      {item.startDate.split('-').reverse().join('/')} — {item.start} as {item.end}
+                    </p>
+                  ))}
+                </div>
+                {renewalPreview.length < renewalGames && (
+                  <p className="text-[10px] text-amber-700 font-bold mt-1">Algumas datas ja existem; somente as faltantes serao geradas.</p>
+                )}
+              </div>
+            )}
+
             <p className="text-[11px] text-gray-500 font-medium mt-3">O pagamento da mensalidade sera agendado e somente sera gravado ao clicar em Salvar e Fechar.</p>
 
             <div className="flex gap-3 mt-5">
               <button onClick={() => setIsRenewalModalOpen(false)} className="flex-1 border-2 border-gray-200 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50">Cancelar</button>
-              <button onClick={handleConfirmRenewal} className="flex-[1.5] bg-mrts-blue text-white font-black py-3 rounded-xl hover:bg-mrts-hover">Gerar 4 reservas</button>
+              <button onClick={handleConfirmRenewal} className="flex-[1.5] bg-mrts-blue text-white font-black py-3 rounded-xl hover:bg-mrts-hover">Gerar {renewalGames} reservas</button>
             </div>
           </div>
         </div>

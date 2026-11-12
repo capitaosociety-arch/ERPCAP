@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { generateRenewalDrafts, inferRentalPattern, renewalPatternDescription } from '../../lib/rental-renewal';
+import { calculateRenewalTotal, generateRenewalDrafts, generateRenewalDraftsFromPattern, inferRentalPattern, renewalPatternDescription, resolveRenewalTotal, sortRentalDraftsDesc } from '../../lib/rental-renewal';
 
 const history = [
   { id: 'r1', resource: 'FUT5', startTime: '2026-09-07T23:00:00.000Z', endTime: '2026-09-08T00:00:00.000Z', totalAmount: 110, status: 'PAID' },
@@ -53,6 +53,34 @@ assert.deepEqual(changedGeneration.map(item => [item.startDate, item.start, item
   ['2026-11-27', '20:00', '21:00', 'FUT7'],
   ['2026-12-04', '20:00', '21:00', 'FUT7'],
   ['2026-12-11', '20:00', '21:00', 'FUT7'],
+]);
+
+for (const games of [4, 5, 8, 10, 12, 15]) {
+  const drafts = generateRenewalDraftsFromPattern(pattern!, history, [], '2026-10-05', games);
+  assert.equal(drafts.length, games);
+  assert.equal(drafts.every(item => item.status === 'PENDING'), true);
+  assert.equal(drafts.every(item => item.start === '20:00' && item.end === '21:00'), true);
+}
+
+assert.equal(calculateRenewalTotal(140, 4), 560);
+assert.equal(calculateRenewalTotal(140, 5), 700);
+assert.equal(calculateRenewalTotal(140, 8), 1120);
+assert.equal(calculateRenewalTotal(140, 10), 1400);
+assert.equal(calculateRenewalTotal(140, 15), 2100);
+assert.equal(calculateRenewalTotal(19.99, 3), 59.97);
+assert.equal(calculateRenewalTotal(0.1, 3), 0.3);
+assert.equal(resolveRenewalTotal(140, 5, 650), 650);
+assert.equal(resolveRenewalTotal(140, 5, null), 700);
+
+const sorted = sortRentalDraftsDesc([
+  { startDate: '2026-10-10', start: '20:00' },
+  { startDate: '2026-11-20', start: '20:00' },
+  { startDate: '2026-10-10', start: '22:00' },
+]);
+assert.deepEqual(sorted.map(item => `${item.startDate} ${item.start}`), [
+  '2026-11-20 20:00',
+  '2026-10-10 22:00',
+  '2026-10-10 20:00',
 ]);
 
 console.log('rental-renewal tests: OK');
