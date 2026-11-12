@@ -77,7 +77,8 @@ export async function getRegisterSummary(registerId: string) {
     await requirePermission(['permFinance', 'permPDV']);
 
     const registerToClose = await prisma.cashRegister.findUnique({
-        where: { id: registerId }
+        where: { id: registerId },
+        include: { user: { select: { name: true } } },
     });
 
     if (!registerToClose) throw new Error('Caixa não encontrado');
@@ -222,6 +223,9 @@ export async function getRegisterSummary(registerId: string) {
 
     return JSON.parse(JSON.stringify({
         openOrdersCount,
+        openedAt: registerToClose.openedAt,
+        closedAt: registerToClose.closedAt,
+        operatorName: registerToClose.user?.name || 'Operador',
         openingBal: registerToClose.openingBal,
         closingBal: registerToClose.closingBal,
         expectedCashInDrawer,

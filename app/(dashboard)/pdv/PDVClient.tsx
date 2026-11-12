@@ -223,6 +223,9 @@ export default function PDVClient({ products, services = [], categories, user, o
   };
 
   const total = cart.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
+  const expectedCash = Number(registerSummary?.expectedCashInDrawer || 0);
+  const informedCash = closingVal.trim() === '' ? null : Number(closingVal);
+  const cashDifference = informedCash != null && Number.isFinite(informedCash) ? informedCash - expectedCash : null;
 
   const handleOpenTurno = async () => {
     if(!openVal) return alert('Insira o fundo de troco!');
@@ -656,68 +659,75 @@ export default function PDVClient({ products, services = [], categories, user, o
 
       {/* MODAL FECHAR TURNO RECOMPILADO */}
       {isCloseModalOpen && (
-          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
-              <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl animate-in zoom-in flex flex-col overflow-hidden border border-gray-100 max-h-[90vh]">
-                  <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-slate-900 text-white">
-                      <h2 className="text-xl font-black flex items-center gap-2">
-                          <Lock size={22} className="text-red-400" /> Fechamento de Caixa: Auditoria de Cego
-                      </h2>
-                      <button disabled={loadingAction} onClick={() => { setIsCloseModalOpen(false); setRegisterSummary(null); }} className="w-8 h-8 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full transition">
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[90] flex items-center justify-center p-2 sm:p-4">
+              <div className="bg-white rounded-3xl w-full max-w-[600px] shadow-2xl animate-in zoom-in flex flex-col overflow-hidden border border-gray-100 max-h-[90vh]">
+                  <div className="flex justify-between items-center gap-3 p-4 border-b border-gray-100 bg-slate-900 text-white shrink-0">
+                      <div className="min-w-0">
+                          <h2 className="text-base sm:text-lg font-black flex items-center gap-2">
+                              <Lock size={18} className="text-red-400 shrink-0" /> Fechamento de Caixa
+                          </h2>
+                          {registerSummary && (
+                              <p className="text-[10px] sm:text-xs text-slate-300 mt-1 truncate">
+                                  Operador: {registerSummary.operatorName} · Abertura: {registerSummary.openedAt ? new Date(registerSummary.openedAt).toLocaleString('pt-BR') : '-'}
+                              </p>
+                          )}
+                      </div>
+                      <button disabled={loadingAction} onClick={() => { setIsCloseModalOpen(false); setRegisterSummary(null); }} className="w-8 h-8 shrink-0 flex items-center justify-center bg-white/10 hover:bg-white/20 rounded-full transition">
                           <X size={16} />
                       </button>
                   </div>
                   
-                  <div className="p-6 flex-1 overflow-y-auto bg-slate-50">
+                  <div className="p-3 sm:p-4 flex-1 overflow-y-auto bg-slate-50">
                       {isLoadingSummary ? (
                         <div className="flex flex-col items-center justify-center py-20 text-gray-400">
                            <div className="w-10 h-10 border-4 border-gray-200 border-t-mrts-blue rounded-full animate-spin mb-4"></div>
                            <p className="font-bold">Analisando atividades do turno...</p>
                         </div>
                       ) : registerSummary ? (
-                        <div className="space-y-6">
+                        <div className="space-y-1.5">
                             {/* Validador de Comandas Abertas */}
                             {registerSummary.openOrdersCount > 0 ? (
-                                <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-6 text-center animate-in fade-in">
-                                    <Lock size={48} className="text-red-500 mx-auto mb-4" />
-                                    <h3 className="text-2xl font-black text-red-700 mb-2">Bloqueio Operacional Intransponível</h3>
+                                <div className="bg-red-50 border border-red-400 rounded-xl p-4 text-center animate-in fade-in">
+                                    <Lock size={30} className="text-red-500 mx-auto mb-2" />
+                                    <h3 className="text-base font-black text-red-700 mb-1">Bloqueio Operacional Intransponível</h3>
                                     <p className="text-red-600 font-medium mb-4">Constam <b>{registerSummary.openOrdersCount} comanda(s) ou venda(s) avulsas</b> ativas no sistema de gerenciamento. É terminantemente proibido realizar o encerramento do caixa com saldo de operações pendentes.</p>
                                     <p className="text-sm text-red-500 bg-red-100 py-3 rounded-lg font-bold">FECHE A TELA, EFETUE AS COBRANÇAS EM ABERTO OU RETIRE AS VENDAS PENDENTES.</p>
                                 </div>
                             ) : (
-                                <div className="flex flex-col gap-6 animate-in slide-in-from-bottom-4">
-                                    <div className="bg-white border text-center border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden">
+                                <div className="flex flex-col gap-3 animate-in slide-in-from-bottom-4">
+                                    <div className="bg-white border text-center border-gray-200 rounded-xl p-3 shadow-sm relative overflow-hidden">
                                         <div className="absolute top-0 w-full h-1 bg-gradient-to-r from-blue-500 to-green-500 left-0"></div>
                                         <h3 className="text-lg font-bold text-slate-800 mb-1">Apuração Bruta de Receitas</h3>
-                                        <p className="text-4xl font-black text-slate-900">R$ {registerSummary.sumAllPayments.toFixed(2).replace('.', ',')}</p>
+                                        <p className="text-2xl font-black text-slate-900">R$ {registerSummary.sumAllPayments.toFixed(2).replace('.', ',')}</p>
                                     </div>
 
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {/* Tabela Resumo Pagamentos */}
-                                        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-                                            <h4 className="text-sm uppercase tracking-wider font-bold text-gray-500 mb-6 flex items-center gap-2"><CreditCard size={18}/> Receita por Métodos Faturados</h4>
-                                            <div className="space-y-3">
-                                                <div className="flex justify-between items-center py-2 border-b border-dashed border-gray-200">
+                                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3">
+                                            <h4 className="text-[11px] uppercase tracking-wider font-bold text-gray-500 mb-2 flex items-center gap-2"><CreditCard size={18}/> Receita por Métodos Faturados</h4>
+                                            <div className="space-y-1.5">
+                                                <div className="flex justify-between items-center py-1.5 border-b border-dashed border-gray-200">
                                                    <span className="font-bold text-slate-700">Fundo de Troco Operacional</span>
                                                    <span className="font-black text-gray-500">R$ {registerSummary.openingBal.toFixed(2).replace('.', ',')}</span>
                                                 </div>
                                                 {registerSummary.payments.map((p: any, i: number) => (
-                                                    <div key={i} className="flex justify-between items-center py-2 border-b border-dashed border-gray-200">
+                                                    <div key={i} className="flex justify-between items-center py-1.5 border-b border-dashed border-gray-200">
                                                         <span className="font-bold text-slate-700">{p.methodName}</span>
                                                         <span className="font-black text-green-600">+ R$ {p.amount.toFixed(2).replace('.', ',')}</span>
                                                     </div>
                                                 ))}
                                             </div>
-                                            <div className="mt-8 bg-slate-900 text-white rounded-xl p-5 border border-slate-700 shadow-inner ring-4 ring-slate-900/5">
+                                            <div className="mt-3 bg-slate-900 text-white rounded-xl p-3 border border-slate-700 shadow-inner">
                                                 <p className="text-[11px] font-bold text-green-400 mb-1 uppercase tracking-wider">Dinheiro Em Gaveta Esperado</p>
-                                                <p className="text-3xl font-black flex items-center gap-2"><Banknote size={28}/> R$ {registerSummary.expectedCashInDrawer.toFixed(2).replace('.', ',')}</p>
+                                                <p className="text-2xl font-black flex items-center gap-2"><Banknote size={22}/> R$ {registerSummary.expectedCashInDrawer.toFixed(2).replace('.', ',')}</p>
                                                 <p className="text-xs text-gray-400 mt-2 font-medium leading-relaxed">Este é o montante consolidado obrigatório de numerário orgânico. Diferenças não são toleradas no batimento.</p>
                                             </div>
                                         </div>
 
                                         {/* Tabela Resumo Produtos */}
-                                        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col">
-                                            <h4 className="text-sm uppercase tracking-wider font-bold text-gray-500 mb-6 flex items-center gap-2"><ShoppingBag size={18}/> Inventário Transferido (Sintético)</h4>
-                                            <div className="overflow-y-auto flex-1 pr-2 space-y-2 relative h-64 hide-scrollbar">
+                                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-3 flex flex-col">
+                                            <h4 className="text-[11px] uppercase tracking-wider font-bold text-gray-500 mb-2 flex items-center gap-2"><ShoppingBag size={18}/> Inventário Transferido (Sintético)</h4>
+                                            <div className="overflow-y-auto flex-1 pr-1 space-y-1.5 relative h-28 sm:h-32 hide-scrollbar">
                                                 <div className="absolute top-0 left-0 w-full h-4 bg-gradient-to-b from-white to-transparent pointer-events-none z-10"></div>
                                                 <div className="absolute bottom-0 left-0 w-full h-4 bg-gradient-to-t from-white to-transparent pointer-events-none z-10"></div>
                                                 {registerSummary.productsSold.length === 0 && <p className="text-sm text-gray-400 italic text-center py-10 font-bold">Nenhum espelho de estoque consumido.</p>}
@@ -737,16 +747,31 @@ export default function PDVClient({ products, services = [], categories, user, o
                                     </div>
 
                                     {/* Formulário Input Fechamento Cego */}
-                                    <div className="bg-white border-2 border-dashed border-gray-300 rounded-2xl p-8 relative shadow-sm">
-                                        <label className="block text-sm font-black text-slate-800 uppercase tracking-wider mb-2">Declaração de Sangria Física em Moeda/Notas</label>
-                                        <p className="text-xs text-gray-500 font-medium mb-6">Insira abaixo o subtotal matemático das notas encontradas no cofre. A diferença estrita deverá bater 0 (zero).</p>
-                                        <div className="relative mb-6">
-                                            <span className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400 font-black text-2xl">R$</span>
-                                            <input autoFocus type="number" value={closingVal} onChange={e => setClosingVal(e.target.value)} placeholder="0.00" className="w-full border-2 border-gray-300 focus:border-slate-900 hover:border-gray-400 rounded-xl py-5 pl-16 pr-4 outline-none font-black text-slate-800 text-4xl shadow-sm transition"/>
+                                    <div className="bg-white border border-dashed border-gray-300 rounded-xl p-3 relative shadow-sm">
+                                        <label className="block text-xs font-black text-slate-800 uppercase tracking-wider mb-1">Declaração de Sangria Física em Moeda/Notas</label>
+                                        <p className="text-[11px] text-gray-500 font-medium mb-2">Insira abaixo o subtotal matemático das notas encontradas no cofre. A diferença estrita deverá bater 0 (zero).</p>
+                                        <div className="relative mb-2">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-black text-xl">R$</span>
+                                            <input autoFocus type="number" value={closingVal} onChange={e => setClosingVal(e.target.value)} placeholder="0.00" className="w-full border-2 border-gray-300 focus:border-slate-900 hover:border-gray-400 rounded-xl py-2.5 pl-11 pr-3 outline-none font-black text-slate-800 text-2xl shadow-sm transition"/>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3 text-center">
+                                            <div className="rounded-lg bg-slate-50 border border-slate-200 p-2">
+                                                <p className="text-[9px] font-black uppercase text-gray-400">Total esperado</p>
+                                                <p className="text-sm font-black text-slate-800">R$ {expectedCash.toFixed(2).replace('.', ',')}</p>
+                                            </div>
+                                            <div className="rounded-lg bg-slate-50 border border-slate-200 p-2">
+                                                <p className="text-[9px] font-black uppercase text-gray-400">Total informado</p>
+                                                <p className="text-sm font-black text-slate-800">{informedCash != null && Number.isFinite(informedCash) ? `R$ ${informedCash.toFixed(2).replace('.', ',')}` : '—'}</p>
+                                            </div>
+                                            <div className={`rounded-lg border p-2 ${cashDifference == null ? 'bg-slate-50 border-slate-200' : Math.abs(cashDifference) < 0.01 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                                                <p className="text-[9px] font-black uppercase text-gray-400">Diferenca</p>
+                                                <p className={`text-sm font-black ${cashDifference == null ? 'text-slate-500' : Math.abs(cashDifference) < 0.01 ? 'text-emerald-700' : 'text-red-600'}`}>{cashDifference == null || !Number.isFinite(cashDifference) ? '—' : `R$ ${cashDifference.toFixed(2).replace('.', ',')}`}</p>
+                                            </div>
                                         </div>
                                         
-                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Observações Adicionais (Opcional)</label>
-                                        <textarea value={closingNotes} onChange={e => setClosingNotes(e.target.value)} placeholder="Justifique sobras, faltas ou deixe notas para a gestão..." className="w-full border-2 border-gray-200 focus:border-slate-900 rounded-xl p-4 outline-none font-medium text-slate-700 text-sm h-24 resize-none transition"/>
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Observações Adicionais (Opcional)</label>
+                                        <textarea value={closingNotes} onChange={e => setClosingNotes(e.target.value)} placeholder="Justifique sobras, faltas ou deixe notas para a gestão..." className="w-full border-2 border-gray-200 focus:border-slate-900 rounded-xl p-2.5 outline-none font-medium text-slate-700 text-sm h-16 resize-none transition"/>
                                     </div>
                                 </div>
                             )}
@@ -754,17 +779,17 @@ export default function PDVClient({ products, services = [], categories, user, o
                       ) : null}
                   </div>
                   
-                  <div className="p-6 border-t border-gray-200 bg-white shadow-[0_-5px_15px_rgba(0,0,0,0.02)] relative z-20">
+                  <div className="p-3 sm:p-4 border-t border-gray-200 bg-white shrink-0 relative z-20">
                       {registerSummary?.openOrdersCount > 0 ? (
-                          <button onClick={() => { setIsCloseModalOpen(false); setRegisterSummary(null); }} className="w-full bg-slate-100 text-slate-700 font-black py-4 rounded-xl hover:bg-slate-200 transition uppercase tracking-wider text-sm shadow-sm">
+                          <button onClick={() => { setIsCloseModalOpen(false); setRegisterSummary(null); }} className="w-full bg-slate-100 text-slate-700 font-black py-3 rounded-xl hover:bg-slate-200 transition uppercase tracking-wider text-sm shadow-sm">
                               Retornar as Cobranças ao Balcão
                           </button>
                       ) : (
-                          <div className="flex gap-4">
-                              <button disabled={loadingAction} onClick={() => { setIsCloseModalOpen(false); setRegisterSummary(null); }} className="flex-1 font-bold text-gray-500 hover:text-gray-800 hover:bg-gray-100 py-4 rounded-xl transition text-sm uppercase tracking-wide">
+                          <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
+                              <button disabled={loadingAction} onClick={() => { setIsCloseModalOpen(false); setRegisterSummary(null); }} className="flex-1 font-bold text-gray-500 hover:text-gray-800 hover:bg-gray-100 py-3 rounded-xl transition text-sm uppercase tracking-wide">
                                   Interromper Fechamento
                               </button>
-                              <button disabled={loadingAction || !registerSummary} onClick={handleCloseTurno} className="flex-[2] bg-slate-900 text-white font-black flex justify-center items-center gap-3 py-4 rounded-xl shadow-xl shadow-slate-900/30 hover:bg-slate-800 hover:-translate-y-0.5 active:translate-y-0 transition-all disabled:opacity-50 disabled:transform-none disabled:shadow-none uppercase tracking-wide text-sm">
+                              <button disabled={loadingAction || !registerSummary} onClick={handleCloseTurno} className="flex-[2] bg-slate-900 text-white font-black flex justify-center items-center gap-2 py-3 rounded-xl shadow-xl shadow-slate-900/30 hover:bg-slate-800 transition-all disabled:opacity-50 disabled:shadow-none uppercase tracking-wide text-xs sm:text-sm">
                                   {loadingAction ? <div className="w-6 h-6 border-2 border-white/40 border-t-white rounded-full animate-spin"></div> : <><Lock strokeWidth={3} size={20} /> Autenticar Auditoria de Integridade</>}
                               </button>
                           </div>
