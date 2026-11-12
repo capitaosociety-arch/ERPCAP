@@ -19,6 +19,14 @@ function validateRentalAmount(amount: number) {
     return amount;
 }
 
+function nextDueDateForDay(day: number): Date {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const candidate = new Date(now.getFullYear(), now.getMonth(), day);
+    if (candidate < today) candidate.setMonth(candidate.getMonth() + 1);
+    return candidate;
+}
+
 async function assertRentalAvailable(
     tx: any,
     resource: string,
@@ -131,11 +139,10 @@ export async function saveCustomerDossier(data: CustomerDossierInput) {
 
         if (subscription) {
             const existingSubscription = await tx.subscription.findUnique({ where: { customerId: customerId! } });
+            const dueDayChanged = !!existingSubscription && existingSubscription.dueDate !== subscription.dueDate;
             let nextDue = existingSubscription?.nextDueDate;
-            if (!nextDue) {
-                nextDue = new Date();
-                nextDue.setDate(subscription.dueDate);
-                if (nextDue < new Date()) nextDue.setMonth(nextDue.getMonth() + 1);
+            if (!nextDue || dueDayChanged) {
+                nextDue = nextDueDateForDay(subscription.dueDate);
             }
             await tx.subscription.upsert({
                 where: { customerId: customerId! },
@@ -143,6 +150,7 @@ export async function saveCustomerDossier(data: CustomerDossierInput) {
                     planName: subscription.planName.trim(),
                     amount: subscription.amount,
                     dueDate: subscription.dueDate,
+                    ...(dueDayChanged ? { nextDueDate: nextDue } : {}),
                 },
                 create: {
                     customerId: customerId!,

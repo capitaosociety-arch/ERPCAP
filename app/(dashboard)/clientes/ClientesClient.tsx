@@ -6,6 +6,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Respon
 import { deleteCustomer, saveCustomerDossier } from '../../actions/customers';
 import { getScores, saveScoreConfig, recalcScore, getScoreHistory, getScoreConfig } from '../../actions/score';
 import { buildRentalWindow, defaultRentalDateInput, formatRentalDateInput, formatRentalTimeInput } from '../../../lib/rental-time';
+import { generateRenewalDrafts, inferRentalPattern, renewalPatternDescription } from '../../../lib/rental-renewal';
 
 const TZ = 'America/Cuiaba';
 
@@ -240,9 +241,53 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   };
 
   const handlePaySubscription = (amount: number) => {
-      if (!confirm("Agendar este pagamento para ser registrado quando o dossie for salvo?")) return;
+      if (!selectedCustomer || pendingSubscriptionPayment != null) return;
+      const pattern = inferRentalPattern(selectedCustomer.rentals || []);
+      if (!pattern) {
+          alert("Nao ha historico suficiente para identificar o padrao habitual de reservas. Cadastre uma reserva ou ajuste o padrao antes de renovar.");
+          return;
+      }
+      const confirmation = pattern.confident
+          ? `Agendar o pagamento e gerar 4 reservas no padrao: ${renewalPatternDescription(pattern)}?`
+          : `O padrao do historico nao esta claramente definido. Usar ${renewalPatternDescription(pattern)} para gerar as 4 reservas?`;
+      if (!confirm(confirmation)) return;
+
+      const generated = generateRenewalDrafts(selectedCustomer.rentals || [], rentalDrafts, defaultRentalDateInput());
+      const existingWindows = [
+          ...(selectedCustomer.rentals || []).filter((rental: any) => rental.status !== 'CANCELED').map((rental: any) => ({
+              resource: rental.resource,
+              startTime: new Date(rental.startTime),
+              endTime: new Date(rental.endTime),
+          })),
+          ...rentalDrafts.filter((rental: any) => rental.status !== 'CANCELED').map((rental: any) => {
+              try {
+                  return { resource: rental.resource, ...buildRentalWindow(rental.startDate, rental.start, rental.end) };
+              } catch {
+                  return null;
+              }
+          }).filter(Boolean),
+      ];
+      const conflicting = generated.some((rental) => {
+          const window = buildRentalWindow(rental.startDate, rental.start, rental.end);
+          return existingWindows.some((existing: any) =>
+              existing.resource === rental.resource
+              && window.startTime < existing.endTime
+              && window.endTime > existing.startTime
+          );
+      });
+      if (conflicting) {
+          alert("Existe conflito entre o padrao habitual e uma reserva existente. Ajuste os horarios antes de renovar.");
+          return;
+      }
+
+      setRentalDrafts(prev => [...prev, ...generated]);
       setPendingSubscriptionPayment(Number(amount));
       setIsDirty(true);
+      if (generated.length === 0) {
+          alert("As quatro reservas do padrao ja existem no historico; o pagamento sera agendado sem duplicar reservas.");
+      } else {
+          alert(`${generated.length} reserva(s) do padrao foram adicionadas ao dossie. Confirme em Salvar e Fechar.`);
+      }
   };
 
   // Editing Subscription Payment (mensalidade)
