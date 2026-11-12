@@ -30,4 +30,29 @@ const ambiguous = inferRentalPattern([
 assert.equal(ambiguous?.confident, false);
 assert.equal(inferRentalPattern([]), null);
 
+const recentChange = inferRentalPattern([
+  { resource: 'FUT7', startTime: '2026-10-16T20:00:00.000Z', endTime: '2026-10-16T21:00:00.000Z', totalAmount: 140, status: 'PAID' },
+  { resource: 'FUT7', startTime: '2026-10-23T20:00:00.000Z', endTime: '2026-10-23T21:00:00.000Z', totalAmount: 140, status: 'PAID' },
+  { resource: 'FUT7', startTime: '2026-10-30T20:00:00.000Z', endTime: '2026-10-30T21:00:00.000Z', totalAmount: 140, status: 'PAID' },
+  { resource: 'FUT7', startTime: '2026-11-06T23:00:00.000Z', endTime: '2026-11-07T00:00:00.000Z', totalAmount: 140, status: 'PAID' },
+]);
+assert.equal(recentChange?.start, '20:00');
+assert.equal(recentChange?.end, '21:00');
+assert.equal(recentChange?.resource, 'FUT7');
+assert.equal(recentChange?.occurrences, 1);
+assert.equal(recentChange?.confident, false);
+
+const changedGeneration = generateRenewalDrafts([
+  { resource: 'FUT7', startTime: '2026-10-16T20:00:00.000Z', endTime: '2026-10-16T21:00:00.000Z', totalAmount: 140, status: 'PAID' },
+  { resource: 'FUT7', startTime: '2026-10-23T20:00:00.000Z', endTime: '2026-10-23T21:00:00.000Z', totalAmount: 140, status: 'PAID' },
+  { resource: 'FUT7', startTime: '2026-10-30T20:00:00.000Z', endTime: '2026-10-30T21:00:00.000Z', totalAmount: 140, status: 'PAID' },
+  { resource: 'FUT7', startTime: '2026-11-06T23:00:00.000Z', endTime: '2026-11-07T00:00:00.000Z', totalAmount: 140, status: 'PAID' },
+], [], '2026-11-13');
+assert.deepEqual(changedGeneration.map(item => [item.startDate, item.start, item.end, item.resource]), [
+  ['2026-11-20', '20:00', '21:00', 'FUT7'],
+  ['2026-11-27', '20:00', '21:00', 'FUT7'],
+  ['2026-12-04', '20:00', '21:00', 'FUT7'],
+  ['2026-12-11', '20:00', '21:00', 'FUT7'],
+]);
+
 console.log('rental-renewal tests: OK');

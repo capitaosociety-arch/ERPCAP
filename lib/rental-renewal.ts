@@ -74,6 +74,8 @@ export function inferRentalPattern(rentals: RentalHistoryItem[]): RentalPattern 
     occurrences: number;
     latest: number;
   }>();
+  let latestKey: string | null = null;
+  let latestTimestamp = Number.NEGATIVE_INFINITY;
 
   for (const rental of rentals) {
     if (!rental?.resource || !rental.startTime || !rental.endTime) continue;
@@ -85,6 +87,10 @@ export function inferRentalPattern(rentals: RentalHistoryItem[]): RentalPattern 
     const key = `${resource.trim().toLowerCase()}|${weekday}|${start}|${end}`;
     const existing = groups.get(key);
     const timestamp = new Date(rental.startTime).getTime();
+    if (timestamp > latestTimestamp) {
+      latestTimestamp = timestamp;
+      latestKey = key;
+    }
     if (existing) {
       existing.occurrences++;
       if (timestamp > existing.latest) {
@@ -108,27 +114,29 @@ export function inferRentalPattern(rentals: RentalHistoryItem[]): RentalPattern 
   const top = sorted[0];
   if (!top) return null;
   const second = sorted[1];
-  const confident = top.occurrences >= 2 && (!second || top.occurrences > second.occurrences);
+  const latest = latestKey ? groups.get(latestKey) : null;
+  const selected = latest || top;
+  const confident = selected.occurrences >= 2
+    && selected === top
+    && (!second || selected.occurrences > second.occurrences);
   return {
-    resource: top.resource,
-    weekday: top.weekday,
-    start: top.start,
-    end: top.end,
-    amount: top.amount,
-    occurrences: top.occurrences,
+    resource: selected.resource,
+    weekday: selected.weekday,
+    start: selected.start,
+    end: selected.end,
+    amount: selected.amount,
+    occurrences: selected.occurrences,
     confident,
   };
 }
 
-export function generateRenewalDrafts(
+export function generateRenewalDraftsFromPattern(
+  pattern: RentalPattern,
   history: RentalHistoryItem[],
   existingDrafts: Array<Partial<RenewalRentalDraft>>,
   todayDate: string,
   count = 4
 ): RenewalRentalDraft[] {
-  const pattern = inferRentalPattern(history);
-  if (!pattern) return [];
-
   const existingKeys = new Set<string>();
   for (const rental of history) {
     if (rental.status === 'CANCELED') continue;
@@ -169,6 +177,16 @@ export function generateRenewalDrafts(
     });
   }
   return generated;
+}
+
+export function generateRenewalDrafts(
+  history: RentalHistoryItem[],
+  existingDrafts: Array<Partial<RenewalRentalDraft>>,
+  todayDate: string,
+  count = 4
+): RenewalRentalDraft[] {
+  const pattern = inferRentalPattern(history);
+  return pattern ? generateRenewalDraftsFromPattern(pattern, history, existingDrafts, todayDate, count) : [];
 }
 
 export function renewalPatternDescription(pattern: RentalPattern): string {

@@ -27,6 +27,13 @@ function nextDueDateForDay(day: number): Date {
     return candidate;
 }
 
+async function lockRentalResources(tx: any, resources: string[]) {
+    const unique = Array.from(new Set(resources.map(resource => resource.trim().toLowerCase()).filter(Boolean))).sort();
+    for (const resource of unique) {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${resource}))::text`;
+    }
+}
+
 async function assertRentalAvailable(
     tx: any,
     resource: string,
@@ -34,7 +41,7 @@ async function assertRentalAvailable(
     endTime: Date,
     excludeIds: string[] = []
 ) {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${resource}))::text`;
+    await lockRentalResources(tx, [resource]);
     const conflict = await tx.rental.findFirst({
         where: {
             resource,
@@ -211,8 +218,27 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
         const conflictsToCheck = preparedRentals
             .filter((rental) => rental.timeChanged && rental.status !== 'CANCELED')
             .sort((a, b) => a.resource.localeCompare(b.resource));
+        const conflictResources = Array.from(new Set(conflictsToCheck.map((rental) => rental.resource))).sort();
+        await lockRentalResources(tx, conflictResources);
+        const conflictCandidates = conflictResources.length > 0
+            ? await tx.rental.findMany({
+                where: {
+                    resource: { in: conflictResources },
+                    status: { not: 'CANCELED' },
+                    ...(excludedIds.length > 0 ? { id: { notIn: excludedIds } } : {}),
+                },
+                select: { id: true, resource: true, startTime: true, endTime: true },
+            })
+            : [];
         for (const rental of conflictsToCheck) {
-            await assertRentalAvailable(tx, rental.resource, rental.startTime, rental.endTime, excludedIds);
+            const conflict = conflictCandidates.find((candidate: any) =>
+                candidate.resource === rental.resource
+                && candidate.startTime < rental.endTime
+                && candidate.endTime > rental.startTime
+            );
+            if (conflict) {
+                throw new Error(`Horario indisponivel para ${rental.resource}: ${formatRentalPeriod(conflict.startTime, conflict.endTime)}.`);
+            }
         }
         for (let i = 0; i < preparedRentals.length; i++) {
             for (let j = i + 1; j < preparedRentals.length; j++) {
@@ -230,33 +256,33 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
             await tx.rental.delete({ where: { id } });
         }
         for (const rental of preparedRentals) {
-            if (rental.id) {
-                if (!rental.changed) continue;
-                const previous = existingById.get(rental.id)!;
-                await tx.rental.update({
-                    where: { id: rental.id },
-                    data: {
-                        resource: rental.resource,
-                        startTime: rental.startTime,
-                        endTime: rental.endTime,
-                        totalAmount: rental.amount,
-                        status: rental.status,
-                        cancelledAt: rental.status === 'CANCELED' ? (previous.status === 'CANCELED' ? undefined : new Date()) : null,
-                    },
-                });
-            } else {
-                await tx.rental.create({
-                    data: {
-                        customerId: customerId!,
-                        resource: rental.resource,
-                        startTime: rental.startTime,
-                        endTime: rental.endTime,
-                        totalAmount: rental.amount,
-                        status: rental.status,
-                        cancelledAt: rental.status === 'CANCELED' ? new Date() : null,
-                    },
-                });
-            }
+            if (!rental.id || !rental.changed) continue;
+            const previous = existingById.get(rental.id)!;
+            await tx.rental.update({
+                where: { id: rental.id },
+                data: {
+                    resource: rental.resource,
+                    startTime: rental.startTime,
+                    endTime: rental.endTime,
+                    totalAmount: rental.amount,
+                    status: rental.status,
+                    cancelledAt: rental.status === 'CANCELED' ? (previous.status === 'CANCELED' ? undefined : new Date()) : null,
+                },
+            });
+        }
+        const newRentals = preparedRentals.filter((rental) => !rental.id);
+        if (newRentals.length > 0) {
+            await tx.rental.createMany({
+                data: newRentals.map((rental) => ({
+                    customerId: customerId!,
+                    resource: rental.resource,
+                    startTime: rental.startTime,
+                    endTime: rental.endTime,
+                    totalAmount: rental.amount,
+                    status: rental.status,
+                    cancelledAt: rental.status === 'CANCELED' ? new Date() : null,
+                })),
+            });
         }
         if (preparedRentals.length || deleteIds.length) auditActions.push('reservas');
 
@@ -322,7 +348,7 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
                 details: idempotencyMarker,
             },
         });
-    });
+    }, { maxWait: 10000, timeout: 15000 });
 
     if (alreadyApplied) {
         return { success: true, customerId, idempotent: true };

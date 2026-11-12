@@ -6,7 +6,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Respon
 import { deleteCustomer, saveCustomerDossier } from '../../actions/customers';
 import { getScores, saveScoreConfig, recalcScore, getScoreHistory, getScoreConfig } from '../../actions/score';
 import { buildRentalWindow, defaultRentalDateInput, formatRentalDateInput, formatRentalTimeInput } from '../../../lib/rental-time';
-import { generateRenewalDrafts, inferRentalPattern, renewalPatternDescription } from '../../../lib/rental-renewal';
+import { generateRenewalDraftsFromPattern, inferRentalPattern } from '../../../lib/rental-renewal';
 
 const TZ = 'America/Cuiaba';
 
@@ -74,6 +74,8 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   const [isDirty, setIsDirty] = useState(false);
   const [isSavingDossier, setIsSavingDossier] = useState(false);
   const [dossierRequestKey, setDossierRequestKey] = useState('');
+  const [renewalPatternForm, setRenewalPatternForm] = useState<any>(null);
+  const [isRenewalModalOpen, setIsRenewalModalOpen] = useState(false);
   
   // Forms
   const [formData, setFormData] = useState<any>({});
@@ -129,6 +131,8 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       setPendingSubscriptionPayment(null);
       setIsDirty(false);
       setDossierRequestKey(createRequestKey());
+      setRenewalPatternForm(null);
+      setIsRenewalModalOpen(false);
       if (customer) {
           setFormData({
               id: customer.id,
@@ -244,16 +248,42 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   const handlePaySubscription = (amount: number) => {
       if (!selectedCustomer || pendingSubscriptionPayment != null) return;
       const pattern = inferRentalPattern(selectedCustomer.rentals || []);
-      if (!pattern) {
-          alert("Nao ha historico suficiente para identificar o padrao habitual de reservas. Cadastre uma reserva ou ajuste o padrao antes de renovar.");
-          return;
-      }
-      const confirmation = pattern.confident
-          ? `Agendar o pagamento e gerar 4 reservas no padrao: ${renewalPatternDescription(pattern)}?`
-          : `O padrao do historico nao esta claramente definido. Usar ${renewalPatternDescription(pattern)} para gerar as 4 reservas?`;
-      if (!confirm(confirmation)) return;
+      const today = defaultRentalDateInput();
+      const [year, month, day] = today.split('-').map(Number);
+      setRenewalPatternForm({
+          resource: pattern?.resource || '',
+          weekday: pattern?.weekday ?? new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay(),
+          start: pattern?.start || '20:00',
+          end: pattern?.end || '21:00',
+          amount: pattern?.amount ?? Number(amount) / 4,
+          occurrences: pattern?.occurrences ?? 0,
+          confident: pattern?.confident ?? false,
+          fromHistory: !!pattern,
+      });
+      setIsRenewalModalOpen(true);
+  };
 
-      const generated = generateRenewalDrafts(selectedCustomer.rentals || [], rentalDrafts, defaultRentalDateInput());
+  const handleConfirmRenewal = () => {
+      if (!selectedCustomer || pendingSubscriptionPayment != null || !renewalPatternForm) return;
+      const resource = String(renewalPatternForm.resource || '').trim();
+      if (!resource) return alert("Informe o espaco/mesa do padrao.");
+      const amount = Number(renewalPatternForm.amount);
+      if (!Number.isFinite(amount) || amount < 0) return alert("Valor da reserva invalido.");
+      try {
+          buildRentalWindow(defaultRentalDateInput(), renewalPatternForm.start, renewalPatternForm.end);
+      } catch (error: any) {
+          return alert(error?.message || "Horario invalido.");
+      }
+      const pattern = {
+          resource,
+          weekday: Number(renewalPatternForm.weekday),
+          start: renewalPatternForm.start,
+          end: renewalPatternForm.end,
+          amount,
+          occurrences: Number(renewalPatternForm.occurrences) || 0,
+          confident: !!renewalPatternForm.confident,
+      };
+      const generated = generateRenewalDraftsFromPattern(pattern, selectedCustomer.rentals || [], rentalDrafts, defaultRentalDateInput());
       const existingWindows = [
           ...(selectedCustomer.rentals || []).filter((rental: any) => rental.status !== 'CANCELED').map((rental: any) => ({
               resource: rental.resource,
@@ -277,13 +307,13 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           );
       });
       if (conflicting) {
-          alert("Existe conflito entre o padrao habitual e uma reserva existente. Ajuste os horarios antes de renovar.");
+          alert("Existe conflito entre o padrao configurado e uma reserva existente. Ajuste os horarios antes de renovar.");
           return;
       }
-
       setRentalDrafts(prev => [...prev, ...generated]);
-      setPendingSubscriptionPayment(Number(amount));
+      setPendingSubscriptionPayment(Number(renewalPatternForm.paymentAmount));
       setIsDirty(true);
+      setIsRenewalModalOpen(false);
       if (generated.length === 0) {
           alert("As quatro reservas do padrao ja existem no historico; o pagamento sera agendado sem duplicar reservas.");
       } else {
@@ -1070,6 +1100,68 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
              </div>
          </div>
        )}
+
+      {isRenewalModalOpen && renewalPatternForm && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[85] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl border border-gray-100 p-6">
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-800">Renovacao da mensalidade</h2>
+                <p className="text-xs text-gray-500 font-medium mt-1">Confirme ou ajuste o padrao das quatro reservas.</p>
+              </div>
+              <button onClick={() => setIsRenewalModalOpen(false)} className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center">
+                <X size={18} className="text-gray-500" />
+              </button>
+            </div>
+
+            {(!renewalPatternForm.fromHistory || !renewalPatternForm.confident) && (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800">
+                {renewalPatternForm.fromHistory
+                  ? 'O historico nao tem um padrao claramente repetido. Revise os campos antes de gerar.'
+                  : 'Nao ha historico suficiente. Informe manualmente o padrao antes de gerar.'}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Espaco / Mesa</label>
+                <input type="text" value={renewalPatternForm.resource} onChange={e => setRenewalPatternForm({ ...renewalPatternForm, resource: e.target.value })} className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Dia da semana</label>
+                <select value={renewalPatternForm.weekday} onChange={e => setRenewalPatternForm({ ...renewalPatternForm, weekday: Number(e.target.value) })} className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue bg-white">
+                  <option value={0}>Domingo</option>
+                  <option value={1}>Segunda-feira</option>
+                  <option value={2}>Terca-feira</option>
+                  <option value={3}>Quarta-feira</option>
+                  <option value={4}>Quinta-feira</option>
+                  <option value={5}>Sexta-feira</option>
+                  <option value={6}>Sabado</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Valor por reserva</label>
+                <input type="number" min="0" step="0.01" value={renewalPatternForm.amount} onChange={e => setRenewalPatternForm({ ...renewalPatternForm, amount: e.target.value })} className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Hora inicial</label>
+                <input type="time" value={renewalPatternForm.start} onChange={e => setRenewalPatternForm({ ...renewalPatternForm, start: e.target.value })} className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Hora final</label>
+                <input type="time" value={renewalPatternForm.end} onChange={e => setRenewalPatternForm({ ...renewalPatternForm, end: e.target.value })} className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue" />
+              </div>
+            </div>
+
+            <p className="text-[11px] text-gray-500 font-medium mt-3">O pagamento da mensalidade sera agendado e somente sera gravado ao clicar em Salvar e Fechar.</p>
+
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setIsRenewalModalOpen(false)} className="flex-1 border-2 border-gray-200 text-gray-600 font-bold py-3 rounded-xl hover:bg-gray-50">Cancelar</button>
+              <button onClick={handleConfirmRenewal} className="flex-[1.5] bg-mrts-blue text-white font-black py-3 rounded-xl hover:bg-mrts-hover">Gerar 4 reservas</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL: CONFIGURAÃ‡ÃƒO DE PESOS DO SCORE */}
       {showScoreConfig && (
