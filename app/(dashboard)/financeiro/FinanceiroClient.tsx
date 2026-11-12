@@ -47,6 +47,7 @@ export default function FinanceiroClient({ payload }: any) {
     const [dreRegime, setDreRegime] = useState<'competence' | 'cash'>('competence');
     const [dreVersion, setDreVersion] = useState<number | null>(null);
     const [isPending, startTransition] = useTransition();
+    const [voidingPaymentId, setVoidingPaymentId] = useState<string | null>(null);
     const [showAddModal, setShowAddModal] = useState(false);
     const [filterType, setFilterType] = useState('ALL'); // ALL, PAYABLE, RECEIVABLE
     const [searchTerm, setSearchTerm] = useState('');
@@ -356,24 +357,33 @@ export default function FinanceiroClient({ payload }: any) {
     }, [safePage, totalPages]);
 
     const handleVoidPayment = async (paymentId: string) => {
-        if (!confirm("Deseja realmente ESTORNAR este pagamento? O valor será removido do caixa e a comanda será reaberta se estiver fechada.")) return;
+        if (voidingPaymentId) return;
+        if (!confirm("Deseja realmente ESTORNAR este pagamento? O valor serǭ removido do caixa e a comanda serǭ reaberta se estiver fechada.")) return;
 
+        setVoidingPaymentId(paymentId);
         startTransition(async () => {
             try {
                 const res = await voidPaymentAction(paymentId);
-                if (res && !res.success) {
-                    alert("Falha no estorno: " + res.error);
+                if (!res?.success) {
+                    alert("Falha no estorno: " + (res?.error || "tente novamente."));
                     return;
                 }
 
-                // Refresh summary
-                if (selectedCashRegister) {
-                    const data = await getRegisterSummary(selectedCashRegister.id);
-                    setSelectedCashRegister({ ...selectedCashRegister, ...data });
+                try {
+                    if (selectedCashRegister) {
+                        const data = await getRegisterSummary(selectedCashRegister.id);
+                        setSelectedCashRegister({ ...selectedCashRegister, ...data });
+                    }
+                    router.refresh();
+                    alert(res.idempotent ? "Pagamento ja estava estornado." : "Pagamento estornado com sucesso!");
+                } catch (refreshError) {
+                    console.error("ERRO_REFRESH_ESTORNO:", refreshError);
+                    alert("Estorno concluido. Nao foi possivel atualizar automaticamente a tela; atualize a pagina.");
                 }
-                alert("Pagamento estornado com sucesso!");
             } catch (err: any) {
-                alert("Falha técnica no estorno: " + err.message);
+                alert("Falha tecnica no estorno: " + (err?.message || "tente novamente."));
+            } finally {
+                setVoidingPaymentId(null);
             }
         });
     };
@@ -2158,11 +2168,12 @@ export default function FinanceiroClient({ payload }: any) {
                                                                                         >
                                                                                             <Edit2 size={12} />
                                                                                         </button>
-                                                                                        <button
-                                                                                            onClick={() => handleVoidPayment(p.id)}
-                                                                                            className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
-                                                                                            title="Estornar Pagamento"
-                                                                                        >
+                        <button
+                            disabled={isPending || voidingPaymentId === p.id}
+                            onClick={() => handleVoidPayment(p.id)}
+                            className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                            title="Estornar Pagamento"
+                        >
                                                                                             <RotateCcw size={12} />
                                                                                         </button>
                                                                                     </div>

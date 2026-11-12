@@ -468,56 +468,81 @@ export async function deleteComandaAction(orderId: string) {
 
 export async function voidPaymentAction(paymentId: string) {
     try {
-        await requirePermission(['permFinance', 'permComandas', 'permPDV']);
-
-        const session = await getServerSession(authOptions) as any;
-        if (!session) throw new Error("Não autorizado");
+        const actor = await requirePermission(['permFinance', 'permComandas', 'permPDV']);
+        const normalizedPaymentId = String(paymentId || '').trim();
+        if (!normalizedPaymentId) throw new Error("Pagamento invalido.");
+        const idempotencyMarker = `payment-void:${normalizedPaymentId}`;
 
         const result = await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyMarker}))::text`;
+            const prior = await tx.auditLog.findFirst({
+                where: { action: 'PaymentVoidIdempotency', details: idempotencyMarker },
+                select: { id: true },
+            });
+            if (prior) {
+                return { alreadyApplied: true };
+            }
+
             const payment = await tx.payment.findUnique({
-                where: { id: paymentId },
+                where: { id: normalizedPaymentId },
                 include: { order: true }
             });
 
-            if (!payment) throw new Error(`Pagamento não encontrado! Tentou ID: [${paymentId}]`);
+            if (!payment) throw new Error("Pagamento nao encontrado.");
             await assertFinancialPeriodOpen(payment.date);
 
-            // 1. Remove o pagamento
             await tx.payment.delete({
-                where: { id: paymentId }
+                where: { id: normalizedPaymentId }
             });
 
-            // 2. Se a ordem estava fechada, reabre ela
             if (payment.order.status === "CLOSED") {
                 await tx.order.update({
                     where: { id: payment.orderId },
-                    data: { 
-                        status: "OPEN", 
-                        closedAt: null 
+                    data: {
+                        status: "OPEN",
+                        closedAt: null
                     }
                 });
             }
 
-            return { orderId: payment.orderId, amount: payment.amount, method: payment.method };
-        });
+            await tx.auditLog.create({
+                data: {
+                    userId: actor.id,
+                    action: "Estorno de Pagamento",
+                    details: `Estornou R$ ${payment.amount.toFixed(2)} (${payment.method}) da comanda [${payment.orderId.slice(-6)}].`,
+                },
+            });
+            await tx.auditLog.create({
+                data: {
+                    userId: actor.id,
+                    action: 'PaymentVoidIdempotency',
+                    details: idempotencyMarker,
+                },
+            });
 
-        await createAuditLog(
-            "Estorno de Pagamento", 
-            `Estornou R$ ${result.amount.toFixed(2)} (${result.method}) da comanda [${result.orderId.slice(-6)}].`
-        );
+            return {
+                alreadyApplied: false,
+                orderId: payment.orderId,
+                amount: payment.amount,
+                method: payment.method,
+            };
+        }, { maxWait: 10000, timeout: 15000 });
 
-        revalidatePath("/mesas");
-        revalidatePath("/financeiro");
-        revalidatePath("/dashboard");
-        revalidatePath("/pdv");
+        try {
+            revalidatePath("/mesas");
+            revalidatePath("/financeiro");
+            revalidatePath("/dashboard");
+            revalidatePath("/pdv");
+        } catch (error) {
+            console.error("ERRO_REVALIDATE_ESTORNO:", error);
+        }
 
-        return { success: true };
+        return { success: true, idempotent: result.alreadyApplied === true };
     } catch (error: any) {
         console.error("ERRO_ESTORNO:", error);
         return { success: false, error: error.message };
     }
 }
-
 export async function editPaymentAction(paymentId: string, newMethod: string, newAmount: number) {
     try {
         const session = await getServerSession(authOptions) as any;
