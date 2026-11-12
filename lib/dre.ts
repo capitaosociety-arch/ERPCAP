@@ -59,43 +59,34 @@ function finalizeDre(params: {
   };
 }
 
-/** DRE por regime de caixa: recebimentos e pagamentos efetivos. */
-export async function computeDre(from: Date, to: Date): Promise<DreResultado> {
-  const [payments, stockMovements, financialEntries] = await Promise.all([
-    prisma.payment.findMany({
-      where: { date: { gte: from, lte: to } },
-      select: { amount: true, date: true },
-    }),
-    prisma.stockMovement.findMany({
-      where: {
-        date: { gte: from, lte: to },
-        OR: [{ type: 'OUT_SALE' }, { movementKind: 'RETURN' }],
-      },
-      select: { quantity: true, unitCost: true, date: true, movementKind: true, product: { select: { price: true, isService: true } } },
-    }),
-    prisma.financialEntry.findMany({
-      select: {
-        type: true,
-        amount: true,
-        status: true,
-        paymentDate: true,
-        dueDate: true,
-        category: true,
-        entryKind: true,
-        description: true,
-        notes: true,
-      },
-    }),
-  ]);
+function isSaleMovement(m: any): boolean {
+  return m.type === 'OUT_SALE' || m.movementKind === 'RETURN';
+}
 
+function saleCmv(m: any): number {
+  const value = evaluateCmvMovement(m).value;
+  return m.movementKind === 'RETURN' ? -value : value;
+}
+
+/** DRE de caixa calculado a partir de dados já carregados. */
+export function buildDreCashFromData(
+  payments: any[],
+  stockMovements: any[],
+  financialEntries: any[],
+  from: Date,
+  to: Date
+): DreResultado {
   let receitasVendas = 0;
-  payments.forEach((p) => { receitasVendas += p.amount; });
+  payments.forEach((p) => {
+    if (p.date < from || p.date > to) return;
+    receitasVendas += Number(p.amount) || 0;
+  });
 
   let cmv = 0;
   stockMovements.forEach((m) => {
+    if (m.date < from || m.date > to || !isSaleMovement(m)) return;
     if (m.product?.isService === true && isNewRulesDate(m.date)) return;
-    const value = evaluateCmvMovement(m).value;
-    cmv += m.movementKind === 'RETURN' ? -value : value;
+    cmv += saleCmv(m);
   });
 
   let receitasOutras = 0;
@@ -127,55 +118,25 @@ export async function computeDre(from: Date, to: Date): Promise<DreResultado> {
   return finalizeDre({ from, to, receitasVendas, receitasOutras, cmv, despesas, despesasFinanceiras, impostos });
 }
 
-/**
- * DRE por competência:
- * - receita de vendas reconhecida pela abertura da ordem (data disponível no modelo);
- * - CMV pela data da movimentação de venda;
- * - despesas e outras receitas pela competenceDate, incluindo pendentes.
- */
-export async function computeDreAccrual(from: Date, to: Date): Promise<DreResultado> {
-  const [orders, stockMovements, financialEntries] = await Promise.all([
-    prisma.order.findMany({
-      where: {
-        status: { not: 'CANCELED' },
-        openedAt: { gte: from, lte: to },
-      },
-      select: { total: true, discount: true, openedAt: true },
-    }),
-    prisma.stockMovement.findMany({
-      where: {
-        date: { gte: from, lte: to },
-        OR: [{ type: 'OUT_SALE' }, { movementKind: 'RETURN' }],
-      },
-      select: { quantity: true, unitCost: true, date: true, movementKind: true, product: { select: { price: true, isService: true } } },
-    }),
-    prisma.financialEntry.findMany({
-      where: { status: { not: 'CANCELED' } },
-      select: {
-        type: true,
-        amount: true,
-        status: true,
-        paymentDate: true,
-        dueDate: true,
-        competenceDate: true,
-        category: true,
-        entryKind: true,
-        description: true,
-        notes: true,
-      },
-    }),
-  ]);
-
+/** DRE por competência calculado a partir de dados já carregados. */
+export function buildDreAccrualFromData(
+  orders: any[],
+  stockMovements: any[],
+  financialEntries: any[],
+  from: Date,
+  to: Date
+): DreResultado {
   let receitasVendas = 0;
   orders.forEach((order) => {
+    if (order.status === 'CANCELED' || order.openedAt < from || order.openedAt > to) return;
     receitasVendas += Number(order.total || 0) - Number(order.discount || 0);
   });
 
   let cmv = 0;
   stockMovements.forEach((m) => {
+    if (m.date < from || m.date > to || !isSaleMovement(m)) return;
     if (m.product?.isService === true && isNewRulesDate(m.date)) return;
-    const value = evaluateCmvMovement(m).value;
-    cmv += m.movementKind === 'RETURN' ? -value : value;
+    cmv += saleCmv(m);
   });
 
   let receitasOutras = 0;
@@ -184,6 +145,7 @@ export async function computeDreAccrual(from: Date, to: Date): Promise<DreResult
   const despesas: Record<string, number> = {};
 
   financialEntries.forEach((entry) => {
+    if (entry.status === 'CANCELED') return;
     if (isInventoryPurchaseEntry(entry)) return;
     const competenceAt = entry.competenceDate || entry.dueDate;
     if (competenceAt < from || competenceAt > to) return;
@@ -204,4 +166,78 @@ export async function computeDreAccrual(from: Date, to: Date): Promise<DreResult
   });
 
   return finalizeDre({ from, to, receitasVendas, receitasOutras, cmv, despesas, despesasFinanceiras, impostos });
+}
+
+/** DRE por regime de caixa: recebimentos e pagamentos efetivos. */
+export async function computeDre(from: Date, to: Date): Promise<DreResultado> {
+  const [payments, stockMovements, financialEntries] = await Promise.all([
+    prisma.payment.findMany({
+      where: { date: { gte: from, lte: to } },
+      select: { amount: true, date: true },
+    }),
+    prisma.stockMovement.findMany({
+      where: {
+        date: { gte: from, lte: to },
+        OR: [{ type: 'OUT_SALE' }, { movementKind: 'RETURN' }],
+      },
+      select: { quantity: true, unitCost: true, date: true, type: true, movementKind: true, product: { select: { price: true, isService: true } } },
+    }),
+    prisma.financialEntry.findMany({
+      select: {
+        type: true,
+        amount: true,
+        status: true,
+        paymentDate: true,
+        dueDate: true,
+        category: true,
+        entryKind: true,
+        description: true,
+        notes: true,
+      },
+    }),
+  ]);
+
+  return buildDreCashFromData(payments, stockMovements, financialEntries, from, to);
+}
+
+/**
+ * DRE por competência:
+ * - receita de vendas reconhecida pela abertura da ordem (data disponível no modelo);
+ * - CMV pela data da movimentação de venda;
+ * - despesas e outras receitas pela competenceDate, incluindo pendentes.
+ */
+export async function computeDreAccrual(from: Date, to: Date): Promise<DreResultado> {
+  const [orders, stockMovements, financialEntries] = await Promise.all([
+    prisma.order.findMany({
+      where: {
+        status: { not: 'CANCELED' },
+        openedAt: { gte: from, lte: to },
+      },
+      select: { total: true, discount: true, openedAt: true, status: true },
+    }),
+    prisma.stockMovement.findMany({
+      where: {
+        date: { gte: from, lte: to },
+        OR: [{ type: 'OUT_SALE' }, { movementKind: 'RETURN' }],
+      },
+      select: { quantity: true, unitCost: true, date: true, type: true, movementKind: true, product: { select: { price: true, isService: true } } },
+    }),
+    prisma.financialEntry.findMany({
+      where: { status: { not: 'CANCELED' } },
+      select: {
+        type: true,
+        amount: true,
+        status: true,
+        paymentDate: true,
+        dueDate: true,
+        competenceDate: true,
+        category: true,
+        entryKind: true,
+        description: true,
+        notes: true,
+      },
+    }),
+  ]);
+
+  return buildDreAccrualFromData(orders, stockMovements, financialEntries, from, to);
 }

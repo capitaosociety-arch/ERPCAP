@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -37,22 +37,40 @@ export default function StrategyClient({ period, regime }: { period: string; reg
   const [scenario, setScenario] = useState<ScenarioResult | null>(null);
   const [input, setInput] = useState<ScenarioInput>(PRESETS.base);
   const [horizon, setHorizon] = useState<3 | 6 | 12>(6);
-  const [loading, setLoading] = useState(false);
+  const [forecastLoading, setForecastLoading] = useState(false);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [simulating, setSimulating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (forceRefresh = false) => {
-    setLoading(true);
+    setForecastLoading(true);
+    setRecommendationsLoading(true);
     setError(null);
-    const [f, r] = await Promise.all([
-      getStrategyForecast(regime, forceRefresh),
-      getStrategyRecommendations(period, regime, forceRefresh),
-    ]);
-    setLoading(false);
-    setForecast(f.success ? f.data || null : null);
-    setRecommendations(r.success ? r.data || null : null);
+    const forecastPromise = getStrategyForecast(regime, forceRefresh).then((f) => {
+      setForecast(f.success ? f.data || null : null);
+      setForecastLoading(false);
+      return f;
+    }).catch((err) => {
+      setForecast(null);
+      setForecastLoading(false);
+      setError(err?.message || 'Falha ao carregar a previsão.');
+      return { success: false, error: err?.message, data: undefined };
+    });
+    const recommendationsPromise = getStrategyRecommendations(period, regime, forceRefresh).then((r) => {
+      setRecommendations(r.success ? r.data || null : null);
+      setRecommendationsLoading(false);
+      return r;
+    }).catch((err) => {
+      setRecommendations(null);
+      setRecommendationsLoading(false);
+      setError(err?.message || 'Falha ao carregar recomendações.');
+      return { success: false, error: err?.message, data: undefined };
+    });
+    const [f, r] = await Promise.all([forecastPromise, recommendationsPromise]);
     if (!f.success || !r.success) setError(f.error || r.error || 'Falha ao carregar estratégia.');
   }, [period, regime]);
+
+  const loading = forecastLoading || recommendationsLoading;
 
   useEffect(() => { void load(false); }, [load]);
 
@@ -119,9 +137,9 @@ export default function StrategyClient({ period, regime }: { period: string; reg
               ))}
             </div>
           </div>
-          {loading && <div className="h-56 flex items-center justify-center text-gray-400 text-sm gap-2"><LoaderCircle className="animate-spin" size={16} /> Calculando...</div>}
-          {!loading && forecast && !forecast.available && <p className="text-sm text-gray-500">{forecast.reason}</p>}
-          {!loading && forecast?.available && (
+          {forecastLoading && <div className="h-56 flex items-center justify-center text-gray-400 text-sm gap-2"><LoaderCircle className="animate-spin" size={16} /> Calculando...</div>}
+          {!forecastLoading && forecast && !forecast.available && <p className="text-sm text-gray-500">{forecast.reason}</p>}
+          {!forecastLoading && forecast?.available && (
             <>
               <div className="h-52">
                 <ResponsiveContainer width="100%" height="100%">
@@ -249,17 +267,17 @@ export default function StrategyClient({ period, regime }: { period: string; reg
             <div className="bg-slate-50 rounded-xl p-3">
               <p className="text-[10px] font-bold uppercase text-gray-400">Aluguel</p>
               <p className="text-lg font-black text-slate-800 mt-1">{money(scenario.scenario.rentalRevenue)}</p>
-              <p className="text-[11px] font-bold text-gray-500">Δ {money(scenario.deltas.rentalRevenue)}</p>
+              <p className="text-[11px] font-bold text-gray-500">Î” {money(scenario.deltas.rentalRevenue)}</p>
               <p className="text-[10px] text-amber-600">Margem de aluguel indisponível: sem custo de quadra.</p>
             </div>
             <div className="bg-slate-50 rounded-xl p-3">
               <p className="text-[10px] font-bold uppercase text-gray-400">Produtos</p>
               <p className="text-lg font-black text-slate-800 mt-1">{money(scenario.scenario.productContribution)}</p>
-              <p className="text-[11px] font-bold text-gray-500">Margem {pct(scenario.scenario.productMarginPct)} · Δ {money(scenario.deltas.productContribution)}</p>
+              <p className="text-[11px] font-bold text-gray-500">Margem {pct(scenario.scenario.productMarginPct)} · Î” {money(scenario.deltas.productContribution)}</p>
               <p className="text-[10px] text-gray-400">CMV {money(scenario.scenario.productCmv)}</p>
             </div>
             <div className="lg:col-span-3 text-[10px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">
-              {scenario.warnings.map((w, i) => <p key={i}>• {w}</p>)}
+              {scenario.warnings.map((w, i) => <p key={i}>â€¢ {w}</p>)}
               <p className="mt-1 text-gray-500">Fontes: {scenario.sources.join(', ')}.</p>
             </div>
           </div>
@@ -272,7 +290,8 @@ export default function StrategyClient({ period, regime }: { period: string; reg
           <h3 className="font-bold text-slate-800">Recomendações estratégicas</h3>
           <span className="text-[10px] text-gray-400">consultivas, priorizadas por impacto × confiança × facilidade</span>
         </div>
-        {!recommendations?.available && <p className="text-sm text-gray-400">{recommendations?.reason || 'Sem recomendações.'}</p>}
+        {recommendationsLoading && <div className="text-sm text-gray-400 flex items-center gap-2"><LoaderCircle className="animate-spin" size={14} /> Carregando recomendações...</div>}
+        {!recommendationsLoading && !recommendations?.available && <p className="text-sm text-gray-400">{recommendations?.reason || 'Sem recomendações.'}</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {recommendations?.recommendations.map(rec => (
             <div key={rec.id} className="border border-gray-100 rounded-xl p-4 bg-slate-50/50">
@@ -308,3 +327,4 @@ export default function StrategyClient({ period, regime }: { period: string; reg
     </div>
   );
 }
+

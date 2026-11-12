@@ -1,5 +1,5 @@
-import { prisma } from './prisma';
-import { computeDre, computeDreAccrual, type DreResultado } from './dre';
+﻿import { prisma } from './prisma';
+import { buildDreAccrualFromData, buildDreCashFromData, computeDre, computeDreAccrual, type DreResultado } from './dre';
 import { getCuiabaDateStr } from './analytics';
 
 export type FinancialRegime = 'cash' | 'competence';
@@ -201,6 +201,76 @@ export async function getFinancialMonth(
   };
 }
 
+function snapshotMonth(
+  period: string,
+  close: { status: string; version: number; snapshot: any; closedAt: Date | null },
+  regime: FinancialRegime
+): OfficialFinancialMonth {
+  const label = formatMonthLabel(period);
+  const availableRegimes = availableFromSnapshot(close.snapshot);
+  const primaryRegime = (close.snapshot?.primaryRegime || 'cash') as FinancialRegime;
+  const data = close.snapshot?.regimes?.[regime] || (!close.snapshot?.regimes && regime === 'cash' ? close.snapshot : null);
+
+  if (!data) {
+    return {
+      period,
+      label,
+      status: 'CLOSED',
+      version: close.version,
+      primaryRegime,
+      requestedRegime: regime,
+      dre: null,
+      availableRegimes,
+      isSnapshot: true,
+      source: 'unavailable',
+      closedAt: close.closedAt?.toISOString() || null,
+      unavailableReason: `A versão ${close.version} não possui o regime de ${regime === 'cash' ? 'caixa' : 'competência'}. Consulte outro regime ou uma versão retificada.`,
+    };
+  }
+
+  return {
+    period,
+    label,
+    status: 'CLOSED',
+    version: close.version,
+    primaryRegime,
+    requestedRegime: regime,
+    dre: data as DreResultado,
+    availableRegimes,
+    isSnapshot: true,
+    source: 'snapshot',
+    closedAt: close.closedAt?.toISOString() || null,
+  };
+}
+
+type MonthlyTotal = { month: string; total: number };
+
+function monthlyMap(rows: MonthlyTotal[]): Map<string, number> {
+  return new Map(rows.map((row) => [row.month, Number(row.total) || 0]));
+}
+
+function syntheticStockMovement(value: number, date: Date): any[] {
+  if (Math.abs(value) < 0.0000001) return [];
+  if (value > 0) {
+    return [{
+      quantity: value,
+      unitCost: 1,
+      date,
+      type: 'OUT_SALE',
+      movementKind: null,
+      product: { price: 0, isService: false },
+    }];
+  }
+  return [{
+    quantity: Math.abs(value),
+    unitCost: 1,
+    date,
+    type: 'OUT_SALE',
+    movementKind: 'RETURN',
+    product: { price: 0, isService: false },
+  }];
+}
+
 export async function getFinancialSeries(
   endPeriod: string,
   months: number,
@@ -214,7 +284,128 @@ export async function getFinancialSeries(
     cursor = previousMonth(cursor);
   }
   periods.reverse();
-  return Promise.all(periods.map((period) => getFinancialMonth(period, regime)));
+
+  const ranges = periods.map((period) => monthRange(period));
+  const minFrom = ranges[0].from;
+  const maxTo = ranges[ranges.length - 1].to;
+
+  const [closes, payments, orders, stockTotals, financialEntries] = await Promise.all([
+    prisma.financialPeriodClose.findMany({ where: { period: { in: periods } } }),
+    regime === 'cash'
+      ? prisma.$queryRaw<MonthlyTotal[]>`
+          SELECT to_char("date" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Cuiaba', 'YYYY-MM') AS month,
+                 COALESCE(SUM("amount"), 0)::double precision AS total
+          FROM "Payment"
+          WHERE "date" >= ${minFrom} AND "date" <= ${maxTo}
+          GROUP BY 1
+        `
+      : Promise.resolve([] as MonthlyTotal[]),
+    regime === 'competence'
+      ? prisma.$queryRaw<MonthlyTotal[]>`
+          SELECT to_char("openedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Cuiaba', 'YYYY-MM') AS month,
+                 COALESCE(SUM("total" - "discount"), 0)::double precision AS total
+          FROM "Order"
+          WHERE "status" <> 'CANCELED'
+            AND "openedAt" >= ${minFrom} AND "openedAt" <= ${maxTo}
+          GROUP BY 1
+        `
+      : Promise.resolve([] as MonthlyTotal[]),
+    prisma.$queryRaw<MonthlyTotal[]>`
+      SELECT to_char(m."date" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Cuiaba', 'YYYY-MM') AS month,
+             COALESCE(SUM(
+               CASE WHEN m."movementKind" = 'RETURN' THEN -1 ELSE 1 END
+               * COALESCE(m."unitCost", 0) * m."quantity"
+             ), 0)::double precision AS total
+      FROM "StockMovement" m
+      JOIN "Product" p ON p."id" = m."productId"
+      WHERE m."date" >= ${minFrom} AND m."date" <= ${maxTo}
+        AND (m."type" = 'OUT_SALE' OR m."movementKind" = 'RETURN')
+        AND NOT (p."isService" = true AND m."date" >= '2026-11-01 04:00:00')
+      GROUP BY 1
+    `,
+    prisma.financialEntry.findMany({
+      select: {
+        type: true,
+        amount: true,
+        status: true,
+        paymentDate: true,
+        dueDate: true,
+        competenceDate: true,
+        category: true,
+        entryKind: true,
+        description: true,
+        notes: true,
+      },
+    }),
+  ]);
+
+  const closeByPeriod = new Map(closes.map((close) => [close.period, close]));
+  const paymentByMonth = monthlyMap(payments);
+  const orderByMonth = monthlyMap(orders);
+  const stockByMonth = monthlyMap(stockTotals);
+
+  return periods.map((period, index) => {
+    const range = ranges[index];
+    const close = closeByPeriod.get(period);
+    if (close?.status === 'CLOSED' && close.snapshot) {
+      return snapshotMonth(period, close, regime);
+    }
+
+    const syntheticPayments = regime === 'cash'
+      ? [{ amount: paymentByMonth.get(period) || 0, date: range.from }]
+      : [];
+    const syntheticOrders = regime === 'competence'
+      ? [{
+          total: orderByMonth.get(period) || 0,
+          discount: 0,
+          openedAt: range.from,
+          status: 'CLOSED',
+        }]
+      : [];
+    const syntheticStock = syntheticStockMovement(stockByMonth.get(period) || 0, range.from);
+
+    const dre = regime === 'cash'
+      ? buildDreCashFromData(syntheticPayments, syntheticStock, financialEntries, range.from, range.to)
+      : buildDreAccrualFromData(syntheticOrders, syntheticStock, financialEntries, range.from, range.to);
+    const hasData = [
+      dre.totalReceitas,
+      dre.cmv,
+      dre.totalDespesasOp,
+      dre.despesasFinanceiras,
+      dre.impostos,
+    ].some((value) => Math.abs(value) > 0.005);
+
+    if (!hasData) {
+      return {
+        period,
+        label: range.label,
+        status: 'OPEN',
+        version: close?.version ?? null,
+        primaryRegime: 'competence',
+        requestedRegime: regime,
+        dre: null,
+        availableRegimes: ['cash', 'competence'],
+        isSnapshot: false,
+        source: 'unavailable',
+        closedAt: null,
+        unavailableReason: `Não há dados financeiros suficientes para ${range.label}.`,
+      };
+    }
+
+    return {
+      period,
+      label: range.label,
+      status: 'OPEN',
+      version: close?.version ?? null,
+      primaryRegime: 'competence',
+      requestedRegime: regime,
+      dre,
+      availableRegimes: ['cash', 'competence'],
+      isSnapshot: false,
+      source: 'live',
+      closedAt: null,
+    };
+  });
 }
 
 export function financialSourceLabel(source: FinancialSource): string {
@@ -222,3 +413,4 @@ export function financialSourceLabel(source: FinancialSource): string {
   if (source === 'live') return 'cálculo ao vivo';
   return 'indisponível';
 }
+

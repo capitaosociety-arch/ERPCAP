@@ -1,11 +1,9 @@
-import {
+﻿import {
   currentCuiabaMonth,
   formatMonthLabel,
-  getFinancialMonth,
   getFinancialSeries,
   monthRange,
   nextMonth,
-  previousMonth,
   type FinancialRegime,
 } from './official-financials';
 import {
@@ -413,12 +411,19 @@ function addRecommendation(list: StrategicRecommendation[], item: Omit<Strategic
   list.push({ ...item, priorityScore: priority(item.impactEstimated, item.confidence, item.effort) });
 }
 
-async function scenarioBase(period: string): Promise<ScenarioBase> {
+async function strategyCommercialBase(period: string) {
   const range = monthRange(period, { capToToday: true });
-  const [occupancy, product] = await Promise.all([
-    getOccupancyReport(range.from, range.to),
-    getProductContributionReport(range.from, range.to),
-  ]);
+  return cacheWrap(`strategy-commercial:${period}`, managementTtlMs(period, currentCuiabaMonth()), async () => {
+    const [occupancy, product] = await Promise.all([
+      getOccupancyReport(range.from, range.to),
+      getProductContributionReport(range.from, range.to),
+    ]);
+    return { range, occupancy, product };
+  });
+}
+
+async function scenarioBase(period: string): Promise<ScenarioBase> {
+  const { occupancy, product } = await strategyCommercialBase(period);
   return {
     period,
     label: formatMonthLabel(period),
@@ -473,14 +478,12 @@ export async function getForecastReportCached(regime: FinancialRegime, forceRefr
 }
 
 export async function getStrategicRecommendations(period: string, regime: FinancialRegime): Promise<RecommendationsReport> {
-  const range = monthRange(period, { capToToday: true });
-  const prev = previousMonth(period);
-  const [occupancy, product, currentOfficial, previousOfficial] = await Promise.all([
-    getOccupancyReport(range.from, range.to),
-    getProductContributionReport(range.from, range.to),
-    getFinancialMonth(period, regime),
-    getFinancialMonth(prev, regime),
+  const [{ occupancy, product }, financialSeries] = await Promise.all([
+    strategyCommercialBase(period),
+    getFinancialSeries(period, 2, regime),
   ]);
+  const currentOfficial = financialSeries[1];
+  const previousOfficial = financialSeries[0];
   if (!currentOfficial.dre) {
     return {
       available: false,
@@ -604,3 +607,5 @@ export async function getStrategicRecommendationsCached(period: string, regime: 
   }
   return cacheWrap(key, managementTtlMs(period, currentCuiabaMonth()), () => getStrategicRecommendations(period, regime));
 }
+
+
