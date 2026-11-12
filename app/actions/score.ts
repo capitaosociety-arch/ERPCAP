@@ -62,7 +62,7 @@ export async function saveScoreConfig(pesos: ScorePesos, limiares: ScoreLimiares
 
   const soma = Object.values(pesos).reduce((a, b) => a + (b || 0), 0);
   if (Math.abs(soma - 100) > 0.01) return { success: false, error: 'A soma dos pesos deve ser exatamente 100.' };
-  if (Object.values(pesos).some(v => (v || 0) < 0)) return { success: false, error: 'Pesos nÃ£o podem ser negativos.' };
+  if (Object.values(pesos).some(v => (v || 0) < 0)) return { success: false, error: 'Pesos não podem ser negativos.' };
   if (Object.values(limiares).some(v => (v || 0) <= 0)) return { success: false, error: 'Limiares devem ser maiores que zero.' };
 
   await prisma.scoreConfig.upsert({
@@ -93,7 +93,7 @@ export async function getScoreHistory(customerId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// AgregaÃ§Ã£o
+// Agregação
 // ---------------------------------------------------------------------------
 
 interface Agg {
@@ -261,7 +261,7 @@ async function persistScore(c: CustomerAgg, agg: Agg) {
     });
   }
 
-  // MantÃ©m no mÃ¡ximo os 60 snapshots mais recentes por cliente
+  // Mantém no máximo os 60 snapshots mais recentes por cliente
   const older = await prisma.customerScoreHistory.findMany({
     where: { customerId: c.id },
     orderBy: { snapshotAt: 'desc' },
@@ -274,7 +274,7 @@ async function persistScore(c: CustomerAgg, agg: Agg) {
 }
 
 // Calcula (e persiste) o score de todos os clientes. Usado na carga da tela e
-// nos ganchos de recÃ¡lculo. Retorna a lista serializÃ¡vel para o cliente.
+// nos ganchos de recálculo. Retorna a lista serializável para o cliente.
 export async function computeCustomerScores(): Promise<ScoreCliente[]> {
   await requireSession();
 
@@ -354,7 +354,7 @@ export async function recalcScore(customerId: string) {
       rentals: true
     }
   });
-  if (!c) return { success: false, error: 'Cliente nÃ£o encontrado.' };
+  if (!c) return { success: false, error: 'Cliente não encontrado.' };
 
   const linkedOrders = await prisma.order.findMany({
     where: { customerId },

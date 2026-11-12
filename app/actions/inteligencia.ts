@@ -99,16 +99,16 @@ export async function getIntelligenceReport(
   try {
     const session = await getServerSession(authOptions) as { user?: { id?: string } } | null;
     if (!session || !session.user?.id) {
-      return { success: false, error: "SessÃ£o nÃ£o encontrada. FaÃ§a login novamente." };
+      return { success: false, error: "Sessão não encontrada. Faça login novamente." };
     }
 
     const dbUser = await prisma.user.findUnique({ where: { id: session.user.id } });
     if (!dbUser || (dbUser.role !== 'ADMIN' && !dbUser.permInteligencia)) {
-      return { success: false, error: "Sem permissÃ£o para acessar a Central de InteligÃªncia." };
+      return { success: false, error: "Sem permissão para acessar a Central de Inteligência." };
     }
 
     if (!isMonthKey(period)) {
-      return { success: false, error: 'PerÃ­odo invÃ¡lido. Use o formato AAAA-MM.' };
+      return { success: false, error: 'Período inválido. Use o formato AAAA-MM.' };
     }
 
     const previousPeriod = previousMonth(period);
@@ -120,7 +120,7 @@ export async function getIntelligenceReport(
     if (!official.dre) {
       return {
         success: false,
-        error: official.unavailableReason || 'NÃ£o hÃ¡ DRE oficial disponÃ­vel para o regime selecionado.'
+        error: official.unavailableReason || 'Não há DRE oficial disponível para o regime selecionado.'
       };
     }
 
@@ -194,7 +194,7 @@ export async function getIntelligenceReport(
       getOccupancyReport(prevFrom, prevTo)
     ]);
 
-    // ---- Receitas e CMV (perÃ­odo atual vs anterior) ----
+    // ---- Receitas e CMV (período atual vs anterior) ----
     let receitasCur = 0, receitasPrev = 0;
     const paidOrdersCur = new Set<string>();
     const paidOrdersPrev = new Set<string>();
@@ -226,11 +226,11 @@ export async function getIntelligenceReport(
     const margemCur = officialDre.margemBruta;
     const margemPrev = comparisonAvailable && previousDre ? previousDre.margemBruta : null;
 
-    // ---- OcupaÃ§Ã£o de quadras (serviÃ§o por campo/dia/hora) ----
+    // ---- Ocupação de quadras (serviço por campo/dia/hora) ----
     const occCur = commercial.occupancy.available ? commercial.occupancy.overall.ocupacaoEfetivaPct : 0;
     const occPrev = previousOccupancy.available ? previousOccupancy.overall.ocupacaoEfetivaPct : 0;
 
-    // ---- Estoque parado (BalcÃ£o + DepÃ³sito) ----
+    // ---- Estoque parado (Balcão + Depósito) ----
     const lastSaleByProduct: Record<string, Date> = {};
     allOutSales.forEach(m => {
       const cur = lastSaleByProduct[m.productId];
@@ -260,14 +260,14 @@ export async function getIntelligenceReport(
     });
     stagnant.sort((a, b) => b.capital - a.capital);
 
-    // ---- Estoque abaixo do mÃ­nimo ----
+    // ---- Estoque abaixo do mínimo ----
     const abaixoMinimo: { name: string; local: string; atual: number; minimo: number }[] = [];
     products.forEach(prod => {
       if (prod.stock && prod.stock.quantity <= prod.stock.minQuantity) {
-        abaixoMinimo.push({ name: prod.name, local: 'BalcÃ£o', atual: prod.stock.quantity, minimo: prod.stock.minQuantity });
+        abaixoMinimo.push({ name: prod.name, local: 'Balcão', atual: prod.stock.quantity, minimo: prod.stock.minQuantity });
       }
       if (prod.depotStock && prod.depotStock.quantity <= prod.depotStock.minQuantity) {
-        abaixoMinimo.push({ name: prod.name, local: 'DepÃ³sito', atual: prod.depotStock.quantity, minimo: prod.depotStock.minQuantity });
+        abaixoMinimo.push({ name: prod.name, local: 'Depósito', atual: prod.depotStock.quantity, minimo: prod.depotStock.minQuantity });
       }
     });
     const abaixoMinimoNomes = new Set(abaixoMinimo.map(i => i.name));
@@ -279,7 +279,7 @@ export async function getIntelligenceReport(
       .sort((a, b) => b.amount - a.amount);
     const totalVencido = vencidas.reduce((a, e) => a + e.amount, 0);
 
-    // ---- MÃ©todos de pagamento ----
+    // ---- Métodos de pagamento ----
     const totalMetodos = Object.values(methodAmountCur).reduce((a, v) => a + v, 0);
     let topMethod = '';
     let topMethodShare = 0;
@@ -287,9 +287,9 @@ export async function getIntelligenceReport(
       const share = totalMetodos > 0 ? (v / totalMetodos) * 100 : 0;
       if (share > topMethodShare) { topMethodShare = share; topMethod = m; }
     });
-    const methodLabels: Record<string, string> = { CASH: 'Dinheiro', PIX: 'Pix', DEBIT: 'DÃ©bito', CREDIT: 'CrÃ©dito' };
+    const methodLabels: Record<string, string> = { CASH: 'Dinheiro', PIX: 'Pix', DEBIT: 'Débito', CREDIT: 'Crédito' };
 
-    // ---- Top produtos (quantidade vendida no perÃ­odo) ----
+    // ---- Top produtos (quantidade vendida no período) ----
     const prodAgg: Record<string, { name: string; qty: number; revenue: number; marginPct: number }> = {};
     orderItems.forEach(it => {
       if (!it.product || isRentalItem(it, { useNewRules: isNewRulesDate(it.order?.closedAt) })) return;
@@ -309,7 +309,7 @@ export async function getIntelligenceReport(
     });
     const inadimplentesTotal = inadimplentes.reduce((a, s) => a + s.amount, 0);
 
-    // ---- TendÃªncia / sÃ©rie ----
+    // ---- Tendência / série ----
     const daily: Record<string, number> = {};
     payments.forEach(p => {
       if (!inCur(p.date)) return;
@@ -344,7 +344,7 @@ export async function getIntelligenceReport(
       ? null
       : crescimento >= 5 ? 'CRESCENDO' : crescimento <= -5 ? 'CAINDO' : 'ESTAVEL';
 
-    // ==================== MONTAGEM DAS 13 ANÃLISES ====================
+    // ==================== MONTAGEM DAS 13 ANÁLISES ====================
     const analises: Analise[] = [];
 
     // ---- RISCOS ----
@@ -352,16 +352,16 @@ export async function getIntelligenceReport(
       id: 'estoque-parado',
       secao: 'RISCO',
       titulo: 'Capital imobilizado em estoque parado',
-      resumo: `${stagnant.length} produto(s) sem saÃ­da hÃ¡ 30 dias ou mais (BalcÃ£o + DepÃ³sito), representando ${fmtMoney(stagnantCapital)} em capital parado.`,
+      resumo: `${stagnant.length} produto(s) sem saída há 30 dias ou mais (Balcão + Depósito), representando ${fmtMoney(stagnantCapital)} em capital parado.`,
       indicador: fmtMoney(stagnantCapital),
       unidade: 'capital imobilizado',
       periodo: P.label,
-      comparacao: 'Faixas de parada: 30â€“59 dias (AtenÃ§Ã£o), 60â€“89 (CrÃ­tico), 90+ (Muito crÃ­tico)',
+      comparacao: 'Faixas de parada: 30–59 dias (Atenção), 60–89 (Crítico), 90+ (Muito crítico)',
       variacaoPct: null,
-      impacto: 'Financeiro / GestÃ£o',
-      causa: 'Sem saÃ­da (venda/transferÃªncia) hÃ¡ 30+ dias. Itens sem giro acumulam custo de aquisiÃ§Ã£o e ocupam espaÃ§o.',
-      acao: 'Priorize promoÃ§Ãµes/liquidaÃ§Ã£o, agrupe em combos ou considere baixa. Revise a compra desses itens.',
-      dados: stagnant.slice(0, 5).map(i => `${i.name} â€” ${i.days} dias parado Â· ${fmtMoney(i.capital)}`),
+      impacto: 'Financeiro / Gestão',
+      causa: 'Sem saída (venda/transferência) há 30+ dias. Itens sem giro acumulam custo de aquisição e ocupam espaço.',
+      acao: 'Priorize promoções/liquidação, agrupe em combos ou considere baixa. Revise a compra desses itens.',
+      dados: stagnant.slice(0, 5).map(i => `${i.name} — ${i.days} dias parado · ${fmtMoney(i.capital)}`),
       link: '/estoque',
       severidade: stagnant.some(i => i.days >= 90) ? 'ALTA' : stagnant.some(i => i.days >= 60) ? 'MEDIA' : 'BAIXA'
     });
@@ -369,17 +369,17 @@ export async function getIntelligenceReport(
     analises.push({
       id: 'estoque-critico',
       secao: 'RISCO',
-      titulo: 'Itens abaixo do estoque mÃ­nimo',
-      resumo: `${abaixoMinimo.length} registro(s) de estoque igual ou abaixo do mÃ­nimo configurado (BalcÃ£o e/ou DepÃ³sito).`,
+      titulo: 'Itens abaixo do estoque mínimo',
+      resumo: `${abaixoMinimo.length} registro(s) de estoque igual ou abaixo do mínimo configurado (Balcão e/ou Depósito).`,
       indicador: fmtNumber(abaixoMinimo.length),
-      unidade: 'registros abaixo do mÃ­nimo',
+      unidade: 'registros abaixo do mínimo',
       periodo: P.label,
-      comparacao: 'NÃ­vel mÃ­nimo definido em Estoque / DepÃ³sito',
+      comparacao: 'Nível mínimo definido em Estoque / Depósito',
       variacaoPct: null,
       impacto: 'Operacional / Vendas',
-      causa: 'Quantidade atual â‰¤ quantidade mÃ­nima configurada (inclui itens zerados).',
-      acao: 'Reponha com urgÃªncia os itens zerados para nÃ£o perder vendas por falta de mercadoria.',
-      dados: abaixoMinimo.slice(0, 5).map(i => `${i.name} â€” ${i.local}: ${i.atual} (mÃ­n. ${i.minimo})`),
+      causa: 'Quantidade atual â‰¤ quantidade mínima configurada (inclui itens zerados).',
+      acao: 'Reponha com urgência os itens zerados para não perder vendas por falta de mercadoria.',
+      dados: abaixoMinimo.slice(0, 5).map(i => `${i.name} — ${i.local}: ${i.atual} (mín. ${i.minimo})`),
       link: '/estoque',
       severidade: abaixoMinimo.some(i => i.atual <= 0) ? 'ALTA' : 'MEDIA'
     });
@@ -395,9 +395,9 @@ export async function getIntelligenceReport(
       comparacao: `Total de contas pendentes: ${fmtMoney(financialEntries.filter(e => e.type === 'PAYABLE' && e.status === 'PENDING').reduce((a, e) => a + e.amount, 0))}`,
       variacaoPct: null,
       impacto: 'Financeiro',
-      causa: 'Contas PAYABLE com status PENDING e vencimento anterior Ã  data atual.',
-      acao: 'Priorize quitar as vencidas para evitar juros/multas e cobranÃ§as adicionais.',
-      dados: vencidas.slice(0, 5).map(e => `${e.description || e.category || 'Conta'} â€” venc. ${e.dueDate.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' })} Â· ${fmtMoney(e.amount)}`),
+      causa: 'Contas PAYABLE com status PENDING e vencimento anterior à data atual.',
+      acao: 'Priorize quitar as vencidas para evitar juros/multas e cobranças adicionais.',
+      dados: vencidas.slice(0, 5).map(e => `${e.description || e.category || 'Conta'} — venc. ${e.dueDate.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' })} · ${fmtMoney(e.amount)}`),
       link: '/financeiro',
       severidade: totalVencido > 0 ? 'ALTA' : 'BAIXA'
     });
@@ -405,19 +405,19 @@ export async function getIntelligenceReport(
     analises.push({
       id: 'ticket-medio',
       secao: 'RISCO',
-      titulo: 'EvoluÃ§Ã£o do ticket mÃ©dio',
-      resumo: `Ticket mÃ©dio de ${fmtMoney(ticketCur)} por comanda no perÃ­odo${ticketPrev > 0 ? ` vs ${fmtMoney(ticketPrev)} no perÃ­odo anterior` : ''}.`,
+      titulo: 'Evolução do ticket médio',
+      resumo: `Ticket médio de ${fmtMoney(ticketCur)} por comanda no período${ticketPrev > 0 ? ` vs ${fmtMoney(ticketPrev)} no período anterior` : ''}.`,
       indicador: fmtMoney(ticketCur),
-      unidade: 'ticket mÃ©dio',
+      unidade: 'ticket médio',
       periodo: P.label,
-      comparacao: `PerÃ­odo anterior: ${fmtMoney(ticketPrev)} (${fmtPct(pctChange(ticketCur, ticketPrev))})`,
+      comparacao: `Período anterior: ${fmtMoney(ticketPrev)} (${fmtPct(pctChange(ticketCur, ticketPrev))})`,
       variacaoPct: round2(pctChange(ticketCur, ticketPrev)),
       impacto: 'Vendas',
-      causa: 'Receita de vendas Ã· nÃºmero de comandas pagas no perÃ­odo. Queda sinaliza consumo menor por comanda.',
+      causa: 'Receita de vendas ÷ número de comandas pagas no período. Queda sinaliza consumo menor por comanda.',
       acao: ticketCur < ticketPrev
-        ? 'Revise o cardÃ¡pio, incentive combos e acompanhamentos para elevar o valor por comanda.'
-        : 'Mantenha as aÃ§Ãµes de venda que elevaram o ticket e amplie para horÃ¡rios ociosos.',
-      dados: [`Comandas pagas no perÃ­odo: ${fmtNumber(paidOrdersCur.size)}`, `Receita: ${fmtMoney(receitasCur)}`],
+        ? 'Revise o cardápio, incentive combos e acompanhamentos para elevar o valor por comanda.'
+        : 'Mantenha as ações de venda que elevaram o ticket e amplie para horários ociosos.',
+      dados: [`Comandas pagas no período: ${fmtNumber(paidOrdersCur.size)}`, `Receita: ${fmtMoney(receitasCur)}`],
       link: '/dashboard',
       severidade: ticketCur < ticketPrev ? (pctChange(ticketCur, ticketPrev) <= -10 ? 'ALTA' : 'MEDIA') : 'BAIXA'
     });
@@ -431,18 +431,18 @@ export async function getIntelligenceReport(
       unidade: 'margem bruta oficial',
       periodo: official.label,
       comparacao: margemPrev != null
-        ? `PerÃ­odo anterior (${previousOfficial.label}): ${margemPrev.toFixed(1).replace('.', ',')}% (${fmtPct(margemCur - margemPrev)} pontos)`
-        : 'ComparaÃ§Ã£o oficial indisponÃ­vel para perÃ­odo em aberto.',
+        ? `Período anterior (${previousOfficial.label}): ${margemPrev.toFixed(1).replace('.', ',')}% (${fmtPct(margemCur - margemPrev)} pontos)`
+        : 'Comparação oficial indisponível para período em aberto.',
       variacaoPct: margemPrev != null ? round2(margemCur - margemPrev) : null,
       impacto: 'Financeiro / Vendas',
-      causa: '(Receita âˆ’ CMV) Ã· Receita no DRE oficial, usando snapshot de fechamento ou cÃ¡lculo ao vivo do mÃªs aberto.',
+      causa: '(Receita âˆ’ CMV) ÷ Receita no DRE oficial, usando snapshot de fechamento ou cálculo ao vivo do mês aberto.',
       acao: margemPrev != null && margemCur < margemPrev
-        ? 'Revise preÃ§os de itens com margem baixa e negocie fornecedores para recuperar a margem.'
-        : 'Margem saudÃ¡vel â€” mantenha a polÃ­tica de preÃ§os atual.',
+        ? 'Revise preços de itens com margem baixa e negocie fornecedores para recuperar a margem.'
+        : 'Margem saudável — mantenha a política de preços atual.',
       dados: [
         `CMV oficial: ${fmtMoney(officialDre.cmv)}`,
         `Lucro bruto oficial: ${fmtMoney(officialDre.lucroBruto)}`,
-        `Fonte: ${official.source === 'snapshot' ? `snapshot v${official.version}` : 'cÃ¡lculo ao vivo'}`
+        `Fonte: ${official.source === 'snapshot' ? `snapshot v${official.version}` : 'cálculo ao vivo'}`
       ],
       link: '/financeiro',
       severidade: margemPrev != null && margemCur < margemPrev ? (margemCur - margemPrev <= -3 ? 'ALTA' : 'MEDIA') : 'BAIXA'
@@ -451,25 +451,25 @@ export async function getIntelligenceReport(
     analises.push({
       id: 'ocupacao-quadras',
       secao: 'RISCO',
-      titulo: 'OcupaÃ§Ã£o das quadras',
+      titulo: 'Ocupação das quadras',
       resumo: commercial.occupancy.available
-        ? `OcupaÃ§Ã£o regular de ${occCur.toFixed(1).replace('.', ',')}% no perÃ­odo; ${Number(commercial.occupancy.overall.extraHoras || 0).toFixed(1).replace('.', ',')}h e ${fmtMoney(commercial.occupancy.overall.extraReceita || 0)} em reservas extraordinÃ¡rias. ${commercial.occupancy.config.note}`
-        : `Sem reservas de quadras no perÃ­odo. ${commercial.occupancy.reason}`,
-      indicador: commercial.occupancy.available ? `${occCur.toFixed(1).replace('.', ',')}%` : 'â€”',
-      unidade: 'taxa de ocupaÃ§Ã£o regular',
+        ? `Ocupação regular de ${occCur.toFixed(1).replace('.', ',')}% no período; ${Number(commercial.occupancy.overall.extraHoras || 0).toFixed(1).replace('.', ',')}h e ${fmtMoney(commercial.occupancy.overall.extraReceita || 0)} em reservas extraordinárias. ${commercial.occupancy.config.note}`
+        : `Sem reservas de quadras no período. ${commercial.occupancy.reason}`,
+      indicador: commercial.occupancy.available ? `${occCur.toFixed(1).replace('.', ',')}%` : '—',
+      unidade: 'taxa de ocupação regular',
       periodo: P.label,
       comparacao: commercial.occupancy.available && previousOccupancy.available && comparisonAvailable
-        ? `PerÃ­odo anterior: ${occPrev.toFixed(1).replace('.', ',')}% (${fmtPct(occCur - occPrev)} pontos)`
-        : 'Sem comparaÃ§Ã£o de ocupaÃ§Ã£o disponÃ­vel para perÃ­odo em aberto.',
+        ? `Período anterior: ${occPrev.toFixed(1).replace('.', ',')}% (${fmtPct(occCur - occPrev)} pontos)`
+        : 'Sem comparação de ocupação disponível para período em aberto.',
       variacaoPct: commercial.occupancy.available && previousOccupancy.available && comparisonAvailable ? round2(occCur - occPrev) : null,
-      impacto: 'Vendas / GestÃ£o',
-      causa: `OcupaÃ§Ã£o = horas efetivas confirmadas/pagas Ã· capacidade por campo/dia. ${commercial.occupancy.config.note}`,
+      impacto: 'Vendas / Gestão',
+      causa: `Ocupação = horas efetivas confirmadas/pagas ÷ capacidade por campo/dia. ${commercial.occupancy.config.note}`,
       acao: commercial.occupancy.available && occCur < 30
-        ? 'Priorize aÃ§Ãµes nos horÃ¡rios/dias de menor ocupaÃ§Ã£o; veja a lista de oportunidades na Central.'
-        : 'Mantenha a polÃ­tica atual de reservas e acompanhe horÃ¡rios livres.',
+        ? 'Priorize ações nos horários/dias de menor ocupação; veja a lista de oportunidades na Central.'
+        : 'Mantenha a política atual de reservas e acompanhe horários livres.',
       dados: commercial.occupancy.available
-        ? commercial.occupancy.fields.map((f: any) => `${f.campo}: ${f.ocupacaoEfetivaPct}% regular (${f.efetivoHoras}h de ${f.capacidadeHoras}h) Â· extraordinÃ¡rio ${f.extraHoras || 0}h / ${fmtMoney(f.extraReceita || 0)} Â· agenda regular ${fmtMoney(f.receitaAgenda)}`)
-        : ['Nenhuma reserva nÃ£o cancelada no perÃ­odo.'],
+        ? commercial.occupancy.fields.map((f: any) => `${f.campo}: ${f.ocupacaoEfetivaPct}% regular (${f.efetivoHoras}h de ${f.capacidadeHoras}h) · extraordinário ${f.extraHoras || 0}h / ${fmtMoney(f.extraReceita || 0)} · agenda regular ${fmtMoney(f.receitaAgenda)}`)
+        : ['Nenhuma reserva não cancelada no período.'],
       link: '/dashboard',
       severidade: commercial.occupancy.available && occCur < 30 ? 'MEDIA' : 'BAIXA'
     });
@@ -485,21 +485,21 @@ export async function getIntelligenceReport(
     analises.push({
       id: 'pico-horario',
       secao: 'OPORTUNIDADE',
-      titulo: 'HorÃ¡rio de pico e ociosidade',
+      titulo: 'Horário de pico e ociosidade',
       resumo: picoH >= 0
-        ? `Pico de vendas Ã s ${String(picoH).padStart(2, '0')}h (${fmtMoney(picoVal)}). HorÃ¡rio mais ocioso: ${String(ociosoH).padStart(2, '0')}h (${fmtMoney(ociosoVal)}).`
-        : 'Sem vendas registradas no perÃ­odo.',
+        ? `Pico de vendas às ${String(picoH).padStart(2, '0')}h (${fmtMoney(picoVal)}). Horário mais ocioso: ${String(ociosoH).padStart(2, '0')}h (${fmtMoney(ociosoVal)}).`
+        : 'Sem vendas registradas no período.',
       indicador: picoH >= 0 ? `${String(picoH).padStart(2, '0')}h` : '-',
-      unidade: 'horÃ¡rio de pico',
+      unidade: 'horário de pico',
       periodo: P.label,
-      comparacao: 'DistribuiÃ§Ã£o das vendas por hora (fuso CuiabÃ¡)',
+      comparacao: 'Distribuição das vendas por hora (fuso Cuiabá)',
       variacaoPct: null,
       impacto: 'Vendas',
-      causa: 'SomatÃ³rio de receita por hora do dia no perÃ­odo analisado.',
-      acao: 'Crie aÃ§Ãµes para o horÃ¡rio ocioso (promoÃ§Ãµes, happy hour) e garanta estrutura no horÃ¡rio de pico.',
+      causa: 'Somatório de receita por hora do dia no período analisado.',
+      acao: 'Crie ações para o horário ocioso (promoções, happy hour) e garanta estrutura no horário de pico.',
       dados: picoH >= 0
         ? [`Pico: ${String(picoH).padStart(2, '0')}h â†’ ${fmtMoney(picoVal)}`, `Ociosidade: ${String(ociosoH).padStart(2, '0')}h â†’ ${fmtMoney(ociosoVal)}`]
-        : ['Nenhuma venda no perÃ­odo.'],
+        : ['Nenhuma venda no período.'],
       link: '/dashboard'
     });
 
@@ -508,37 +508,37 @@ export async function getIntelligenceReport(
       secao: 'OPORTUNIDADE',
       titulo: 'Produtos mais vendidos',
       resumo: topProdutos.length > 0
-        ? `${topProdutos[0].name} lidera com ${fmtNumber(topProdutos[0].qty)} un. vendidas no perÃ­odo.`
-        : 'Nenhuma venda de produto no perÃ­odo.',
+        ? `${topProdutos[0].name} lidera com ${fmtNumber(topProdutos[0].qty)} un. vendidas no período.`
+        : 'Nenhuma venda de produto no período.',
       indicador: topProdutos.length > 0 ? topProdutos[0].name : '-',
-      unidade: 'lÃ­der de vendas',
+      unidade: 'líder de vendas',
       periodo: P.label,
       comparacao: 'Ranking por quantidade vendida (comandas fechadas)',
       variacaoPct: null,
       impacto: 'Vendas',
-      causa: 'Quantidade vendida por produto nas comandas fechadas no perÃ­odo.',
-      acao: 'Destaque os lÃ­deres em posiÃ§Ãµes visÃ­veis do PDV e garanta estoque suficiente para eles.',
-      dados: topProdutos.map(p => `${p.name} â€” ${fmtNumber(p.qty)} un Â· margem de catÃ¡logo ${p.marginPct.toFixed(0).replace('.', ',')}%`),
+      causa: 'Quantidade vendida por produto nas comandas fechadas no período.',
+      acao: 'Destaque os líderes em posições visíveis do PDV e garanta estoque suficiente para eles.',
+      dados: topProdutos.map(p => `${p.name} — ${fmtNumber(p.qty)} un · margem de catálogo ${p.marginPct.toFixed(0).replace('.', ',')}%`),
       link: '/produtos'
     });
 
     analises.push({
       id: 'metodos-pagamento',
       secao: 'OPORTUNIDADE',
-      titulo: 'ConcentraÃ§Ã£o de mÃ©todos de pagamento',
+      titulo: 'Concentração de métodos de pagamento',
       resumo: totalMetodos > 0 && topMethod
-        ? `${methodLabels[topMethod] || topMethod} concentra ${topMethodShare.toFixed(0).replace('.', ',')}% do recebido no perÃ­odo.`
-        : 'Sem recebimentos no perÃ­odo.',
+        ? `${methodLabels[topMethod] || topMethod} concentra ${topMethodShare.toFixed(0).replace('.', ',')}% do recebido no período.`
+        : 'Sem recebimentos no período.',
       indicador: topMethod ? `${topMethodShare.toFixed(0).replace('.', ',')}%` : '-',
-      unidade: 'participaÃ§Ã£o do principal mÃ©todo',
+      unidade: 'participação do principal método',
       periodo: P.label,
-      comparacao: 'ParticipaÃ§Ã£o por mÃ©todo (CASH, PIX, DEBIT, CREDIT)',
+      comparacao: 'Participação por método (CASH, PIX, DEBIT, CREDIT)',
       variacaoPct: null,
       impacto: 'Financeiro',
-      causa: 'Soma de recebimentos por mÃ©todo de pagamento no perÃ­odo.',
+      causa: 'Soma de recebimentos por método de pagamento no período.',
       acao: topMethodShare >= 50
-        ? 'Estimule alternativas (Pix, dÃ©bito) para reduzir risco de caixa e taxas elevadas.'
-        : 'DistribuiÃ§Ã£o saudÃ¡vel entre os mÃ©todos â€” mantenha.',
+        ? 'Estimule alternativas (Pix, débito) para reduzir risco de caixa e taxas elevadas.'
+        : 'Distribuição saudável entre os métodos — mantenha.',
       dados: Object.entries(methodAmountCur)
         .sort((a, b) => b[1] - a[1])
         .map(([m, v]) => `${methodLabels[m] || m}: ${fmtMoney(v)} (${totalMetodos > 0 ? ((v / totalMetodos) * 100).toFixed(0).replace('.', ',') : 0}%)`),
@@ -549,88 +549,88 @@ export async function getIntelligenceReport(
       id: 'mensalidades',
       secao: 'OPORTUNIDADE',
       titulo: 'Receita recorrente e mensalidades',
-      resumo: `${fmtMoney(mensalCur)} recebidos em mensalidades no perÃ­odo. ${subList.length} assinatura(s) ativa(s) e ${inadimplentes.length} sem confirmaÃ§Ã£o hÃ¡ 60+ dias.`,
+      resumo: `${fmtMoney(mensalCur)} recebidos em mensalidades no período. ${subList.length} assinatura(s) ativa(s) e ${inadimplentes.length} sem confirmação há 60+ dias.`,
       indicador: fmtMoney(mensalCur),
       unidade: 'receita de mensalidades',
       periodo: P.label,
-      comparacao: `PerÃ­odo anterior: ${fmtMoney(mensalPrev)} (${fmtPct(pctChange(mensalCur, mensalPrev))})`,
+      comparacao: `Período anterior: ${fmtMoney(mensalPrev)} (${fmtPct(pctChange(mensalCur, mensalPrev))})`,
       variacaoPct: round2(pctChange(mensalCur, mensalPrev)),
       impacto: 'Clientes / Financeiro',
-      causa: 'Pagamentos de mensalidades (SubscriptionPayment) no perÃ­odo; inadimplÃªncia = assinatura ativa sem pagamento hÃ¡ 60 dias.',
+      causa: 'Pagamentos de mensalidades (SubscriptionPayment) no período; inadimplência = assinatura ativa sem pagamento há 60 dias.',
       acao: inadimplentes.length > 0
-        ? 'Cobre as mensalidades em atraso e reforce o canal de cobranÃ§a antes do vencimento.'
-        : 'Receita recorrente saudÃ¡vel â€” mantenha o ciclo de cobranÃ§a.',
+        ? 'Cobre as mensalidades em atraso e reforce o canal de cobrança antes do vencimento.'
+        : 'Receita recorrente saudável — mantenha o ciclo de cobrança.',
       dados: [
         `Assinaturas ativas: ${subList.length}`,
-        `Inadimplentes (60d+): ${inadimplentes.length} Â· ${fmtMoney(inadimplentesTotal)}`
+        `Inadimplentes (60d+): ${inadimplentes.length} · ${fmtMoney(inadimplentesTotal)}`
       ],
       link: '/clientes'
     });
 
-    // ---- RECOMENDAÃ‡Ã•ES ----
+    // ---- RECOMENDAÇÕES ----
     analises.push({
       id: 'reposicao',
       secao: 'RECOMENDACAO',
-      titulo: 'SugestÃ£o de reposiÃ§Ã£o',
-      resumo: `${abaixoMinimo.length} registro(s) de estoque abaixo do mÃ­nimo â€” verifique os itens listados para compra.`,
+      titulo: 'Sugestão de reposição',
+      resumo: `${abaixoMinimo.length} registro(s) de estoque abaixo do mínimo — verifique os itens listados para compra.`,
       indicador: fmtNumber(abaixoMinimo.length),
-      unidade: 'itens para reposiÃ§Ã£o',
+      unidade: 'itens para reposição',
       periodo: 'Momento atual',
-      comparacao: 'Base: quantidade atual â‰¤ mÃ­nimo configurado',
+      comparacao: 'Base: quantidade atual â‰¤ mínimo configurado',
       variacaoPct: null,
       impacto: 'Operacional',
-      causa: 'Itens com estoque igual ou abaixo do mÃ­nimo em BalcÃ£o ou DepÃ³sito.',
-      acao: 'Gere ordem de compra para os itens zerados/baixos, priorizando os crÃ­ticos.',
-      dados: abaixoMinimo.slice(0, 6).map(i => `${i.name} â€” ${i.local}: ${i.atual} (mÃ­n. ${i.minimo})`),
+      causa: 'Itens com estoque igual ou abaixo do mínimo em Balcão ou Depósito.',
+      acao: 'Gere ordem de compra para os itens zerados/baixos, priorizando os críticos.',
+      dados: abaixoMinimo.slice(0, 6).map(i => `${i.name} — ${i.local}: ${i.atual} (mín. ${i.minimo})`),
       link: '/estoque'
     });
 
     analises.push({
       id: 'reajuste-preco',
       secao: 'RECOMENDACAO',
-      titulo: 'RevisÃ£o de preÃ§o (margem de contribuiÃ§Ã£o)',
+      titulo: 'Revisão de preço (margem de contribuição)',
       resumo: commercial.productContribution.available
-        ? `${commercial.productContribution.menoresMargens.length} produto(s) com menor margem de contribuiÃ§Ã£o realizada no perÃ­odo.`
+        ? `${commercial.productContribution.menoresMargens.length} produto(s) com menor margem de contribuição realizada no período.`
         : `Sem base de margem realizada. ${commercial.productContribution.reason || ''}`,
       indicador: fmtNumber(commercial.productContribution.menoresMargens.length),
       unidade: 'produtos com menor margem',
       periodo: P.label,
-      comparacao: 'Margem realizada = receita lÃ­quida do produto âˆ’ CMV snapshot; nÃ£o usa preÃ§o/custo atual do cadastro.',
+      comparacao: 'Margem realizada = receita líquida do produto âˆ’ CMV snapshot; não usa preço/custo atual do cadastro.',
       variacaoPct: null,
       impacto: 'Financeiro',
-      causa: 'Produtos com menor margem de contribuiÃ§Ã£o realizada em comandas fechadas; custo incompleto pode limitar a conclusÃ£o.',
-      acao: 'Avalie reajuste ou renegociaÃ§Ã£o apenas apÃ³s confirmar custo histÃ³rico completo.',
-      dados: commercial.productContribution.menoresMargens.slice(0, 6).map((p: any) => `${p.produto} â€” margem ${p.margemPct == null ? 'indisponÃ­vel' : `${p.margemPct.toFixed(1).replace('.', ',')}%`} Â· ${fmtMoney(p.receitaLiquida)} lÃ­quidos`),
+      causa: 'Produtos com menor margem de contribuição realizada em comandas fechadas; custo incompleto pode limitar a conclusão.',
+      acao: 'Avalie reajuste ou renegociação apenas após confirmar custo histórico completo.',
+      dados: commercial.productContribution.menoresMargens.slice(0, 6).map((p: any) => `${p.produto} — margem ${p.margemPct == null ? 'indisponível' : `${p.margemPct.toFixed(1).replace('.', ',')}%`} · ${fmtMoney(p.receitaLiquida)} líquidos`),
       link: '/produtos',
       severidade: commercial.productContribution.custoIncompleto ? 'MEDIA' : 'BAIXA'
     });
 
-    // ---- TENDÃŠNCIAS ----
+    // ---- TENDÊNCIAS ----
     analises.push({
       id: 'tendencia-receita',
       secao: 'TENDENCIA',
-      titulo: 'TendÃªncia de receita',
+      titulo: 'Tendência de receita',
       resumo: crescimento != null && previousDre
-        ? `Receita oficial de ${fmtMoney(officialDre.totalReceitas)} em ${official.label} vs ${fmtMoney(previousDre.totalReceitas)} em ${previousOfficial.label} (${fmtPct(crescimento)}). ${tendencia === 'CRESCENDO' ? 'Sinal de crescimento.' : tendencia === 'CAINDO' ? 'Sinal de queda â€” atenÃ§Ã£o.' : 'Estabilidade no faturamento.'}`
-        : `Receita oficial de ${fmtMoney(officialDre.totalReceitas)} em ${official.label}. ComparaÃ§Ã£o mensal oficial disponÃ­vel apÃ³s o fechamento do perÃ­odo.`,
-      indicador: crescimento != null ? fmtPct(crescimento) : 'â€”',
-      unidade: 'variaÃ§Ã£o de receita oficial',
+        ? `Receita oficial de ${fmtMoney(officialDre.totalReceitas)} em ${official.label} vs ${fmtMoney(previousDre.totalReceitas)} em ${previousOfficial.label} (${fmtPct(crescimento)}). ${tendencia === 'CRESCENDO' ? 'Sinal de crescimento.' : tendencia === 'CAINDO' ? 'Sinal de queda — atenção.' : 'Estabilidade no faturamento.'}`
+        : `Receita oficial de ${fmtMoney(officialDre.totalReceitas)} em ${official.label}. Comparação mensal oficial disponível após o fechamento do período.`,
+      indicador: crescimento != null ? fmtPct(crescimento) : '—',
+      unidade: 'variação de receita oficial',
       periodo: official.label,
       comparacao: crescimento != null && previousDre
-        ? `PerÃ­odo anterior (${previousOfficial.label}): ${fmtMoney(previousDre.totalReceitas)}`
-        : 'Sem comparaÃ§Ã£o oficial para perÃ­odo em aberto.',
+        ? `Período anterior (${previousOfficial.label}): ${fmtMoney(previousDre.totalReceitas)}`
+        : 'Sem comparação oficial para período em aberto.',
       variacaoPct: crescimento != null ? round2(crescimento) : null,
-      impacto: 'Vendas / GestÃ£o',
-      causa: 'ComparaÃ§Ã£o da receita total no DRE oficial, com snapshot para meses fechados e cÃ¡lculo ao vivo para meses abertos.',
+      impacto: 'Vendas / Gestão',
+      causa: 'Comparação da receita total no DRE oficial, com snapshot para meses fechados e cálculo ao vivo para meses abertos.',
       acao: crescimento != null && crescimento < 0
-        ? 'Investigue a queda (dias/horÃ¡rios/produtos) e atue no marketing e na oferta.'
+        ? 'Investigue a queda (dias/horários/produtos) e atue no marketing e na oferta.'
         : crescimento != null && crescimento > 5
           ? 'Aproveite o momento para consolidar e ampliar o desempenho.'
-          : 'Monitoramento mantido â€” sem variaÃ§Ã£o relevante ou comparaÃ§Ã£o disponÃ­vel.',
+          : 'Monitoramento mantido — sem variação relevante ou comparação disponível.',
       dados: [
         `Receita oficial: ${fmtMoney(officialDre.totalReceitas)}`,
-        crescimento != null && previousDre ? `Receita anterior oficial: ${fmtMoney(previousDre.totalReceitas)}` : 'PerÃ­odo em aberto: sem comparaÃ§Ã£o oficial.',
-        `Fonte: ${official.source === 'snapshot' ? `snapshot v${official.version}` : 'cÃ¡lculo ao vivo'}`
+        crescimento != null && previousDre ? `Receita anterior oficial: ${fmtMoney(previousDre.totalReceitas)}` : 'Período em aberto: sem comparação oficial.',
+        `Fonte: ${official.source === 'snapshot' ? `snapshot v${official.version}` : 'cálculo ao vivo'}`
       ],
       link: '/financeiro',
       tendencia: tendencia || undefined
@@ -668,7 +668,7 @@ export async function getIntelligenceReport(
       resumo: pc.available
         ? `Receita liquida de produtos ${fmtMoney(pc.produtoReceitaLiquida)}, CMV ${fmtMoney(pc.cmvTotal)} e margem de contribuicao ${pc.margemContribuicaoTotal == null ? 'indisponivel por custo incompleto' : fmtMoney(pc.margemContribuicaoTotal)}.`
         : `Sem vendas de produtos vinculadas no periodo. ${pc.reason || ''}`,
-      indicador: pc.margemPct == null ? 'â€”' : `${pc.margemPct.toFixed(1).replace('.', ',')}%`,
+      indicador: pc.margemPct == null ? '—' : `${pc.margemPct.toFixed(1).replace('.', ',')}%`,
       unidade: 'margem de contribuicao sobre produtos',
       periodo: P.label,
       comparacao: pc.note,
@@ -692,7 +692,7 @@ export async function getIntelligenceReport(
       resumo: rec.available
         ? `${rec.produtosComDivergencia} produto(s) com diferenca agregada entre comandas e saidas; ${rec.quantidadeDivergente} unidade(s) de diferenca e ${rec.quantidadeSemCusto} unidade(s) sem custo.`
         : `Sem dados para conciliar. ${rec.reason || ''}`,
-      indicador: rec.available ? fmtNumber(rec.produtosComDivergencia) : 'â€”',
+      indicador: rec.available ? fmtNumber(rec.produtosComDivergencia) : '—',
       unidade: 'produtos com diferenca',
       periodo: P.label,
       comparacao: 'Comparacao por produto e periodo; nao ha vinculo orderItemId nas saidas.',
@@ -715,7 +715,7 @@ export async function getIntelligenceReport(
       resumo: commercial.occupancy.available && opportunity
         ? `${opportunity.campo} tem ${opportunity.horasOciosas}h ociosas no horario ${String(opportunity.hora).padStart(2, '0')}h. Potencial estimado: ${opportunity.potencialEstimado == null ? 'indisponivel' : fmtMoney(opportunity.potencialEstimado)}.`
         : 'Sem dados suficientes para estimar oportunidade de horarios ociosos.',
-      indicador: opportunity?.potencialEstimado == null ? 'â€”' : fmtMoney(opportunity.potencialEstimado),
+      indicador: opportunity?.potencialEstimado == null ? '—' : fmtMoney(opportunity.potencialEstimado),
       unidade: 'potencial estimado (nao realizado)',
       periodo: P.label,
       comparacao: opportunity?.premissa || 'Estimativa exige historico e premissa de preco.',
@@ -723,7 +723,7 @@ export async function getIntelligenceReport(
       impacto: 'Vendas',
       causa: 'Horas sem reserva efetiva dentro da janela operacional configurada, multiplicadas pela receita media por hora efetiva do campo.',
       acao: 'Valide a janela operacional real e teste promocoes nos horarios/dias com maior ociosidade.',
-      dados: commercial.occupancy.opportunities.slice(0, 5).map((o: any) => `${o.campo} ${String(o.hora).padStart(2, '0')}h: ${o.horasOciosas}h ociosas${o.potencialEstimado == null ? '' : ` Â· estimativa ${fmtMoney(o.potencialEstimado)}`}`),
+      dados: commercial.occupancy.opportunities.slice(0, 5).map((o: any) => `${o.campo} ${String(o.hora).padStart(2, '0')}h: ${o.horasOciosas}h ociosas${o.potencialEstimado == null ? '' : ` · estimativa ${fmtMoney(o.potencialEstimado)}`}`),
       link: '/dashboard'
     });
 
@@ -776,6 +776,6 @@ export async function getIntelligenceReport(
     };
   } catch (error: any) {
     console.error('ERRO_INTELIGENCIA:', error);
-    return { success: false, error: 'Falha ao gerar o relatÃ³rio de inteligÃªncia: ' + (error?.message || 'Erro desconhecido') };
+    return { success: false, error: 'Falha ao gerar o relatório de inteligência: ' + (error?.message || 'Erro desconhecido') };
   }
 }

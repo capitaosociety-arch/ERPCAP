@@ -89,7 +89,7 @@ export const DEFAULT_MANAGEMENT_CRITERIA: ManagementCriteria = {
   negativeProductMargins: 1,
   reconDivergentProducts: 1,
   reconUncostedQty: 1,
-  note: 'Limiares gerenciais padrÃ£o: queda de receita >=10%, aumento de despesas >=10%, queda de margem >=2 pontos, ocupaÃ§Ã£o <20%, margem negativa de produto, divergÃªncia de conciliaÃ§Ã£o. Ajuste conforme a polÃ­tica da empresa.',
+  note: 'Limiares gerenciais padrão: queda de receita >=10%, aumento de despesas >=10%, queda de margem >=2 pontos, ocupação <20%, margem negativa de produto, divergência de conciliação. Ajuste conforme a política da empresa.',
 };
 
 export interface ManagementHistory {
@@ -265,9 +265,9 @@ export function buildManagementAlerts(
       id: `open-${latestOpen.period}`,
       kind: 'OPEN_PERIOD',
       severity: 'BAIXA',
-      title: 'MÃªs em aberto',
-      description: `${latestOpen.label} estÃ¡ em aberto; os valores sÃ£o dinÃ¢micos e podem mudar com novos lanÃ§amentos.`,
-      evidence: `Fonte: ${latestOpen.source}; regime do relatÃ³rio.`,
+      title: 'Mês em aberto',
+      description: `${latestOpen.label} está em aberto; os valores são dinâmicos e podem mudar com novos lançamentos.`,
+      evidence: `Fonte: ${latestOpen.source}; regime do relatório.`,
       period: latestOpen.period,
       source: latestOpen.sources,
       threshold: 'status do fechamento',
@@ -288,22 +288,22 @@ export function buildManagementAlerts(
     }
     const marginChange = current.netMargin != null && previous.netMargin != null ? current.netMargin - previous.netMargin : null;
     if (marginChange != null && marginChange <= -criteria.marginDropPts) {
-      alerts.push({ id: `margin-${current.period}`, kind: 'MARGIN_DROP', severity: 'ALTA', title: 'Queda de margem lÃ­quida', description: `Margem lÃ­quida caiu ${Math.abs(marginChange).toFixed(1)} pontos em ${current.label} vs ${previous.label}.`, evidence: `Margem: ${previous.netMargin}% -> ${current.netMargin}%.`, period: current.period, source: current.sources, threshold: `queda >= ${criteria.marginDropPts} pontos` });
+      alerts.push({ id: `margin-${current.period}`, kind: 'MARGIN_DROP', severity: 'ALTA', title: 'Queda de margem líquida', description: `Margem líquida caiu ${Math.abs(marginChange).toFixed(1)} pontos em ${current.label} vs ${previous.label}.`, evidence: `Margem: ${previous.netMargin}% -> ${current.netMargin}%.`, period: current.period, source: current.sources, threshold: `queda >= ${criteria.marginDropPts} pontos` });
     }
   }
 
   const latest = availableRows[availableRows.length - 1];
   if (latest?.occupancyAvailable && latest.occupancyPct != null && latest.occupancyPct < criteria.minOccupancyPct) {
-    alerts.push({ id: `occupancy-${latest.period}`, kind: 'LOW_OCCUPANCY', severity: 'MEDIA', title: 'Baixa ocupaÃ§Ã£o das quadras', description: `OcupaÃ§Ã£o efetiva de ${latest.occupancyPct.toFixed(1)}% em ${latest.label}, abaixo do limite de ${criteria.minOccupancyPct}%.`, evidence: 'Calculada por campo/dia/hora sobre a janela operacional configurada.', period: latest.period, source: ['Rental'], threshold: `ocupaÃ§Ã£o < ${criteria.minOccupancyPct}%` });
+    alerts.push({ id: `occupancy-${latest.period}`, kind: 'LOW_OCCUPANCY', severity: 'MEDIA', title: 'Baixa ocupação das quadras', description: `Ocupação efetiva de ${latest.occupancyPct.toFixed(1)}% em ${latest.label}, abaixo do limite de ${criteria.minOccupancyPct}%.`, evidence: 'Calculada por campo/dia/hora sobre a janela operacional configurada.', period: latest.period, source: ['Rental'], threshold: `ocupação < ${criteria.minOccupancyPct}%` });
   }
   if (latest && latest.negativeProductMargins >= criteria.negativeProductMargins) {
-    alerts.push({ id: `negative-product-${latest.period}`, kind: 'NEGATIVE_PRODUCT_MARGIN', severity: 'MEDIA', title: 'Produtos com margem negativa', description: `${latest.negativeProductMargins} produto(s) com margem de contribuiÃ§Ã£o negativa em ${latest.label}.`, evidence: 'Margem realizada = receita lÃ­quida - CMV snapshot.', period: latest.period, source: ['OrderItem', 'StockMovement'], threshold: `>= ${criteria.negativeProductMargins} produto(s)` });
+    alerts.push({ id: `negative-product-${latest.period}`, kind: 'NEGATIVE_PRODUCT_MARGIN', severity: 'MEDIA', title: 'Produtos com margem negativa', description: `${latest.negativeProductMargins} produto(s) com margem de contribuição negativa em ${latest.label}.`, evidence: 'Margem realizada = receita líquida - CMV snapshot.', period: latest.period, source: ['OrderItem', 'StockMovement'], threshold: `>= ${criteria.negativeProductMargins} produto(s)` });
   }
   if (reconciliation?.available && reconciliation.produtosComDivergencia >= criteria.reconDivergentProducts) {
-    alerts.push({ id: `recon-${latest?.period || 'current'}`, kind: 'INVENTORY_INCONSISTENCY', severity: 'MEDIA', title: 'PossÃ­vel inconsistÃªncia de estoque', description: `${reconciliation.produtosComDivergencia} produto(s) com diferenÃ§a entre comandas e saÃ­das; ${reconciliation.quantidadeDivergente} unidade(s).`, evidence: 'DiferenÃ§a nÃ£o Ã© perda automaticamente; pode ser venda sem baixa, transferÃªncia ou recorte temporal.', period: latest?.period || 'current', source: ['OrderItem', 'StockMovement'], threshold: `>= ${criteria.reconDivergentProducts} produto(s)` });
+    alerts.push({ id: `recon-${latest?.period || 'current'}`, kind: 'INVENTORY_INCONSISTENCY', severity: 'MEDIA', title: 'Possível inconsistência de estoque', description: `${reconciliation.produtosComDivergencia} produto(s) com diferença entre comandas e saídas; ${reconciliation.quantidadeDivergente} unidade(s).`, evidence: 'Diferença não é perda automaticamente; pode ser venda sem baixa, transferência ou recorte temporal.', period: latest?.period || 'current', source: ['OrderItem', 'StockMovement'], threshold: `>= ${criteria.reconDivergentProducts} produto(s)` });
   }
   if (reconciliation?.available && reconciliation.quantidadeSemCusto >= criteria.reconUncostedQty) {
-    alerts.push({ id: `uncosted-${latest?.period || 'current'}`, kind: 'INVENTORY_INCONSISTENCY', severity: 'ALTA', title: 'SaÃ­das sem custo histÃ³rico', description: `${reconciliation.quantidadeSemCusto} unidade(s) de saÃ­da sem custo snapshot; margem pode estar incompleta.`, evidence: 'CMV nÃ£o usa custo atual como substituto.', period: latest?.period || 'current', source: ['StockMovement'], threshold: `>= ${criteria.reconUncostedQty} unidade(s)` });
+    alerts.push({ id: `uncosted-${latest?.period || 'current'}`, kind: 'INVENTORY_INCONSISTENCY', severity: 'ALTA', title: 'Saídas sem custo histórico', description: `${reconciliation.quantidadeSemCusto} unidade(s) de saída sem custo snapshot; margem pode estar incompleta.`, evidence: 'CMV não usa custo atual como substituto.', period: latest?.period || 'current', source: ['StockMovement'], threshold: `>= ${criteria.reconUncostedQty} unidade(s)` });
   }
 
   return alerts;
@@ -327,8 +327,8 @@ export function buildComparacaoRows(
   if (comparisonAvailable) {
     if (deltas.revenue != null && deltas.revenue !== 0) drivers.push(`Receita ${deltas.revenue > 0 ? 'subiu' : 'caiu'} ${Math.abs(deltas.revenue).toFixed(2)}.`);
     if (deltas.cmv != null && deltas.cmv !== 0) drivers.push(`CMV ${deltas.cmv > 0 ? 'subiu' : 'caiu'} ${Math.abs(deltas.cmv).toFixed(2)}.`);
-    if (deltas.expenses != null && deltas.expenses !== 0) drivers.push(`Despesas ${deltas.expenses > 0 ? 'subiram' : 'caÃ­ram'} ${Math.abs(deltas.expenses).toFixed(2)}.`);
-    if (deltas.occupancyPts != null && deltas.occupancyPts !== 0) drivers.push(`OcupaÃ§Ã£o ${deltas.occupancyPts > 0 ? 'subiu' : 'caiu'} ${Math.abs(deltas.occupancyPts).toFixed(1)} pontos.`);
+    if (deltas.expenses != null && deltas.expenses !== 0) drivers.push(`Despesas ${deltas.expenses > 0 ? 'subiram' : 'caíram'} ${Math.abs(deltas.expenses).toFixed(2)}.`);
+    if (deltas.occupancyPts != null && deltas.occupancyPts !== 0) drivers.push(`Ocupação ${deltas.occupancyPts > 0 ? 'subiu' : 'caiu'} ${Math.abs(deltas.occupancyPts).toFixed(1)} pontos.`);
     if (deltas.productMarginPts != null && deltas.productMarginPts !== 0) drivers.push(`Margem de produtos ${deltas.productMarginPts > 0 ? 'subiu' : 'caiu'} ${Math.abs(deltas.productMarginPts).toFixed(1)} pontos.`);
     if (deltas.rentalRevenue != null && deltas.rentalRevenue !== 0) drivers.push(`Receita de aluguel ${deltas.rentalRevenue > 0 ? 'subiu' : 'caiu'} ${Math.abs(deltas.rentalRevenue).toFixed(2)} nas comandas.`);
   }
@@ -357,7 +357,7 @@ export function buildComparacaoRows(
     criteria: DEFAULT_MANAGEMENT_CRITERIA,
     sources: ['FinancialPeriodClose', 'FinancialPeriodAudit', 'Rental', 'OrderItem', 'StockMovement'],
     generatedAt: new Date().toISOString(),
-    note: 'DRE oficial: snapshot para fechados e cÃ¡lculo ao vivo para abertos. Comercial: comandas fechadas e agenda operacional; agenda nÃ£o soma ao DRE.',
+    note: 'DRE oficial: snapshot para fechados e cálculo ao vivo para abertos. Comercial: comandas fechadas e agenda operacional; agenda não soma ao DRE.',
   };
 }
 
@@ -386,7 +386,7 @@ export async function getManagementHistory(
   months = 6,
   regime: FinancialRegime = 'competence'
 ): Promise<ManagementHistory> {
-  if (!isMonthKey(endPeriod)) throw new Error('PerÃ­odo invÃ¡lido. Use AAAA-MM.');
+  if (!isMonthKey(endPeriod)) throw new Error('Período inválido. Use AAAA-MM.');
   const count = Math.max(1, Math.min(24, Math.floor(months) || 6));
   const financial = await getFinancialSeries(endPeriod, count, regime);
   const commercial = await Promise.all(financial.map(m => commercialFor(m.period)));
@@ -401,7 +401,7 @@ export async function getManagementHistory(
     alerts,
     criteria: DEFAULT_MANAGEMENT_CRITERIA,
     sources: ['FinancialPeriodClose', 'FinancialPeriodAudit', 'Payment', 'Order', 'StockMovement', 'FinancialEntry', 'Rental', 'OrderItem'],
-    note: 'HistÃ³rico financeiro oficial (snapshot em meses fechados, ao vivo em abertos) + comercial ao vivo. OcupaÃ§Ã£o usa a janela operacional configurada.',
+    note: 'Histórico financeiro oficial (snapshot em meses fechados, ao vivo em abertos) + comercial ao vivo. Ocupação usa a janela operacional configurada.',
   };
 }
 
@@ -410,7 +410,7 @@ export async function getManagementComparison(
   previousPeriod: string,
   regime: FinancialRegime = 'competence'
 ): Promise<ManagementComparison> {
-  if (!isMonthKey(currentPeriod) || !isMonthKey(previousPeriod)) throw new Error('PerÃ­odo invÃ¡lido. Use AAAA-MM.');
+  if (!isMonthKey(currentPeriod) || !isMonthKey(previousPeriod)) throw new Error('Período inválido. Use AAAA-MM.');
   const [current, previous, currentCommercial, previousCommercial] = await Promise.all([
     getFinancialMonth(currentPeriod, regime),
     getFinancialMonth(previousPeriod, regime),

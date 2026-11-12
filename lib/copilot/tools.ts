@@ -1,12 +1,12 @@
 // ===========================================================================
-// Ferramentas seguras do Copiloto de GestÃ£o.
+// Ferramentas seguras do Copiloto de Gestão.
 //
 // IMPORTANTE:
-//  - Reutilizam os cÃ¡lculos oficiais (lib/dre.ts, lib/analytics.ts e as
-//    agregaÃ§Ãµes do mÃ³dulo Financeiro/InteligÃªncia) â€” nada Ã© inventado.
-//  - SÃ³ queries Prisma prÃ©-definidas (sem SQL livre).
-//  - Retornam agregados de negÃ³cio. Nunca expÃµem senhas, chaves, CPF,
-//    notas pessoais ou campos sensÃ­veis.
+//  - Reutilizam os cálculos oficiais (lib/dre.ts, lib/analytics.ts e as
+//    agregações do módulo Financeiro/Inteligência) — nada é inventado.
+//  - Só queries Prisma pré-definidas (sem SQL livre).
+//  - Retornam agregados de negócio. Nunca expõem senhas, chaves, CPF,
+//    notas pessoais ou campos sensíveis.
 //  - Sempre trazem `meta { periodo, origem, nota }`.
 // ===========================================================================
 
@@ -69,7 +69,7 @@ function parsePeriodo(args: Record<string, unknown>) {
   }
 
   if (raw !== 'month' && raw !== '7d' && raw !== '30d' && raw !== '90d') {
-    throw new Error('PerÃ­odo invÃ¡lido. Use month, 7d, 30d, 90d ou AAAA-MM.');
+    throw new Error('Período inválido. Use month, 7d, 30d, 90d ou AAAA-MM.');
   }
 
   const key = raw as PeriodoArg;
@@ -87,7 +87,7 @@ function parsePeriodo(args: Record<string, unknown>) {
 function parseRegime(args: Record<string, unknown>): FinancialRegime {
   const raw = String(args.regime || 'competence');
   if (raw !== 'cash' && raw !== 'competence') {
-    throw new Error('Regime invÃ¡lido. Use cash ou competence.');
+    throw new Error('Regime inválido. Use cash ou competence.');
   }
   return raw;
 }
@@ -96,14 +96,14 @@ function resolveFinancialPeriod(args: Record<string, unknown>): string {
   const raw = String(args.periodo || 'month');
   if (raw === 'month') return currentCuiabaMonth();
   if (isMonthKey(raw)) return raw;
-  throw new Error('Para DRE oficial, informe um mÃªs em AAAA-MM ou "month" para o mÃªs atual.');
+  throw new Error('Para DRE oficial, informe um mês em AAAA-MM ou "month" para o mês atual.');
 }
 
 function ok(data: unknown, meta: ToolResult['meta']): ToolResult {
   return { ok: true, data, meta };
 }
 
-function deny(reason = 'VocÃª nÃ£o tem permissÃ£o para acessar estes dados.'): ToolResult {
+function deny(reason = 'Você não tem permissão para acessar estes dados.'): ToolResult {
   return { ok: false, error: reason };
 }
 
@@ -127,7 +127,7 @@ async function loadPayments(from: Date, to: Date) {
   });
 }
 
-/** Divide um pagamento em aluguel(FUT5/FUT7) vs bar, pela proporÃ§Ã£o da comanda. */
+/** Divide um pagamento em aluguel(FUT5/FUT7) vs bar, pela proporção da comanda. */
 function splitPayment(p: any) {
   const items = p.order?.items || [];
   const useNewRules = isNewRulesDate(p.date || p.order?.closedAt);
@@ -157,11 +157,11 @@ function splitPayment(p: any) {
 
 const faturamentoTool: CopilotTool = {
   name: 'faturamento',
-  description: 'Faturamento bruto (vendas de comandas + mensalidades) em um perÃ­odo, com comparativo com o perÃ­odo anterior e divisÃ£o por campo (FUT5/FUT7) e bar.',
+  description: 'Faturamento bruto (vendas de comandas + mensalidades) em um período, com comparativo com o período anterior e divisão por campo (FUT5/FUT7) e bar.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'month = mÃªs atual; 7d/30d/90d = janelas mÃ³veis; AAAA-MM = mÃªs histÃ³rico' }
+      periodo: { type: 'string', description: 'month = mês atual; 7d/30d/90d = janelas móveis; AAAA-MM = mês histórico' }
     }
   },
   requiredPerm: 'permFinance',
@@ -212,7 +212,7 @@ const faturamentoTool: CopilotTool = {
     }, {
       periodo: P.label,
       origem: ['Payment', 'SubscriptionPayment'],
-      nota: 'Faturamento operacional em regime de caixa. NÃ£o substitui o DRE oficial; para resultado, CMV e margens use a ferramenta dre.'
+      nota: 'Faturamento operacional em regime de caixa. Não substitui o DRE oficial; para resultado, CMV e margens use a ferramenta dre.'
     });
   }
 };
@@ -223,13 +223,13 @@ const faturamentoTool: CopilotTool = {
 
 const dreTool: CopilotTool = {
   name: 'dre',
-  description: 'DRE oficial de um mÃªs (AAAA-MM ou mÃªs atual): receita, CMV, despesas, lucro bruto, resultado operacional e lÃ­quido. Usa o snapshot da versÃ£o vigente quando o mÃªs estÃ¡ fechado e permite escolher caixa ou competÃªncia e comparar com outro mÃªs.',
+  description: 'DRE oficial de um mês (AAAA-MM ou mês atual): receita, CMV, despesas, lucro bruto, resultado operacional e líquido. Usa o snapshot da versão vigente quando o mês está fechado e permite escolher caixa ou competência e comparar com outro mês.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'AAAA-MM do mÃªs ou "month" para o mÃªs atual (padrÃ£o)' },
-      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competÃªncia (padrÃ£o); cash = caixa' },
-      compararCom: { type: 'string', description: 'AAAA-MM de comparaÃ§Ã£o. Se omitido, usa o mÃªs anterior somente quando o mÃªs consultado estÃ¡ fechado.' }
+      periodo: { type: 'string', description: 'AAAA-MM do mês ou "month" para o mês atual (padrão)' },
+      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competência (padrão); cash = caixa' },
+      compararCom: { type: 'string', description: 'AAAA-MM de comparação. Se omitido, usa o mês anterior somente quando o mês consultado está fechado.' }
     }
   },
   requiredPerm: 'permFinance',
@@ -241,7 +241,7 @@ const dreTool: CopilotTool = {
     const atual = await getFinancialMonth(period, regime);
 
     if (!atual.dre) {
-      return { ok: false, error: atual.unavailableReason || 'NÃ£o hÃ¡ DRE oficial disponÃ­vel para este mÃªs/regime.' };
+      return { ok: false, error: atual.unavailableReason || 'Não há DRE oficial disponível para este mês/regime.' };
     }
 
     const compareRaw = String(args.compararCom || '').trim();
@@ -249,7 +249,7 @@ const dreTool: CopilotTool = {
     if (compareRaw) {
       if (compareRaw === 'anterior' || compareRaw === 'previous') comparisonPeriod = previousMonth(period);
       else if (isMonthKey(compareRaw)) comparisonPeriod = compareRaw;
-      else throw new Error('compararCom invÃ¡lido. Use AAAA-MM.');
+      else throw new Error('compararCom inválido. Use AAAA-MM.');
     } else if (atual.status === 'CLOSED') {
       comparisonPeriod = previousMonth(period);
     }
@@ -279,9 +279,9 @@ const dreTool: CopilotTool = {
         atual.dre.totalDespesasOp + atual.dre.impostos + atual.dre.despesasFinanceiras,
         anterior.totalDespesasOp + anterior.impostos + anterior.despesasFinanceiras
       );
-      if (dRec !== 0) drivers.push(dRec > 0 ? `receitas subiram ${fmtMoney(dRec)}` : `receitas caÃ­ram ${fmtMoney(Math.abs(dRec))}`);
+      if (dRec !== 0) drivers.push(dRec > 0 ? `receitas subiram ${fmtMoney(dRec)}` : `receitas caíram ${fmtMoney(Math.abs(dRec))}`);
       if (dCmv !== 0) drivers.push(dCmv > 0 ? `CMV subiu ${fmtMoney(dCmv)}` : `CMV caiu ${fmtMoney(Math.abs(dCmv))}`);
-      if (dDesp !== 0) drivers.push(dDesp > 0 ? `despesas subiram ${fmtMoney(dDesp)}` : `despesas caÃ­ram ${fmtMoney(Math.abs(dDesp))}`);
+      if (dDesp !== 0) drivers.push(dDesp > 0 ? `despesas subiram ${fmtMoney(dDesp)}` : `despesas caíram ${fmtMoney(Math.abs(dDesp))}`);
     }
 
     const source = atual.source;
@@ -311,7 +311,7 @@ const dreTool: CopilotTool = {
         }
         : null,
       comparacaoObservacao: anteriorStatus === 'OPEN'
-        ? 'O perÃ­odo de comparaÃ§Ã£o estÃ¡ em aberto e usa cÃ¡lculo ao vivo, nÃ£o snapshot fechado.'
+        ? 'O período de comparação está em aberto e usa cálculo ao vivo, não snapshot fechado.'
         : null,
       variacoes: anterior ? {
         receitasVendas: delta(atual.dre.receitasVendas, anterior.receitasVendas),
@@ -326,13 +326,13 @@ const dreTool: CopilotTool = {
         margemLiquida: round2(atual.dre.margemLiquida - anterior.margemLiquida)
       } : null,
       observacao: atual.status === 'OPEN'
-        ? 'MÃªs em aberto: os valores sÃ£o oficiais do cÃ¡lculo ao vivo do mÃªs, incluindo lanÃ§amentos jÃ¡ cadastrados, e podem mudar com novos lanÃ§amentos.'
-        : 'MÃªs fechado: valores oficiais do snapshot da versÃ£o vigente.',
+        ? 'Mês em aberto: os valores são oficiais do cálculo ao vivo do mês, incluindo lançamentos já cadastrados, e podem mudar com novos lançamentos.'
+        : 'Mês fechado: valores oficiais do snapshot da versão vigente.',
       drivers
     }, {
       periodo: atual.label,
       origem,
-      nota: `Regime de ${regime === 'cash' ? 'caixa' : 'competÃªncia'}; fonte: ${source === 'snapshot' ? `snapshot oficial v${atual.version}` : 'cÃ¡lculo ao vivo do mÃªs aberto'}.`,
+      nota: `Regime de ${regime === 'cash' ? 'caixa' : 'competência'}; fonte: ${source === 'snapshot' ? `snapshot oficial v${atual.version}` : 'cálculo ao vivo do mês aberto'}.`,
       regime,
       versao: atual.version,
       status: atual.status,
@@ -343,13 +343,13 @@ const dreTool: CopilotTool = {
 
 const historicoTool: CopilotTool = {
   name: 'historico_financeiro',
-  description: 'SÃ©rie mensal do DRE oficial para os Ãºltimos N meses (atÃ© 24), em caixa ou competÃªncia. Meses fechados usam snapshot oficial; o mÃªs aberto usa cÃ¡lculo ao vivo. Serve para evoluÃ§Ã£o, tendÃªncia e comparaÃ§Ã£o entre meses.',
+  description: 'Série mensal do DRE oficial para os últimos N meses (até 24), em caixa ou competência. Meses fechados usam snapshot oficial; o mês aberto usa cálculo ao vivo. Serve para evolução, tendência e comparação entre meses.',
   parameters: {
     type: 'object',
     properties: {
-      meses: { type: 'number', description: 'Quantidade de meses (1 a 24; padrÃ£o 6)' },
-      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competÃªncia (padrÃ£o); cash = caixa' },
-      ate: { type: 'string', description: 'MÃªs final em AAAA-MM; padrÃ£o mÃªs atual' }
+      meses: { type: 'number', description: 'Quantidade de meses (1 a 24; padrão 6)' },
+      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competência (padrão); cash = caixa' },
+      ate: { type: 'string', description: 'Mês final em AAAA-MM; padrão mês atual' }
     }
   },
   requiredPerm: 'permFinance',
@@ -360,7 +360,7 @@ const historicoTool: CopilotTool = {
     const regime = parseRegime(args);
     const ateRaw = String(args.ate || 'month');
     const ate = ateRaw === 'month' ? currentCuiabaMonth() : ateRaw;
-    if (!isMonthKey(ate)) throw new Error('ate invÃ¡lido. Use AAAA-MM.');
+    if (!isMonthKey(ate)) throw new Error('ate inválido. Use AAAA-MM.');
 
     const series = await getFinancialSeries(ate, meses, regime);
     const rows = series.map((month) => ({
@@ -381,7 +381,7 @@ const historicoTool: CopilotTool = {
     }));
 
     if (!rows.some((row) => row.disponivel)) {
-      return { ok: false, error: `NÃ£o hÃ¡ DRE oficial disponÃ­vel para ${formatMonthLabel(ate)} no regime de ${regime === 'cash' ? 'caixa' : 'competÃªncia'}.` };
+      return { ok: false, error: `Não há DRE oficial disponível para ${formatMonthLabel(ate)} no regime de ${regime === 'cash' ? 'caixa' : 'competência'}.` };
     }
 
     return ok({
@@ -393,7 +393,7 @@ const historicoTool: CopilotTool = {
     }, {
       periodo: `${rows[0].periodo} a ${rows[rows.length - 1].periodo}`,
       origem: ['FinancialPeriodClose', 'FinancialPeriodAudit', 'Payment', 'Order', 'StockMovement', 'FinancialEntry'],
-      nota: `SÃ©rie oficial em regime de ${regime === 'cash' ? 'caixa' : 'competÃªncia'}. Meses fechados vÃªm de snapshots; o mÃªs aberto Ã© cÃ¡lculo ao vivo.`,
+      nota: `Série oficial em regime de ${regime === 'cash' ? 'caixa' : 'competência'}. Meses fechados vêm de snapshots; o mês aberto é cálculo ao vivo.`,
       regime,
     });
   }
@@ -405,13 +405,13 @@ const historicoTool: CopilotTool = {
 
 const historicoGerencialTool: CopilotTool = {
   name: 'historico_gerencial',
-  description: 'HistÃ³rico gerencial mensal: DRE oficial, fechamentos/versÃµes, receita de aluguel e produtos, margem de contribuiÃ§Ã£o, ocupaÃ§Ã£o e alertas. Respeita regime caixa/competÃªncia e usa cache curto.',
+  description: 'Histórico gerencial mensal: DRE oficial, fechamentos/versões, receita de aluguel e produtos, margem de contribuição, ocupação e alertas. Respeita regime caixa/competência e usa cache curto.',
   parameters: {
     type: 'object',
     properties: {
-      meses: { type: 'number', description: 'Quantidade de meses (1 a 24; padrÃ£o 6)' },
-      ate: { type: 'string', description: 'MÃªs final em AAAA-MM; padrÃ£o mÃªs atual' },
-      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competÃªncia (padrÃ£o); cash = caixa' }
+      meses: { type: 'number', description: 'Quantidade de meses (1 a 24; padrão 6)' },
+      ate: { type: 'string', description: 'Mês final em AAAA-MM; padrão mês atual' },
+      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competência (padrão); cash = caixa' }
     }
   },
   requiredPerm: 'permFinance',
@@ -420,7 +420,7 @@ const historicoGerencialTool: CopilotTool = {
     const meses = Math.min(24, Math.max(1, Number(args.meses) || 6));
     const ateRaw = String(args.ate || 'month');
     const ate = ateRaw === 'month' ? currentCuiabaMonth() : ateRaw;
-    if (!isMonthKey(ate)) throw new Error('ate invÃ¡lido. Use AAAA-MM.');
+    if (!isMonthKey(ate)) throw new Error('ate inválido. Use AAAA-MM.');
     const regime = parseRegime(args);
     const history = await getManagementHistoryCached(ate, meses, regime);
     return ok({
@@ -465,13 +465,13 @@ const historicoGerencialTool: CopilotTool = {
 
 const compararPeriodosTool: CopilotTool = {
   name: 'comparar_periodos',
-  description: 'Compara dois meses do DRE oficial e do comercial: receita, CMV, despesas, lucro bruto, resultado operacional/lÃ­quido, margem, ocupaÃ§Ã£o, aluguel, produtos e margem de contribuiÃ§Ã£o. Informa status/versÃ£o/fonte de cada mÃªs.',
+  description: 'Compara dois meses do DRE oficial e do comercial: receita, CMV, despesas, lucro bruto, resultado operacional/líquido, margem, ocupação, aluguel, produtos e margem de contribuição. Informa status/versão/fonte de cada mês.',
   parameters: {
     type: 'object',
     properties: {
-      periodoAtual: { type: 'string', description: 'MÃªs atual em AAAA-MM ou "month"' },
-      periodoAnterior: { type: 'string', description: 'MÃªs de comparaÃ§Ã£o em AAAA-MM; omitido = mÃªs anterior' },
-      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competÃªncia (padrÃ£o); cash = caixa' }
+      periodoAtual: { type: 'string', description: 'Mês atual em AAAA-MM ou "month"' },
+      periodoAnterior: { type: 'string', description: 'Mês de comparação em AAAA-MM; omitido = mês anterior' },
+      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competência (padrão); cash = caixa' }
     }
   },
   requiredPerm: 'permFinance',
@@ -479,7 +479,7 @@ const compararPeriodosTool: CopilotTool = {
     if (!isAdmin(ctx) && !ctx.user.permFinance) return deny();
     const currentPeriod = resolveFinancialPeriod(args.periodoAtual ? { periodo: args.periodoAtual } : args);
     const previousRaw = String(args.periodoAnterior || '').trim();
-    const previousPeriod = previousRaw ? (isMonthKey(previousRaw) ? previousRaw : (() => { throw new Error('periodoAnterior invÃ¡lido. Use AAAA-MM.'); })()) : previousMonth(currentPeriod);
+    const previousPeriod = previousRaw ? (isMonthKey(previousRaw) ? previousRaw : (() => { throw new Error('periodoAnterior inválido. Use AAAA-MM.'); })()) : previousMonth(currentPeriod);
     const regime = parseRegime(args);
     const comparison = await getManagementComparisonCached(currentPeriod, previousPeriod, regime);
     return ok({
@@ -521,12 +521,12 @@ const compararPeriodosTool: CopilotTool = {
 
 const alertasGestaoTool: CopilotTool = {
   name: 'alertas_gestao',
-  description: 'Alertas gerenciais com critÃ©rios explÃ­citos: queda de faturamento, aumento de despesas, queda de margem, baixa ocupaÃ§Ã£o, margem negativa de produto e inconsistÃªncia de estoque. NÃ£o sÃ£o previsÃµes.',
+  description: 'Alertas gerenciais com critérios explícitos: queda de faturamento, aumento de despesas, queda de margem, baixa ocupação, margem negativa de produto e inconsistência de estoque. Não são previsões.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'MÃªs de referÃªncia em AAAA-MM ou "month"' },
-      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competÃªncia (padrÃ£o); cash = caixa' }
+      periodo: { type: 'string', description: 'Mês de referência em AAAA-MM ou "month"' },
+      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competência (padrão); cash = caixa' }
     }
   },
   requiredPerm: 'permFinance',
@@ -543,11 +543,11 @@ const alertasGestaoTool: CopilotTool = {
       alertas: alerts,
       criterios: history.criteria,
       fontes: history.sources,
-      observacao: 'Alertas sÃ£o regras determinÃ­sticas com limiares explÃ­citos; nÃ£o sÃ£o previsÃµes nem garantias.',
+      observacao: 'Alertas são regras determinísticas com limiares explícitos; não são previsões nem garantias.',
     }, {
       periodo: period,
       origem: history.sources,
-      nota: 'Alertas determinÃ­sticos; diferenÃ§as de estoque nÃ£o sÃ£o automaticamente perda.',
+      nota: 'Alertas determinísticos; diferenças de estoque não são automaticamente perda.',
       regime,
     });
   }
@@ -559,16 +559,16 @@ const alertasGestaoTool: CopilotTool = {
 
 const simularCenarioTool: CopilotTool = {
   name: 'simular_cenario',
-  description: 'Simula hipÃ³teses de preÃ§o/ocupaÃ§Ã£o de quadras e preÃ§o/custo de produtos. Retorna impacto estimado, premissas, limitaÃ§Ãµes e avisos; nÃ£o Ã© previsÃ£o nem resultado garantido.',
+  description: 'Simula hipóteses de preço/ocupação de quadras e preço/custo de produtos. Retorna impacto estimado, premissas, limitações e avisos; não é previsão nem resultado garantido.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'MÃªs base em AAAA-MM ou "month"' },
-      preset: { type: 'string', enum: ['conservative', 'base', 'optimistic'], description: 'CenÃ¡rio prÃ©-definido; pode ser sobrescrito pelos campos abaixo' },
-      rentalPriceChangePct: { type: 'number', description: 'VariaÃ§Ã£o de preÃ§o do aluguel em %' },
-      occupancyChangePp: { type: 'number', description: 'VariaÃ§Ã£o absoluta de ocupaÃ§Ã£o em pontos percentuais' },
-      productPriceChangePct: { type: 'number', description: 'VariaÃ§Ã£o de preÃ§o dos produtos em %' },
-      productCostChangePct: { type: 'number', description: 'VariaÃ§Ã£o de custo dos produtos em %' }
+      periodo: { type: 'string', description: 'Mês base em AAAA-MM ou "month"' },
+      preset: { type: 'string', enum: ['conservative', 'base', 'optimistic'], description: 'Cenário pré-definido; pode ser sobrescrito pelos campos abaixo' },
+      rentalPriceChangePct: { type: 'number', description: 'Variação de preço do aluguel em %' },
+      occupancyChangePp: { type: 'number', description: 'Variação absoluta de ocupação em pontos percentuais' },
+      productPriceChangePct: { type: 'number', description: 'Variação de preço dos produtos em %' },
+      productCostChangePct: { type: 'number', description: 'Variação de custo dos produtos em %' }
     }
   },
   requiredPerm: 'permFinance',
@@ -587,7 +587,7 @@ const simularCenarioTool: CopilotTool = {
     return ok(result, {
       periodo: result.label,
       origem: result.sources,
-      nota: 'CENÃRIO HIPOTÃ‰TICO. Receita de aluguel nÃ£o tem custo de quadra; produtos usam CMV snapshot. NÃ£o Ã© resultado garantido.',
+      nota: 'CENÁRIO HIPOTÉTICO. Receita de aluguel não tem custo de quadra; produtos usam CMV snapshot. Não é resultado garantido.',
     });
   }
 };
@@ -598,11 +598,11 @@ const simularCenarioTool: CopilotTool = {
 
 const previsaoFinanceiraTool: CopilotTool = {
   name: 'previsao_financeira',
-  description: 'Projeta faturamento, CMV, despesas e resultado para 3, 6 e 12 meses com tendÃªncia linear, intervalo de 80%, premissas e limitaÃ§Ãµes. HistÃ³rico insuficiente ou sazonalidade nÃ£o aplicÃ¡vel sÃ£o informados.',
+  description: 'Projeta faturamento, CMV, despesas e resultado para 3, 6 e 12 meses com tendência linear, intervalo de 80%, premissas e limitações. Histórico insuficiente ou sazonalidade não aplicável são informados.',
   parameters: {
     type: 'object',
     properties: {
-      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competÃªncia (padrÃ£o); cash = caixa' }
+      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competência (padrão); cash = caixa' }
     }
   },
   requiredPerm: 'permFinance',
@@ -638,9 +638,9 @@ const previsaoFinanceiraTool: CopilotTool = {
       limitacoes: forecast.limitations,
       fontes: forecast.sources,
     }, {
-      periodo: 'prÃ³ximos 3/6/12 meses',
+      periodo: 'próximos 3/6/12 meses',
       origem: forecast.sources,
-      nota: 'PREVISÃƒO ESTATÃSTICA, nÃ£o garantia. Intervalo aproximado de 80%.',
+      nota: 'PREVISÃO ESTATÍSTICA, não garantia. Intervalo aproximado de 80%.',
       regime,
     });
   }
@@ -652,12 +652,12 @@ const previsaoFinanceiraTool: CopilotTool = {
 
 const recomendacoesEstrategicasTool: CopilotTool = {
   name: 'recomendacoes_estrategicas',
-  description: 'RecomendaÃ§Ãµes consultivas priorizadas por impacto estimado, confianÃ§a e facilidade: horÃ¡rios ociosos, margem de produtos, despesas em alta e oportunidades de preÃ§o. NÃ£o executa alteraÃ§Ãµes.',
+  description: 'Recomendações consultivas priorizadas por impacto estimado, confiança e facilidade: horários ociosos, margem de produtos, despesas em alta e oportunidades de preço. Não executa alterações.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'MÃªs de referÃªncia em AAAA-MM ou "month"' },
-      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competÃªncia (padrÃ£o); cash = caixa' }
+      periodo: { type: 'string', description: 'Mês de referência em AAAA-MM ou "month"' },
+      regime: { type: 'string', enum: ['competence', 'cash'], description: 'competence = competência (padrão); cash = caixa' }
     }
   },
   requiredPerm: 'permFinance',
@@ -678,7 +678,7 @@ const recomendacoesEstrategicasTool: CopilotTool = {
     }, {
       periodo: report.label,
       origem: report.sources,
-      nota: 'RecomendaÃ§Ãµes consultivas; nenhuma alteraÃ§Ã£o automÃ¡tica.',
+      nota: 'Recomendações consultivas; nenhuma alteração automática.',
       regime,
     });
   }
@@ -690,11 +690,11 @@ const recomendacoesEstrategicasTool: CopilotTool = {
 
 const precificacaoOportunidadesTool: CopilotTool = {
   name: 'precificacao_oportunidades',
-  description: 'Analisa preÃ§os praticados, ocupaÃ§Ã£o regular/extraordinÃ¡ria, frequÃªncia de clientes, cancelamentos, canibalizaÃ§Ã£o e oportunidades comerciais. NÃ£o altera preÃ§os nem reservas.',
+  description: 'Analisa preços praticados, ocupação regular/extraordinária, frequência de clientes, cancelamentos, canibalização e oportunidades comerciais. Não altera preços nem reservas.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'MÃªs de referÃªncia em AAAA-MM ou "month"' }
+      periodo: { type: 'string', description: 'Mês de referência em AAAA-MM ou "month"' }
     }
   },
   requiredPerm: 'permFinance',
@@ -732,7 +732,7 @@ const precificacaoOportunidadesTool: CopilotTool = {
     }, {
       periodo: report.period,
       origem: report.sources,
-      nota: 'InteligÃªncia consultiva. Nenhum preÃ§o, reserva ou desconto Ã© alterado. Regular e extraordinÃ¡rio separados.',
+      nota: 'Inteligência consultiva. Nenhum preço, reserva ou desconto é alterado. Regular e extraordinário separados.',
     });
   }
 };
@@ -743,11 +743,11 @@ const precificacaoOportunidadesTool: CopilotTool = {
 
 const simularPrecificacaoTool: CopilotTool = {
   name: 'simular_precificacao',
-  description: 'Simula desconto, pacote, reservas adicionais, preÃ§o extraordinÃ¡rio ou promoÃ§Ã£o, separando receita adicional projetada, receita em risco por migraÃ§Ã£o e risco de canibalizaÃ§Ã£o. NÃ£o altera dados.',
+  description: 'Simula desconto, pacote, reservas adicionais, preço extraordinário ou promoção, separando receita adicional projetada, receita em risco por migração e risco de canibalização. Não altera dados.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'MÃªs de referÃªncia em AAAA-MM ou "month"' },
+      periodo: { type: 'string', description: 'Mês de referência em AAAA-MM ou "month"' },
       cenario: { type: 'string', enum: ['maintain', 'regular_idle_discount', 'new_group_package', 'existing_extra_bookings', 'extra_dynamic_price', 'temporary_promo'] },
       descontoPct: { type: 'number' },
       variacaoPrecoPct: { type: 'number' },
@@ -774,7 +774,7 @@ const simularPrecificacaoTool: CopilotTool = {
     return ok(result, {
       periodo: report.period,
       origem: ['Rental', 'Customer'],
-      nota: 'PROJEÃ‡ÃƒO HIPOTÃ‰TICA. Nenhum preÃ§o/reserva alterado. Custo de quadra nÃ£o conhecido; margem nÃ£o calculada.',
+      nota: 'PROJEÇÃO HIPOTÉTICA. Nenhum preço/reserva alterado. Custo de quadra não conhecido; margem não calculada.',
     });
   }
 };
@@ -785,11 +785,11 @@ const simularPrecificacaoTool: CopilotTool = {
 
 const camposTool: CopilotTool = {
   name: 'campos_rentabilidade',
-  description: 'Rentabilidade por campo (FUT5 e FUT7): receita gerada, reservas e ocupaÃ§Ã£o no perÃ­odo. Ãštil para saber qual campo rende mais.',
+  description: 'Rentabilidade por campo (FUT5 e FUT7): receita gerada, reservas e ocupação no período. Útil para saber qual campo rende mais.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'month = mÃªs atual; 7d/30d/90d = janelas mÃ³veis; AAAA-MM = mÃªs histÃ³rico' }
+      periodo: { type: 'string', description: 'month = mês atual; 7d/30d/90d = janelas móveis; AAAA-MM = mês histórico' }
     }
   },
   requiredPerm: 'permFinance',
@@ -854,7 +854,7 @@ const camposTool: CopilotTool = {
     }, {
       periodo: P.label,
       origem: ['Payment', 'OrderItem', 'Rental'],
-      nota: `Receita por campo vem das comandas pagas. OcupaÃ§Ã£o regular por campo/dia/hora: ${occupancy.config.note} Reservas fora da grade sÃ£o separadas como extraordinÃ¡rias; no-show Ã© separado.`
+      nota: `Receita por campo vem das comandas pagas. Ocupação regular por campo/dia/hora: ${occupancy.config.note} Reservas fora da grade são separadas como extraordinárias; no-show é separado.`
     });
   }
 };
@@ -865,12 +865,12 @@ const camposTool: CopilotTool = {
 
 const margensTool: CopilotTool = {
   name: 'margens_produtos',
-  description: 'Margem de contribuiÃ§Ã£o realizada por produto em comandas fechadas: receita lÃ­quida com desconto rateado, CMV snapshot das saÃ­das de estoque, margem em R$ e %. Separa aluguel de quadra de produtos e informa custo incompleto.',
+  description: 'Margem de contribuição realizada por produto em comandas fechadas: receita líquida com desconto rateado, CMV snapshot das saídas de estoque, margem em R$ e %. Separa aluguel de quadra de produtos e informa custo incompleto.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'month = mÃªs atual; 7d/30d/90d = janelas mÃ³veis; AAAA-MM = mÃªs histÃ³rico' },
-      topN: { type: 'number', description: 'Quantos itens trazer (padrÃ£o 10)' }
+      periodo: { type: 'string', description: 'month = mês atual; 7d/30d/90d = janelas móveis; AAAA-MM = mês histórico' },
+      topN: { type: 'number', description: 'Quantos itens trazer (padrão 10)' }
     }
   },
   requiredPerm: 'permStock',
@@ -907,11 +907,11 @@ const margensTool: CopilotTool = {
 
 const mixReceitaTool: CopilotTool = {
   name: 'mix_receita',
-  description: 'Separa receita de aluguel de quadra e venda de produtos nas comandas fechadas, alÃ©m da agenda operacional de locaÃ§Ãµes (paga, pendente, no-show). NÃ£o soma a agenda ao DRE.',
+  description: 'Separa receita de aluguel de quadra e venda de produtos nas comandas fechadas, além da agenda operacional de locações (paga, pendente, no-show). Não soma a agenda ao DRE.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'month = mÃªs atual; 7d/30d/90d = janelas mÃ³veis; AAAA-MM = mÃªs histÃ³rico' }
+      periodo: { type: 'string', description: 'month = mês atual; 7d/30d/90d = janelas móveis; AAAA-MM = mês histórico' }
     }
   },
   requiredPerm: 'permFinance',
@@ -943,11 +943,11 @@ const mixReceitaTool: CopilotTool = {
 
 const conciliacaoEstoqueTool: CopilotTool = {
   name: 'conciliacao_estoque',
-  description: 'Concilia quantidade de produtos em comandas fechadas com saÃ­das OUT_SALE lÃ­quidas de devoluÃ§Ãµes, por produto e perÃ­odo, e aponta custo incompleto. NÃ£o afirma perda automaticamente; a diferenÃ§a exige investigaÃ§Ã£o.',
+  description: 'Concilia quantidade de produtos em comandas fechadas com saídas OUT_SALE líquidas de devoluções, por produto e período, e aponta custo incompleto. Não afirma perda automaticamente; a diferença exige investigação.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'month = mÃªs atual; 7d/30d/90d = janelas mÃ³veis; AAAA-MM = mÃªs histÃ³rico' }
+      periodo: { type: 'string', description: 'month = mês atual; 7d/30d/90d = janelas móveis; AAAA-MM = mês histórico' }
     }
   },
   requiredPerm: 'permStock',
@@ -978,11 +978,11 @@ const conciliacaoEstoqueTool: CopilotTool = {
 
 const inativosTool: CopilotTool = {
   name: 'clientes_inativos',
-  description: 'Clientes inativos (sem reserva ou comanda vinculada hÃ¡ N dias) e inadimplentes (mensalidade vencida). Retorna apenas nomes e prazos â€” sem dados pessoais.',
+  description: 'Clientes inativos (sem reserva ou comanda vinculada há N dias) e inadimplentes (mensalidade vencida). Retorna apenas nomes e prazos — sem dados pessoais.',
   parameters: {
     type: 'object',
     properties: {
-      dias: { type: 'number', description: 'Dias sem atividade para considerar inativo (padrÃ£o 60)' }
+      dias: { type: 'number', description: 'Dias sem atividade para considerar inativo (padrão 60)' }
     }
   },
   requiredPerm: 'permCustomers',
@@ -1014,7 +1014,7 @@ const inativosTool: CopilotTool = {
       const o = lastOrder[c.id];
       const ultima = r && o ? (r > o ? r : o) : (r || o);
       if (!ultima) {
-        inativos.push({ name: c.name, diasSemAtividade: dias, ultimaAtividade: 'â€”' });
+        inativos.push({ name: c.name, diasSemAtividade: dias, ultimaAtividade: '—' });
         return;
       }
       const semAtividade = Math.floor((hoje.getTime() - ultima.getTime()) / dayMs);
@@ -1026,7 +1026,7 @@ const inativosTool: CopilotTool = {
 
     const inadimplentes = subs
       .filter(s => new Date(s.nextDueDate).getTime() < hoje.getTime())
-      .map(s => ({ name: s.customer?.name || 'â€”', valorMensalidade: s.amount, vencidoDesde: new Date(s.nextDueDate).toLocaleDateString('pt-BR') }));
+      .map(s => ({ name: s.customer?.name || '—', valorMensalidade: s.amount, vencidoDesde: new Date(s.nextDueDate).toLocaleDateString('pt-BR') }));
 
     return ok({
       diasConsiderados: dias,
@@ -1035,9 +1035,9 @@ const inativosTool: CopilotTool = {
       totalInativos: inativos.length,
       totalInadimplentes: inadimplentes.length
     }, {
-      periodo: `atividade nos Ãºltimos ${dias} dias (referÃªncia ${fmtDate(hoje)})`,
+      periodo: `atividade nos últimos ${dias} dias (referência ${fmtDate(hoje)})`,
       origem: ['Customer', 'Rental', 'Order', 'Subscription'],
-      nota: 'Inatividade = sem reserva (Rental) e sem comanda vinculada fechada no perÃ­odo.'
+      nota: 'Inatividade = sem reserva (Rental) e sem comanda vinculada fechada no período.'
     });
   }
 };
@@ -1048,11 +1048,11 @@ const inativosTool: CopilotTool = {
 
 const horariosTool: CopilotTool = {
   name: 'horarios_ociosos',
-  description: 'Ociosidade de horÃ¡rios por dia da semana no perÃ­odo, com base nas reservas de campos. Ãštil para decidir onde oferecer promoÃ§Ãµes.',
+  description: 'Ociosidade de horários por dia da semana no período, com base nas reservas de campos. Útil para decidir onde oferecer promoções.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'month = mÃªs atual; 7d/30d/90d = janelas mÃ³veis; AAAA-MM = mÃªs histÃ³rico' }
+      periodo: { type: 'string', description: 'month = mês atual; 7d/30d/90d = janelas móveis; AAAA-MM = mês histórico' }
     }
   },
   requiredPerm: 'permFinance',
@@ -1103,7 +1103,7 @@ const horariosTool: CopilotTool = {
     }, {
       periodo: P.label,
       origem: ['Rental'],
-      nota: `OcupaÃ§Ã£o regular por dia da semana e campo. ${occupancy.config.note} Reservas fora da grade sÃ£o extraordinÃ¡rias; no-show e cancelamentos sÃ£o tratados separadamente.`
+      nota: `Ocupação regular por dia da semana e campo. ${occupancy.config.note} Reservas fora da grade são extraordinárias; no-show e cancelamentos são tratados separadamente.`
     });
   }
 };
@@ -1149,7 +1149,7 @@ const contasTool: CopilotTool = {
     }, {
       periodo: 'saldo pendente em ' + fmtDate(hoje),
       origem: ['FinancialEntry'],
-      nota: 'Apenas lanÃ§amentos PAYABLE com status PENDING.'
+      nota: 'Apenas lançamentos PAYABLE com status PENDING.'
     });
   }
 };
@@ -1160,7 +1160,7 @@ const contasTool: CopilotTool = {
 
 const previsaoTool: CopilotTool = {
   name: 'previsao_fechamento',
-  description: 'PrevisÃ£o de fechamento do mÃªs: realizado atÃ© hoje + pendÃªncias + projeÃ§Ã£o pela mÃ©dia diÃ¡ria. O resultado Ã© uma ESTIMATIVA, sempre rotulada como tal.',
+  description: 'Previsão de fechamento do mês: realizado até hoje + pendências + projeção pela média diária. O resultado é uma ESTIMATIVA, sempre rotulada como tal.',
   parameters: { type: 'object', properties: {} },
   requiredPerm: 'permFinance',
   async execute(ctx) {
@@ -1212,9 +1212,9 @@ const previsaoTool: CopilotTool = {
       saldoProjetado: saldoProjetado,
       projecaoComRitmo: projecaoComRitmo
     }, {
-      periodo: `${fmtDate(from)} a ${fmtDate(hoje)} (referÃªncia)`,
+      periodo: `${fmtDate(from)} a ${fmtDate(hoje)} (referência)`,
       origem: ['Payment', 'SubscriptionPayment', 'FinancialEntry'],
-      nota: 'ESTIMATIVA. "projecaoComRitmo" assume a mÃ©dia diÃ¡ria atual atÃ© o fim do mÃªs; nÃ£o Ã© garantia de fechamento.'
+      nota: 'ESTIMATIVA. "projecaoComRitmo" assume a média diária atual até o fim do mês; não é garantia de fechamento.'
     });
   }
 };
@@ -1225,11 +1225,11 @@ const previsaoTool: CopilotTool = {
 
 const resumoTool: CopilotTool = {
   name: 'resumo_operacional',
-  description: 'Resumo operacional do perÃ­odo: comandas pagas, ticket mÃ©dio, top produtos vendidos, mÃ©todos de pagamento, mensalidades recebidas e total de reservas.',
+  description: 'Resumo operacional do período: comandas pagas, ticket médio, top produtos vendidos, métodos de pagamento, mensalidades recebidas e total de reservas.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'month = mÃªs atual; 7d/30d/90d = janelas mÃ³veis; AAAA-MM = mÃªs histÃ³rico' }
+      periodo: { type: 'string', description: 'month = mês atual; 7d/30d/90d = janelas móveis; AAAA-MM = mês histórico' }
     }
   },
   requiredPerm: 'permFinance',
@@ -1252,7 +1252,7 @@ const resumoTool: CopilotTool = {
     const mensalidades = subPayments.reduce((a, s) => a + s.amount, 0);
     const ticket = comandasPagas > 0 ? round2(receitaVendas / comandasPagas) : 0;
 
-    const methodMap: Record<string, string> = { CASH: 'Dinheiro', PIX: 'Pix', DEBIT: 'DÃ©bito', CREDIT: 'CrÃ©dito' };
+    const methodMap: Record<string, string> = { CASH: 'Dinheiro', PIX: 'Pix', DEBIT: 'Débito', CREDIT: 'Crédito' };
     const methods: Record<string, number> = {};
     payments.forEach(p => {
       const label = methodMap[p.method] || p.method || 'Outros';
@@ -1281,7 +1281,7 @@ const resumoTool: CopilotTool = {
     }, {
       periodo: P.label,
       origem: ['Payment', 'OrderItem', 'SubscriptionPayment', 'Rental'],
-      nota: 'Ticket mÃ©dio = receita de vendas / comandas pagas no perÃ­odo.'
+      nota: 'Ticket médio = receita de vendas / comandas pagas no período.'
     });
   }
 };
@@ -1292,11 +1292,11 @@ const resumoTool: CopilotTool = {
 
 const sessoesTool: CopilotTool = {
   name: 'sessoes_caixa',
-  description: 'SessÃµes de caixa do perÃ­odo: por turno, soma das formas de pagamento (Dinheiro/Pix/DÃ©bito/CrÃ©dito), fundo de troco, saldo final, auditoria de vendas e fÃ­sica. Permite somar quanto entrou em cada mÃ©todo em um perÃ­odo.',
+  description: 'Sessões de caixa do período: por turno, soma das formas de pagamento (Dinheiro/Pix/Débito/Crédito), fundo de troco, saldo final, auditoria de vendas e física. Permite somar quanto entrou em cada método em um período.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'month = mÃªs atual; 7d/30d/90d = janelas mÃ³veis; AAAA-MM = mÃªs histÃ³rico' }
+      periodo: { type: 'string', description: 'month = mês atual; 7d/30d/90d = janelas móveis; AAAA-MM = mês histórico' }
     }
   },
   requiredPerm: 'permFinance',
@@ -1333,7 +1333,7 @@ const sessoesTool: CopilotTool = {
       const auditFisico = s.closingBal !== null ? s.closingBal - expectedCash : 0;
 
       return {
-        operador: s.user?.name || 'â€”',
+        operador: s.user?.name || '—',
         status: s.status === 'OPEN' ? 'Aberto' : 'Fechado',
         abertura: s.openedAt.toLocaleString('pt-BR'),
         fechamento: s.closedAt ? s.closedAt.toLocaleString('pt-BR') : 'Em curso',
@@ -1366,7 +1366,7 @@ const sessoesTool: CopilotTool = {
     }, {
       periodo: P.label,
       origem: ['CashRegister', 'Payment', 'OrderItem'],
-      nota: 'Regime de caixa. Auditorias: vendas = (bruto âˆ’ descontos) âˆ’ pago; fÃ­sica = saldo final âˆ’ (fundo de troco + dinheiro).'
+      nota: 'Regime de caixa. Auditorias: vendas = (bruto âˆ’ descontos) âˆ’ pago; física = saldo final âˆ’ (fundo de troco + dinheiro).'
     });
   }
 };
@@ -1377,12 +1377,12 @@ const sessoesTool: CopilotTool = {
 
 const estoqueTool: CopilotTool = {
   name: 'estoque',
-  description: 'VisÃ£o de estoque: saldo atual por produto no balcÃ£o e no depÃ³sito, produtos abaixo do mÃ­nimo (alerta de reposiÃ§Ã£o) e resumo de movimentaÃ§Ãµes (entradas, vendas, perdas, transferÃªncias) em um perÃ­odo.',
+  description: 'Visão de estoque: saldo atual por produto no balcão e no depósito, produtos abaixo do mínimo (alerta de reposição) e resumo de movimentações (entradas, vendas, perdas, transferências) em um período.',
   parameters: {
     type: 'object',
     properties: {
-      periodo: { type: 'string', description: 'month = mÃªs atual; 7d/30d/90d = janelas mÃ³veis; AAAA-MM = mÃªs histÃ³rico' },
-      abaixoMinimo: { type: 'boolean', description: 'true = retornar somente produtos abaixo do mÃ­nimo (alerta de reposiÃ§Ã£o)' }
+      periodo: { type: 'string', description: 'month = mês atual; 7d/30d/90d = janelas móveis; AAAA-MM = mês histórico' },
+      abaixoMinimo: { type: 'boolean', description: 'true = retornar somente produtos abaixo do mínimo (alerta de reposição)' }
     }
   },
   requiredPerm: 'permStock',
@@ -1405,14 +1405,14 @@ const estoqueTool: CopilotTool = {
     ]);
 
     const saldoBalcao = stocks.map(s => ({
-      produto: s.product?.name || 'â€”',
+      produto: s.product?.name || '—',
       quantidade: round2(s.quantity),
       minimo: round2(s.minQuantity),
       unidade: s.unit
     })).sort((a, b) => a.quantidade - b.quantidade);
 
     const saldoDeposito = depotStocks.map(s => ({
-      produto: s.product?.name || 'â€”',
+      produto: s.product?.name || '—',
       quantidade: round2(s.quantity),
       minimo: round2(s.minQuantity),
       unidade: s.unit
@@ -1443,7 +1443,7 @@ const estoqueTool: CopilotTool = {
     }, {
       periodo: P.label,
       origem: ['Stock', 'DepotStock', 'StockMovement', 'DepotMovement'],
-      nota: 'Saldo atual (posiÃ§Ã£o em tempo real). MovimentaÃ§Ãµes somadas no perÃ­odo por tipo; transferÃªncias depÃ³sitoâ†’balcÃ£o contam como OUT_TRANSFER no depÃ³sito e IN no balcÃ£o.'
+      nota: 'Saldo atual (posição em tempo real). Movimentações somadas no período por tipo; transferências depósitoâ†’balcão contam como OUT_TRANSFER no depósito e IN no balcão.'
     });
   }
 };

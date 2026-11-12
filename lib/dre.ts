@@ -128,9 +128,9 @@ export async function computeDre(from: Date, to: Date): Promise<DreResultado> {
 }
 
 /**
- * DRE por competÃªncia:
- * - receita de vendas reconhecida pela abertura da ordem (data disponÃ­vel no modelo);
- * - CMV pela data da movimentaÃ§Ã£o de venda;
+ * DRE por competência:
+ * - receita de vendas reconhecida pela abertura da ordem (data disponível no modelo);
+ * - CMV pela data da movimentação de venda;
  * - despesas e outras receitas pela competenceDate, incluindo pendentes.
  */
 export async function computeDreAccrual(from: Date, to: Date): Promise<DreResultado> {

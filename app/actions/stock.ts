@@ -10,7 +10,7 @@ export async function updateMinStock(productId: string, minQuantity: number) {
     await requirePermission("permStock");
 
     if (!productId || minQuantity < 0) {
-        throw new Error("Valores invǭlidos");
+        throw new Error("Valores inválidos");
     }
 
     const product = await prisma.product.findUnique({ where: { id: productId }, select: { isService: true, stockControlled: true } });

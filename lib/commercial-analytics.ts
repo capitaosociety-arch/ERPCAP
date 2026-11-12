@@ -88,8 +88,8 @@ export function getOccupancyConfig(env: NodeJS.ProcessEnv = process.env): Occupa
     closeHour,
     source,
     note: source === 'env'
-      ? `Janela operacional configurada por ambiente: ${openHour}hÃ¢â‚¬â€œ${closeHour}h.`
-      : `Premissa padrÃƒÂ£o de ${closeHour - openHour}h/dia por campo (${openHour}hÃ¢â‚¬â€œ${closeHour}h). Configure RENTAL_OPEN_HOUR/RENTAL_CLOSE_HOUR para a janela real.`,
+      ? `Janela operacional configurada por ambiente: ${openHour}h–${closeHour}h.`
+      : `Premissa padrão de ${closeHour - openHour}h/dia por campo (${openHour}h–${closeHour}h). Configure RENTAL_OPEN_HOUR/RENTAL_CLOSE_HOUR para a janela real.`,
   };
 }
 
@@ -198,7 +198,7 @@ export function buildOccupancy(rentals: RentalInput[], from: Date, to: Date, con
   if (fieldNames.length === 0) {
     return {
       available: false,
-      reason: 'NÃƒÂ£o hÃƒÂ¡ reservas de quadras (FUT5/FUT7) no perÃƒÂ­odo.',
+      reason: 'Não há reservas de quadras (FUT5/FUT7) no período.',
       config,
       days: days.length,
       fields: [],
@@ -339,7 +339,7 @@ export function buildOccupancy(rentals: RentalInput[], from: Date, to: Date, con
         receitaMediaPorHora: avg,
         potencialEstimado: avg != null ? round2(idleHours * avg) : null,
         estimativa: true,
-        premissa: `Estimativa baseada na receita mÃƒÂ©dia por hora efetiva de ${field.campo}; nÃƒÂ£o ÃƒÂ© receita realizada.`,
+        premissa: `Estimativa baseada na receita média por hora efetiva de ${field.campo}; não é receita realizada.`,
       });
     });
   });
@@ -399,7 +399,7 @@ export function buildProductContribution(orders: OrderInput[], movements: Moveme
   movements.forEach(m => {
     const useNewRules = isNewRulesDate(m.date);
     if (!m.productId || isRentalItem({ product: m.product }, { useNewRules })) return;
-    const a = movementByProduct.get(m.productId) || { qty: 0, cost: 0, uncosted: 0, name: m.product?.name || 'Ã¢â‚¬â€' };
+    const a = movementByProduct.get(m.productId) || { qty: 0, cost: 0, uncosted: 0, name: m.product?.name || 'ââ‚¬”' };
     const sign = m.movementKind === 'RETURN' ? -1 : 1;
     const evaluation = evaluateCmvMovement(m);
     a.qty += sign * Number(m.quantity || 0);
@@ -461,7 +461,7 @@ export function buildProductContribution(orders: OrderInput[], movements: Moveme
   if (rows.length === 0) {
     return {
       available: false,
-      reason: 'NÃƒÂ£o hÃƒÂ¡ vendas de produtos com produto vinculado no perÃƒÂ­odo.',
+      reason: 'Não há vendas de produtos com produto vinculado no período.',
       produtoReceitaLiquida: 0,
       cmvTotal: 0,
       margemContribuicaoTotal: null,
@@ -470,7 +470,7 @@ export function buildProductContribution(orders: OrderInput[], movements: Moveme
       produtos: [],
       menoresMargens: [],
       source: ['OrderItem', 'StockMovement'],
-      note: 'Vendas de aluguel de quadra nÃƒÂ£o entram na margem de produtos.',
+      note: 'Vendas de aluguel de quadra não entram na margem de produtos.',
     };
   }
 
@@ -489,7 +489,7 @@ export function buildProductContribution(orders: OrderInput[], movements: Moveme
     produtos: rows,
     menoresMargens: [...rows].filter(r => r.margemPct != null).sort((a, b) => (a.margemPct || 0) - (b.margemPct || 0)).slice(0, 10),
     source: ['OrderItem', 'StockMovement'],
-    note: 'Comandas fechadas no perÃƒÂ­odo (closedAt): receita lÃƒÂ­quida = subtotal dos itens menos desconto rateado. CMV usa o custo snapshot da saÃƒÂ­da de estoque; se faltar custo ou quantidade, a margem do produto fica indisponÃƒÂ­vel. ServiÃƒÂ§os/aluguel sÃƒÂ£o separados.',
+    note: 'Comandas fechadas no período (closedAt): receita líquida = subtotal dos itens menos desconto rateado. CMV usa o custo snapshot da saída de estoque; se faltar custo ou quantidade, a margem do produto fica indisponível. Serviços/aluguel são separados.',
   };
 }
 
@@ -539,7 +539,7 @@ export function buildRevenueMix(orders: OrderInput[], rentals: RentalInput[]): R
   const available = orders.length > 0 || rentals.length > 0;
   return {
     available,
-    reason: available ? undefined : 'NÃƒÂ£o hÃƒÂ¡ receitas de comandas nem agenda de aluguel no perÃƒÂ­odo.',
+    reason: available ? undefined : 'Não há receitas de comandas nem agenda de aluguel no período.',
     aluguelComandas: round2(rentalRevenue),
     produtosComandas: round2(productRevenue),
     descontoTotal: round2(discountTotal),
@@ -552,7 +552,7 @@ export function buildRevenueMix(orders: OrderInput[], rentals: RentalInput[]): R
       noShow: round2(agenda.noShow),
       reservas: agenda.reservas,
     },
-    note: 'Comandas fechadas no perÃƒÂ­odo (closedAt): aluguel em comandas ÃƒÂ© receita do DRE. A agenda de locaÃƒÂ§ÃƒÂµes (Rental) ÃƒÂ© controle operacional e nÃƒÂ£o ÃƒÂ© somada ao DRE para evitar duplicidade; o total pode diferir do DRE por competÃƒÂªncia/abertura.',
+    note: 'Comandas fechadas no período (closedAt): aluguel em comandas é receita do DRE. A agenda de locações (Rental) é controle operacional e não é somada ao DRE para evitar duplicidade; o total pode diferir do DRE por competência/abertura.',
   };
 }
 
@@ -592,7 +592,7 @@ export function buildInventoryReconciliation(orders: OrderInput[], movements: Mo
   movements.forEach(m => {
     const useNewRules = isNewRulesDate(m.date);
     if (!m.productId || isRentalItem({ product: m.product }, { useNewRules })) return;
-    const a = movMap.get(m.productId) || { name: m.product?.name || 'Ã¢â‚¬â€', qty: 0, cmv: 0, uncosted: 0 };
+    const a = movMap.get(m.productId) || { name: m.product?.name || 'ââ‚¬”', qty: 0, cmv: 0, uncosted: 0 };
     const sign = m.movementKind === 'RETURN' ? -1 : 1;
     const e = evaluateCmvMovement(m);
     a.qty += sign * Number(m.quantity || 0);
@@ -610,7 +610,7 @@ export function buildInventoryReconciliation(orders: OrderInput[], movements: Mo
     const uncosted = Math.max(0, mov?.uncosted || 0);
     const status: InventoryReconciliationRow['status'] = Math.abs(diff) > 0.001 ? 'DIVERGENTE' : uncosted > 0 ? 'CUSTO_INCOMPLETO' : 'OK';
     return {
-      produto: item?.name || mov?.name || 'Ã¢â‚¬â€',
+      produto: item?.name || mov?.name || 'ââ‚¬”',
       productId: id,
       quantidadeComandas: round2(qtyItem),
       quantidadeSaidas: round2(qtyMov),
@@ -625,13 +625,13 @@ export function buildInventoryReconciliation(orders: OrderInput[], movements: Mo
   const divergent = rows.filter(r => r.status === 'DIVERGENTE');
   return {
     available,
-    reason: available ? undefined : 'NÃƒÂ£o hÃƒÂ¡ produto vendido nem saÃƒÂ­da de estoque no perÃƒÂ­odo.',
+    reason: available ? undefined : 'Não há produto vendido nem saída de estoque no período.',
     produtosComDivergencia: divergent.length,
     quantidadeDivergente: round2(divergent.reduce((a, r) => a + Math.abs(r.diferenca), 0)),
     quantidadeSemCusto: round2(rows.reduce((a, r) => a + r.quantidadeSemCusto, 0)),
     linhas: rows,
     source: ['OrderItem', 'StockMovement'],
-    note: 'ConciliaÃƒÂ§ÃƒÂ£o por produto e perÃƒÂ­odo: quantidade ativa em comandas fechadas Ãƒâ€” saÃƒÂ­das OUT_SALE lÃƒÂ­quidas de devoluÃƒÂ§ÃƒÂµes. NÃƒÂ£o hÃƒÂ¡ vÃƒÂ­nculo orderItemId nas saÃƒÂ­das; por isso a comparaÃƒÂ§ÃƒÂ£o ÃƒÂ© agregada por produto. Uma diferenÃƒÂ§a nÃƒÂ£o ÃƒÂ© automaticamente perda: pode ser venda sem baixa, transferÃƒÂªncia ou recorte temporal.',
+    note: 'Conciliação por produto e período: quantidade ativa em comandas fechadas × saídas OUT_SALE líquidas de devoluções. Não há vínculo orderItemId nas saídas; por isso a comparação é agregada por produto. Uma diferença não é automaticamente perda: pode ser venda sem baixa, transferência ou recorte temporal.',
   };
 }
 
@@ -797,7 +797,7 @@ export function buildRegularOccupancy(
       const idleHours = Math.max(0, (hour.disponivelMin - hour.efetivoMin) / 60);
       if (idleHours <= 0) return;
       const avg = field.receitaPorHoraEfetiva;
-      opportunities.push({ campo: field.campo, hora: hour.hora, horasOciosas: round2(idleHours), receitaMediaPorHora: avg, potencialEstimado: avg != null ? round2(idleHours * avg) : null, estimativa: true, premissa: `Estimativa sobre a grade regular de ${field.campo}; nÃƒÂ£o ÃƒÂ© receita realizada.` });
+      opportunities.push({ campo: field.campo, hora: hour.hora, horasOciosas: round2(idleHours), receitaMediaPorHora: avg, potencialEstimado: avg != null ? round2(idleHours * avg) : null, estimativa: true, premissa: `Estimativa sobre a grade regular de ${field.campo}; não é receita realizada.` });
     });
   });
   opportunities.sort((a, b) => (b.potencialEstimado || 0) - (a.potencialEstimado || 0));

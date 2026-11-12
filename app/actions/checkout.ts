@@ -48,7 +48,7 @@ export async function processCheckoutAction(cart: any[]) {
         userId,
         status: "OPEN",
         total,
-        notes: "Caixa RÃ¡pido (PDV)",
+        notes: "Caixa Rápido (PDV)",
         items: {
           create: safeCart.map(item => ({
             productId: item.product.catalogType === 'service' ? undefined : item.product.id,
@@ -61,7 +61,7 @@ export async function processCheckoutAction(cart: any[]) {
       }
     });
 
-    // Baixa AutomÃ¡tica de Estoque imediata
+    // Baixa Automática de Estoque imediata
     for (const item of safeCart) {
       if (item.product.catalogType === 'service' || item.product.isService === true || item.product.stockControlled === false) continue;
       

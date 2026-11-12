@@ -13,8 +13,8 @@ import type {
   TargetSegment,
 } from '../../../lib/pricing-intelligence';
 
-const money = (v: number | null | undefined) => v == null ? 'â€”' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const pct = (v: number | null | undefined) => v == null ? 'â€”' : `${v.toFixed(1).replace('.', ',')}%`;
+const money = (v: number | null | undefined) => v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const pct = (v: number | null | undefined) => v == null ? '—' : `${v.toFixed(1).replace('.', ',')}%`;
 
 const SCENARIOS: { value: PriceScenario; label: string }[] = [
   { value: 'maintain', label: 'Manter preços' },

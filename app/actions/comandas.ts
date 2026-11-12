@@ -125,7 +125,7 @@ export async function processPayment(orderId: string, amount: number, method: st
     const user = await requirePermission([...PAYMENT_ACCESS]);
     const userId = user.id;
 
-    if (!userId) throw new Error("UsuÃ¡rio nÃ£o logado");
+    if (!userId) throw new Error("Usuário não logado");
 
     // Garante que existe um Caixa ("CashRegister") aberto onde esse pagamento vai cair
     const register = await prisma.cashRegister.findFirst({

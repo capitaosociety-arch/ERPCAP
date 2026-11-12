@@ -504,7 +504,7 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                         />
                         <span>
                             <span className="block text-sm font-bold text-slate-800">Permite quantidade quebrada</span>
-                            <span className="block text-xs text-gray-500 mt-0.5">Ex: vender 0,5 (meio) servi��o/produto. A quantidade poderǭ ser editada no PDV e nas Comandas.</span>
+                            <span className="block text-xs text-gray-500 mt-0.5">Ex: vender 0,5 (meio) serviço/produto. A quantidade poderá ser editada no PDV e nas Comandas.</span>
                         </span>
                     </label>
 

@@ -12,8 +12,8 @@ import type { ManagementComparison, ManagementHistory, ManagementRow } from '../
 
 type Regime = 'cash' | 'competence';
 
-const money = (v: number | null | undefined) => v == null ? 'â€”' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const pct = (v: number | null | undefined) => v == null ? 'â€”' : `${v.toFixed(1).replace('.', ',')}%`;
+const money = (v: number | null | undefined) => v == null ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const pct = (v: number | null | undefined) => v == null ? '—' : `${v.toFixed(1).replace('.', ',')}%`;
 const short = (period: string) => {
   const [year, month] = period.split('-');
   return `${month}/${year.slice(2)}`;
@@ -42,7 +42,7 @@ export default function HistoricoClient({ period, regime }: { period: string; re
     if (!res.success) {
       setHistory(null);
       setComparison(null);
-      setError(res.error || 'Falha ao carregar histÃ³rico.');
+      setError(res.error || 'Falha ao carregar histórico.');
       return;
     }
     setHistory(res.data || null);
@@ -69,10 +69,10 @@ export default function HistoricoClient({ period, regime }: { period: string; re
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
           <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <BarChart3 size={18} className="text-mrts-blue" /> HistÃ³rico gerencial
+            <BarChart3 size={18} className="text-mrts-blue" /> Histórico gerencial
           </h2>
           <p className="text-gray-500 text-sm mt-1">
-            DRE oficial por regime, fechamentos/versÃµes + comercial realizado. Fontes e critÃ©rios no rodapÃ©.
+            DRE oficial por regime, fechamentos/versões + comercial realizado. Fontes e critérios no rodapé.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -99,7 +99,7 @@ export default function HistoricoClient({ period, regime }: { period: string; re
 
       {loading && (
         <div className="bg-white rounded-2xl border border-gray-100 p-8 mb-5 flex items-center justify-center gap-2 text-gray-500 font-bold">
-          <LoaderCircle className="animate-spin" size={18} /> Carregando histÃ³rico...
+          <LoaderCircle className="animate-spin" size={18} /> Carregando histórico...
         </div>
       )}
 
@@ -114,35 +114,35 @@ export default function HistoricoClient({ period, regime }: { period: string; re
               <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400">Receita atual</p>
               <p className="text-lg font-black text-slate-800 mt-1">{money(current?.revenue)}</p>
               <p className={`text-[11px] font-bold mt-1 ${(deltas?.revenue || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {deltas?.revenue == null ? 'sem comparaÃ§Ã£o' : `${deltas.revenue >= 0 ? '+' : ''}${money(deltas.revenue)}`}
+                {deltas?.revenue == null ? 'sem comparação' : `${deltas.revenue >= 0 ? '+' : ''}${money(deltas.revenue)}`}
               </p>
             </div>
             <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
               <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400">Despesas</p>
               <p className="text-lg font-black text-slate-800 mt-1">{money(current?.expenses)}</p>
               <p className={`text-[11px] font-bold mt-1 ${(deltas?.expenses || 0) <= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {deltas?.expenses == null ? 'sem comparaÃ§Ã£o' : `${deltas.expenses >= 0 ? '+' : ''}${money(deltas.expenses)}`}
+                {deltas?.expenses == null ? 'sem comparação' : `${deltas.expenses >= 0 ? '+' : ''}${money(deltas.expenses)}`}
               </p>
             </div>
             <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-              <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400">Resultado lÃ­quido</p>
+              <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400">Resultado líquido</p>
               <p className={`text-lg font-black mt-1 ${(current?.netResult || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{money(current?.netResult)}</p>
               <p className={`text-[11px] font-bold mt-1 ${(deltas?.netResult || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {deltas?.netResult == null ? 'sem comparaÃ§Ã£o' : `${deltas.netResult >= 0 ? '+' : ''}${money(deltas.netResult)}`}
+                {deltas?.netResult == null ? 'sem comparação' : `${deltas.netResult >= 0 ? '+' : ''}${money(deltas.netResult)}`}
               </p>
             </div>
             <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-              <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400">OcupaÃ§Ã£o</p>
+              <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400">Ocupação</p>
               <p className="text-lg font-black text-slate-800 mt-1">{pct(current?.occupancyPct)}</p>
               <p className={`text-[11px] font-bold mt-1 ${(deltas?.occupancyPts || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {deltas?.occupancyPts == null ? 'sem comparaÃ§Ã£o' : `${deltas.occupancyPts >= 0 ? '+' : ''}${deltas.occupancyPts.toFixed(1)} p.p.`}
+                {deltas?.occupancyPts == null ? 'sem comparação' : `${deltas.occupancyPts >= 0 ? '+' : ''}${deltas.occupancyPts.toFixed(1)} p.p.`}
               </p>
             </div>
             <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
               <p className="text-[10px] uppercase tracking-wider font-bold text-gray-400">Margem de produtos</p>
               <p className="text-lg font-black text-slate-800 mt-1">{pct(current?.productMarginPct)}</p>
               <p className={`text-[11px] font-bold mt-1 ${(deltas?.productMarginPts || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {deltas?.productMarginPts == null ? 'sem comparaÃ§Ã£o' : `${deltas.productMarginPts >= 0 ? '+' : ''}${deltas.productMarginPts.toFixed(1)} p.p.`}
+                {deltas?.productMarginPts == null ? 'sem comparação' : `${deltas.productMarginPts >= 0 ? '+' : ''}${deltas.productMarginPts.toFixed(1)} p.p.`}
               </p>
             </div>
           </div>
@@ -151,8 +151,8 @@ export default function HistoricoClient({ period, regime }: { period: string; re
             <div className="xl:col-span-2 bg-white border border-gray-100 rounded-2xl shadow-sm p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="font-bold text-slate-800">EvoluÃ§Ã£o mensal</h3>
-                  <p className="text-xs text-gray-400">Receita, despesas e resultado oficial do perÃ­odo selecionado.</p>
+                  <h3 className="font-bold text-slate-800">Evolução mensal</h3>
+                  <p className="text-xs text-gray-400">Receita, despesas e resultado oficial do período selecionado.</p>
                 </div>
               </div>
               <div className="h-64">
@@ -173,9 +173,9 @@ export default function HistoricoClient({ period, regime }: { period: string; re
 
             <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5">
               <h3 className="font-bold text-slate-800">Alertas inteligentes</h3>
-              <p className="text-xs text-gray-400 mb-3">Regras com limiares explÃ­citos; nÃ£o sÃ£o previsÃµes.</p>
+              <p className="text-xs text-gray-400 mb-3">Regras com limiares explícitos; não são previsões.</p>
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {history.alerts.length === 0 && <p className="text-sm text-gray-400">Nenhum alerta pelos critÃ©rios atuais.</p>}
+                {history.alerts.length === 0 && <p className="text-sm text-gray-400">Nenhum alerta pelos critérios atuais.</p>}
                 {history.alerts.map(alert => (
                   <div key={alert.id} className={`rounded-xl border p-3 ${alert.severity === 'ALTA' ? 'bg-red-50 border-red-100' : alert.severity === 'MEDIA' ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-100'}`}>
                     <div className="flex items-start gap-2">
@@ -196,13 +196,13 @@ export default function HistoricoClient({ period, regime }: { period: string; re
             <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 mb-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                 <div>
-                  <h3 className="font-bold text-slate-800">ComparaÃ§Ã£o de perÃ­odos</h3>
+                  <h3 className="font-bold text-slate-800">Comparação de períodos</h3>
                   <p className="text-xs text-gray-400">
-                    {comparison.current.label} vs {comparison.previous.label} Â· regime {comparison.regime === 'cash' ? 'caixa' : 'competÃªncia'}
+                    {comparison.current.label} vs {comparison.previous.label} · regime {comparison.regime === 'cash' ? 'caixa' : 'competência'}
                   </p>
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-1 rounded-lg ${comparison.comparisonAvailable ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                  {comparison.comparisonAvailable ? 'comparaÃ§Ã£o disponÃ­vel' : 'comparaÃ§Ã£o limitada'}
+                  {comparison.comparisonAvailable ? 'comparação disponível' : 'comparação limitada'}
                 </span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -217,7 +217,7 @@ export default function HistoricoClient({ period, regime }: { period: string; re
                   <p className="text-[11px] text-gray-500">vs {money(comparison.previous.productRevenue)}</p>
                 </div>
                 <div className="bg-slate-50 rounded-xl p-3">
-                  <p className="text-[10px] uppercase font-bold text-gray-400">Margem de contribuiÃ§Ã£o</p>
+                  <p className="text-[10px] uppercase font-bold text-gray-400">Margem de contribuição</p>
                   <p className="text-sm font-black text-slate-800 mt-1">{money(comparison.current.productContribution)}</p>
                   <p className="text-[11px] text-gray-500">vs {money(comparison.previous.productContribution)}</p>
                 </div>
@@ -229,7 +229,7 @@ export default function HistoricoClient({ period, regime }: { period: string; re
                 </ul>
               )}
               <p className="text-[10px] text-gray-400 mt-3">
-                Fontes: {comparison.sources.join(', ')}. CritÃ©rios: {comparison.criteria.note}
+                Fontes: {comparison.sources.join(', ')}. Critérios: {comparison.criteria.note}
               </p>
               {comparison.alerts.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -246,22 +246,22 @@ export default function HistoricoClient({ period, regime }: { period: string; re
           <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden mb-5">
             <div className="p-4 border-b border-gray-100 flex items-center gap-2">
               <Database size={15} className="text-mrts-blue" />
-              <h3 className="font-bold text-slate-800 text-sm">RelatÃ³rio mensal e fontes</h3>
+              <h3 className="font-bold text-slate-800 text-sm">Relatório mensal e fontes</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs whitespace-nowrap">
                 <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-gray-500">
                   <tr>
-                    <th className="p-3">MÃªs</th>
-                    <th className="p-3">Status / versÃ£o</th>
+                    <th className="p-3">Mês</th>
+                    <th className="p-3">Status / versão</th>
                     <th className="p-3 text-right">Receita</th>
                     <th className="p-3 text-right">CMV</th>
                     <th className="p-3 text-right">Despesas</th>
                     <th className="p-3 text-right">Resultado</th>
                     <th className="p-3 text-right">Margem</th>
-                    <th className="p-3 text-right">OcupaÃ§Ã£o</th>
+                    <th className="p-3 text-right">Ocupação</th>
                     <th className="p-3 text-right">Aluguel</th>
-                    <th className="p-3 text-right">ExtraordinÃ¡rio</th>
+                    <th className="p-3 text-right">Extraordinário</th>
                     <th className="p-3 text-right">Produtos</th>
                     <th className="p-3 text-right">Margem produtos</th>
                   </tr>
@@ -284,9 +284,9 @@ export default function HistoricoClient({ period, regime }: { period: string; re
                       <td className="p-3 text-right">{money(row.expenses)}</td>
                       <td className={`p-3 text-right font-bold ${(row.netResult || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{money(row.netResult)}</td>
                       <td className="p-3 text-right">{pct(row.netMargin)}</td>
-                      <td className="p-3 text-right">{row.occupancyAvailable ? pct(row.occupancyPct) : 'â€”'}</td>
+                      <td className="p-3 text-right">{row.occupancyAvailable ? pct(row.occupancyPct) : '—'}</td>
                       <td className="p-3 text-right">{money(row.rentalRevenue)}</td>
-                      <td className="p-3 text-right text-amber-700">{row.extraHours ? `${row.extraHours}h Â· ${money(row.extraRevenue)}` : 'â€”'}</td>
+                      <td className="p-3 text-right text-amber-700">{row.extraHours ? `${row.extraHours}h · ${money(row.extraRevenue)}` : '—'}</td>
                       <td className="p-3 text-right">{money(row.productRevenue)}</td>
                       <td className="p-3 text-right">{pct(row.productMarginPct)}</td>
                     </tr>
@@ -297,7 +297,7 @@ export default function HistoricoClient({ period, regime }: { period: string; re
           </div>
 
           <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs text-slate-500">
-            <p className="font-bold text-slate-600 mb-1 flex items-center gap-1"><Calculator size={13} /> CritÃ©rios e fontes</p>
+            <p className="font-bold text-slate-600 mb-1 flex items-center gap-1"><Calculator size={13} /> Critérios e fontes</p>
             <p>{history.criteria.note}</p>
             <p className="mt-1">{history.note}</p>
             <p className="mt-1">Fontes: {history.sources.join(', ')}. Gerado em {new Date(history.generatedAt).toLocaleString('pt-BR', { timeZone: 'America/Cuiaba' })}.</p>
