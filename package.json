@@ -14,6 +14,7 @@
     "test:ai": "tsx scripts/tests/ai-resilience.test.ts",
     "test:strategic": "tsx scripts/tests/strategic-analytics.test.ts",
     "test:pricing": "tsx scripts/tests/pricing-intelligence.test.ts",
+    "test:quantity": "tsx scripts/tests/quantity-input.test.ts",
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

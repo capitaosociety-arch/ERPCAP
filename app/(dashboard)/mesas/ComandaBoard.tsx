@@ -5,6 +5,7 @@ import { Plus, Search, Coffee, X, ShoppingBag, Eye, Banknote, QrCode, CreditCard
 import { createComanda, closeComanda, addItemToOrder, processPayment, removeItemFromOrder, deleteComandaAction, voidPaymentAction, updateOrderItemQuantity } from '../../actions/comandas';
 import { createCustomerQuick } from '../../actions/customers';
 import { sortProducts } from '../../../lib/product-sort';
+import EditableQuantity from '../../../components/EditableQuantity';
 
 export default function ComandaBoard({ openOrders, products, openRegister, customers }: { openOrders: any[], products: any[], openRegister?: any, customers?: { id: string; name: string; phone: string | null }[] }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -74,9 +75,14 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
     const handleConfirmAddProduct = async (product: any) => {
         if(!selectedOrder) return;
         setAddingItemId(product.id);
-        await addItemToOrder(selectedOrder.id, product.id, selectedQty, product.price);
-        setSelectedQty(1);
-        setAddingItemId(null);
+        try {
+            await addItemToOrder(selectedOrder.id, product.id, selectedQty, product.price);
+        } catch (e: any) {
+            alert(e?.message || "Erro ao adicionar produto.");
+        } finally {
+            setSelectedQty(1);
+            setAddingItemId(null);
+        }
     };
 
     const handleViewComanda = (e: any, order: any) => {
@@ -120,18 +126,26 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
         }
     };
 
-    const handleUpdateItemQuantity = async (item: any, delta: number) => {
-        const isFractional = !!(item.product?.allowFractional || item.service?.allowFractional);
-        const step = isFractional ? 0.5 : 1;
-        const newQty = Math.round(((item.quantity || 0) + delta * step) * 100) / 100;
-        if (newQty < step) return;
+    const handleSetItemQuantity = async (item: any, newQty: number) => {
         setLoading(true);
         try {
             await updateOrderItemQuantity(item.id, newQty);
         } catch (e: any) {
             alert(e.message || "Erro ao alterar quantidade.");
+            throw e;
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleUpdateItemQuantity = async (item: any, delta: number) => {
+        const isFractional = !!(item.product?.allowFractional || item.service?.allowFractional);
+        const step = isFractional ? 0.5 : 1;
+        const newQty = Math.round(((item.quantity || 0) + delta * step) * 100) / 100;
+        if (newQty < step) return;
+        try {
+            await handleSetItemQuantity(item, newQty);
+        } catch {
         }
     };
 
@@ -329,7 +343,14 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                                     >
                                                         <Minus size={15} strokeWidth={3} />
                                                     </button>
-                                                    <span className="w-7 text-center text-sm font-black text-slate-800">{item.quantity}</span>
+                                                    <EditableQuantity
+                                                        value={item.quantity}
+                                                        allowFractional={!!item.product?.allowFractional}
+                                                        disabled={loading}
+                                                        onCommit={(next) => handleSetItemQuantity(item, next)}
+                                                        className="w-9 text-center text-sm font-black text-slate-800 bg-transparent outline-none"
+                                                        ariaLabel="Quantidade do item"
+                                                    />
                                                     <button
                                                         disabled={loading}
                                                         onClick={() => handleUpdateItemQuantity(item, 1)}
@@ -541,7 +562,14 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                                 >
                                                     <Minus size={14} strokeWidth={3} />
                                                 </button>
-                                                <span className="w-8 text-center text-sm font-black text-slate-800">{item.quantity}</span>
+                                                <EditableQuantity
+                                                    value={item.quantity}
+                                                    allowFractional={!!item.product?.allowFractional}
+                                                    disabled={loading}
+                                                    onCommit={(next) => handleSetItemQuantity(item, next)}
+                                                    className="w-9 text-center text-sm font-black text-slate-800 bg-transparent outline-none"
+                                                    ariaLabel="Quantidade do item"
+                                                />
                                                 <button
                                                     disabled={loading}
                                                     onClick={() => {

@@ -7,6 +7,8 @@ import { authOptions } from "../api/auth/[...nextauth]/route";
 import { requirePermission, requireUser } from "../../lib/auth-guard";
 import { createAuditLog } from "./audit";
 import { effectiveAverageCost, recordInventoryCost, weightedAverageCost } from "../../lib/inventory-cost";
+import { formatQuantityInput, maxQuantityForExistingItem } from "../../lib/quantity-input";
+import { lockOrderItemRow, lockStockRow } from "../../lib/stock-lock";
 import { assertFinancialPeriodOpen } from "./financial-periods";
 
 const COMANDAS_ACCESS = ["permPDV", "permComandas"] as const;
@@ -56,9 +58,21 @@ export async function addItemToOrder(orderId: string, itemId: string, quantity: 
 
     await prisma.$transaction(async (tx) => {
         const product = !isService
-            ? await tx.product.findUnique({ where: { id: itemId }, select: { cost: true, isService: true, stockControlled: true } })
+            ? await tx.product.findUnique({ where: { id: itemId }, select: { cost: true, isService: true, stockControlled: true, allowFractional: true } })
             : null;
         const trackStock = !isService && !!product && product.isService !== true && product.stockControlled !== false;
+        const allowFractional = !!product?.allowFractional;
+        if (!Number.isFinite(quantity) || quantity <= 0 || (!allowFractional && !Number.isInteger(quantity))) {
+            throw new Error("Quantidade invalida.");
+        }
+        if (trackStock) {
+            const stock = await lockStockRow(tx, itemId);
+            if (!stock) throw new Error("Estoque nao cadastrado para este produto.");
+            const currentQty = Number(stock.quantity) || 0;
+            if (quantity > currentQty) {
+                throw new Error(`Estoque insuficiente! Quantidade maxima permitida: ${formatQuantityInput(currentQty, allowFractional)}.`);
+            }
+        }
 
         const orderItem = await tx.orderItem.create({
             data: {
@@ -186,6 +200,7 @@ export async function processPayment(orderId: string, amount: number, method: st
     if (newQuantity <= 0) throw new Error("A quantidade deve ser maior que zero.");
 
     await prisma.$transaction(async (tx) => {
+        await lockOrderItemRow(tx, orderItemId);
         const item = await tx.orderItem.findUnique({
             where: { id: orderItemId },
             include: { order: true }
@@ -199,18 +214,23 @@ export async function processPayment(orderId: string, amount: number, method: st
 
         // Verifica e ajusta o estoque caso seja produto (não serviço)
         const product = item.productId
-            ? await tx.product.findUnique({ where: { id: item.productId }, select: { cost: true, isService: true, stockControlled: true } })
+            ? await tx.product.findUnique({ where: { id: item.productId }, select: { cost: true, isService: true, stockControlled: true, allowFractional: true } })
             : null;
+        const allowFractional = !!product?.allowFractional;
+        if (!allowFractional && !Number.isInteger(newQuantity)) {
+            throw new Error("A quantidade deve ser um numero inteiro positivo.");
+        }
         const trackStock = !!item.productId && !!product && product.isService !== true && product.stockControlled !== false;
 
         if (trackStock) {
-            const stock = await tx.stock.findUnique({ where: { productId: item.productId! } });
-            if (stock) {
-                if (delta > 0 && stock.quantity < delta) {
-                    throw new Error(`Estoque insuficiente! Disponível: ${stock.quantity}`);
-                }
-
+            const stock = await lockStockRow(tx, item.productId!);
+            if (!stock) throw new Error("Estoque nao cadastrado para este produto.");
+            {
                 const currentQty = Number(stock.quantity) || 0;
+                const maxQuantity = maxQuantityForExistingItem(item.quantity, currentQty);
+                if (delta > 0 && newQuantity > maxQuantity + 1e-9) {
+                    throw new Error(`Estoque insuficiente! Quantidade maxima permitida: ${formatQuantityInput(maxQuantity, allowFractional)}.`);
+                }
                 const currentAvg = effectiveAverageCost(stock.averageCost, product?.cost, currentQty);
                 let unitCost = currentAvg;
                 const newQty = currentQty - delta;

@@ -6,6 +6,8 @@ import { processPayment, addItemToOrder, updateOrderItemQuantity } from '../../a
 import { openGlobalCashRegister, closeGlobalCashRegister, getRegisterSummary } from '../../actions/caixa';
 import { Check, Search, X, Receipt, QrCode, CreditCard, Banknote, ShoppingCart, Plus, Minus, ShoppingBag, Lock, Unlock } from 'lucide-react';
 import { sortProducts } from '../../../lib/product-sort';
+import { formatQuantityInput } from '../../../lib/quantity-input';
+import EditableQuantity from '../../../components/EditableQuantity';
 
 export default function PDVClient({ products, services = [], categories, user, openRegister }: any) {
   const [cart, setCart] = useState<any[]>([]);
@@ -56,28 +58,53 @@ export default function PDVClient({ products, services = [], categories, user, o
     return matchSearch && !!p.stock && p.stock.quantity > 0;
   }), 'name-asc'), [allItems, itemSearch]);
 
+  const roundQty = (n: number) => Math.round(n * 100) / 100;
+
+  const cartStockLimit = (product: any) => {
+    if (!product || product.isService || product.stockControlled === false) return Infinity;
+    return Math.max(0, Number(product.stock?.quantity) || 0);
+  };
+
+  const stockLimitMessage = (max: number, allowFractional = false) => {
+    alert(`Estoque insuficiente! Quantidade maxima permitida: ${formatQuantityInput(max, allowFractional)}.`);
+  };
+
   const addItem = (product: any) => {
     const step = product.allowFractional ? 0.5 : 1;
     const existing = cart.find(c => c.product.id === product.id);
-    if(existing) {
-      setCart(cart.map(c => c.product.id === product.id ? { ...c, quantity: roundQty(c.quantity + step) } : c));
-    } else {
-      setCart([...cart, { product, quantity: step }]);
+    const next = existing ? roundQty(existing.quantity + step) : step;
+    const max = cartStockLimit(product);
+    if (next > max + 1e-9) {
+      stockLimitMessage(max, !!product.allowFractional);
+      return;
     }
+    setCart(prev => existing
+      ? prev.map(c => c.product.id === product.id ? { ...c, quantity: next } : c)
+      : [...prev, { product, quantity: next }]);
   };
 
   const updateCartQty = (id: string, delta: number) => {
-    setCart(cart.map(c => {
-      if (c.product.id !== id) return c;
-      const step = c.product.allowFractional ? 0.5 : 1;
-      const min = step;
-      const newQty = roundQty(c.quantity + delta);
-      if (newQty < min) return c;
-      return { ...c, quantity: newQty };
-    }));
+    const item = cart.find(c => c.product.id === id);
+    if (!item) return;
+    const step = item.product.allowFractional ? 0.5 : 1;
+    const newQty = roundQty(item.quantity + delta);
+    if (newQty < step) return;
+    const max = cartStockLimit(item.product);
+    if (newQty > max + 1e-9) {
+      stockLimitMessage(max, !!item.product.allowFractional);
+      return;
+    }
+    setCart(prev => prev.map(c => c.product.id === id ? { ...c, quantity: newQty } : c));
   };
 
-  const roundQty = (n: number) => Math.round(n * 100) / 100;
+  const handleCartQuantityCommit = async (product: any, newQty: number) => {
+    const max = cartStockLimit(product);
+    if (newQty > max + 1e-9) {
+      stockLimitMessage(max, !!product.allowFractional);
+      throw new Error('Quantidade acima do estoque.');
+    }
+    setCart(prev => prev.map(c => c.product.id === product.id ? { ...c, quantity: newQty } : c));
+  };
 
   const removeItem = (id: string) => {
     setCart(cart.filter((c) => c.product.id !== id));
@@ -97,8 +124,8 @@ export default function PDVClient({ products, services = [], categories, user, o
             setPaymentMethod("PIX");
             setIsPaymentModalOpen(true);
         }
-      } catch (e) {
-        alert("Erro ao tramitar pedido inicial de caixa.");
+      } catch (e: any) {
+        alert(e?.message || "Erro ao tramitar pedido inicial de caixa.");
       }
     });
   };
@@ -143,12 +170,8 @@ export default function PDVClient({ products, services = [], categories, user, o
   };
 
   // Altera a quantidade de um item já lançado no pedido (durante o pagamento)
-  const handleUpdateItemQuantity = async (item: any, delta: number) => {
+  const handleSetItemQuantity = async (item: any, newQty: number) => {
       if(!paymentOrder) return;
-      const isFractional = !!(item.product?.allowFractional || item.service?.allowFractional);
-      const step = isFractional ? 0.5 : 1;
-      const newQty = Math.round(((item.quantity || 0) + delta * step) * 100) / 100;
-      if (newQty < step) return;
       setPayLoading(true);
       try {
           await updateOrderItemQuantity(item.id, newQty);
@@ -161,27 +184,42 @@ export default function PDVClient({ products, services = [], categories, user, o
           }
       } catch (e: any) {
           alert("Erro ao alterar quantidade: " + (e.message || "Tente novamente."));
+          throw e;
+      } finally {
+          setPayLoading(false);
       }
-      setPayLoading(false);
+  };
+
+  const handleUpdateItemQuantity = async (item: any, delta: number) => {
+      if(!paymentOrder) return;
+      const isFractional = !!(item.product?.allowFractional || item.service?.allowFractional);
+      const step = isFractional ? 0.5 : 1;
+      const newQty = Math.round(((item.quantity || 0) + delta * step) * 100) / 100;
+      if (newQty < step) return;
+      try {
+          await handleSetItemQuantity(item, newQty);
+      } catch {
+      }
   };
 
   // Botao Magico para retocar pedido caso esqueceram algo
   const handleConfirmAddProduct = async (product: any) => {
       if(!paymentOrder) return;
       setAddingItemId(product.id);
-      
-      // Adiciona o lancamento
-      await addItemToOrder(paymentOrder.id, product.id, 1, product.price, product.catalogType === 'service');
-      
-      // Busca fresco e recalcula tudo
-      const updatedOrder = await getOrderWithPayments(paymentOrder.id);
-      if(updatedOrder) {
-          setPaymentOrder(updatedOrder);
-          const totalPaid = updatedOrder.payments?.reduce((acc: any, p: any) => acc + p.amount, 0) || 0;
-          const balance = updatedOrder.total - updatedOrder.discount - totalPaid;
-          setPaymentAmount(Math.max(0, balance).toFixed(2));
+      try {
+          await addItemToOrder(paymentOrder.id, product.id, 1, product.price, product.catalogType === 'service');
+          const updatedOrder = await getOrderWithPayments(paymentOrder.id);
+          if(updatedOrder) {
+              setPaymentOrder(updatedOrder);
+              const totalPaid = updatedOrder.payments?.reduce((acc: any, p: any) => acc + p.amount, 0) || 0;
+              const balance = updatedOrder.total - updatedOrder.discount - totalPaid;
+              setPaymentAmount(Math.max(0, balance).toFixed(2));
+          }
+      } catch (e: any) {
+          alert(e?.message || "Erro ao adicionar produto.");
+      } finally {
+          setAddingItemId(null);
       }
-      setAddingItemId(null);
   };
 
   const total = cart.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
@@ -347,7 +385,13 @@ export default function PDVClient({ products, services = [], categories, user, o
                     <button onClick={() => updateCartQty(item.product.id, -(item.product.allowFractional ? 0.5 : 1))} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-white hover:bg-red-400 rounded transition" title="Diminuir quantidade">
                       <Minus size={13} strokeWidth={3} />
                     </button>
-                    <span className="w-7 sm:w-8 text-center font-black text-slate-800 text-xs">{item.quantity}</span>
+                    <EditableQuantity
+                      value={item.quantity}
+                      allowFractional={!!item.product.allowFractional}
+                      onCommit={(next) => handleCartQuantityCommit(item.product, next)}
+                      className="w-8 sm:w-9 text-center font-black text-slate-800 text-xs bg-transparent outline-none"
+                      ariaLabel="Quantidade no carrinho"
+                    />
                     <button onClick={() => updateCartQty(item.product.id, (item.product.allowFractional ? 0.5 : 1))} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-white hover:bg-green-500 rounded transition" title="Aumentar quantidade">
                       <Plus size={13} strokeWidth={3} />
                     </button>
@@ -510,7 +554,14 @@ export default function PDVClient({ products, services = [], categories, user, o
                                         >
                                             <Minus size={14} strokeWidth={3} />
                                         </button>
-                                        <span className="w-8 text-center text-sm font-black text-slate-800">{item.quantity}</span>
+                                        <EditableQuantity
+                                            value={item.quantity}
+                                            allowFractional={!!item.product?.allowFractional || !!item.service?.allowFractional}
+                                            disabled={payLoading}
+                                            onCommit={(next) => handleSetItemQuantity(item, next)}
+                                            className="w-9 text-center text-sm font-black text-slate-800 bg-transparent outline-none"
+                                            ariaLabel="Quantidade do item"
+                                        />
                                         <button
                                             disabled={payLoading}
                                             onClick={() => handleUpdateItemQuantity(item, 1)}

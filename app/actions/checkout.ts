@@ -4,6 +4,8 @@ import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "../../lib/auth-guard";
 import { effectiveAverageCost, recordInventoryCost, weightedAverageCost } from "../../lib/inventory-cost";
+import { formatQuantityInput } from "../../lib/quantity-input";
+import { lockStockRow } from "../../lib/stock-lock";
 
 export async function processCheckoutAction(cart: any[]) {
   const user = await requirePermission("permPDV");
@@ -18,22 +20,34 @@ export async function processCheckoutAction(cart: any[]) {
     .map((item) => item.product.id);
   const products = await prisma.product.findMany({
     where: { id: { in: productIds } },
-    select: { id: true, price: true, cost: true, isService: true, stockControlled: true },
+    select: { id: true, price: true, cost: true, isService: true, stockControlled: true, allowFractional: true },
   });
   const productById = new Map(products.map((product) => [product.id, product]));
 
   const safeCart = cart.map((item) => {
-    if (item?.product?.catalogType === 'service') return item;
+    const quantity = Number(item?.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new Error('Quantidade invalida.');
+    }
+    if (item?.product?.catalogType === 'service') {
+      if (!Number.isInteger(quantity)) throw new Error('Quantidade invalida.');
+      return { ...item, quantity };
+    }
     const product = productById.get(item?.product?.id);
     if (!product) throw new Error('Produto nao encontrado no catalogo.');
+    if (!product.allowFractional && !Number.isInteger(quantity)) {
+      throw new Error('Quantidade invalida.');
+    }
     return {
       ...item,
+      quantity,
       product: {
         ...item.product,
         price: product.price,
         cost: product.cost,
         isService: product.isService,
         stockControlled: product.stockControlled,
+        allowFractional: product.allowFractional,
         catalogType: 'product',
       },
     };
@@ -62,12 +76,20 @@ export async function processCheckoutAction(cart: any[]) {
     });
 
     // Baixa Automática de Estoque imediata
-    for (const item of safeCart) {
+    const stockCart = [...safeCart].sort((a, b) => String(a.product.id).localeCompare(String(b.product.id)));
+    for (const item of stockCart) {
       if (item.product.catalogType === 'service' || item.product.isService === true || item.product.stockControlled === false) continue;
-      
-      const stock = await tx.stock.findUnique({ where: { productId: item.product.id }});
-      if (stock) {
+
+      if (!Number.isFinite(item.quantity) || item.quantity <= 0 || (!item.product.allowFractional && !Number.isInteger(item.quantity))) {
+        throw new Error('Quantidade invalida.');
+      }
+      const stock = await lockStockRow(tx, item.product.id);
+      if (!stock) throw new Error('Estoque nao cadastrado para este produto.');
+      {
         const currentQty = Number(stock.quantity) || 0;
+        if (item.quantity > currentQty + 1e-9) {
+          throw new Error(`Estoque insuficiente! Quantidade maxima permitida: ${formatQuantityInput(currentQty, !!item.product.allowFractional)}.`);
+        }
         const unitCost = effectiveAverageCost(stock.averageCost, item.product.cost, currentQty);
         const newQty = currentQty - item.quantity;
 
