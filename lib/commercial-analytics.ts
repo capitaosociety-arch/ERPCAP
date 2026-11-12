@@ -13,22 +13,25 @@ import {
 
 const dayMs = 24 * 60 * 60 * 1000;
 const round1 = (n: number) => Math.round((n || 0) * 10) / 10;
-const localDate = (d: Date) => new Intl.DateTimeFormat('sv-SE', {
+const dateFormatter = new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'America/Cuiaba',
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
-}).format(d);
-const localHour = (d: Date) => Number(new Intl.DateTimeFormat('en-US', {
+});
+const hourFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/Cuiaba',
   hour: '2-digit',
   hour12: false,
-}).format(d));
+});
+const weekdayFormatter = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: 'America/Cuiaba',
+  weekday: 'long',
+});
+const localDate = (d: Date) => dateFormatter.format(d);
+const localHour = (d: Date) => Number(hourFormatter.format(d));
 const localWeekday = (d: Date) => {
-  const raw = new Intl.DateTimeFormat('pt-BR', {
-    timeZone: 'America/Cuiaba',
-    weekday: 'long',
-  }).format(d);
+  const raw = weekdayFormatter.format(d);
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 };
 
@@ -827,13 +830,13 @@ export function buildRegularOccupancy(
   };
 }
 
-export async function getOccupancyReport(from: Date, to: Date): Promise<OccupancyReport> {
+export async function getOccupancyReport(from: Date, to: Date, scheduleConfig?: RentalScheduleConfig): Promise<OccupancyReport> {
   const [rentals, schedule] = await Promise.all([
     prisma.rental.findMany({
       where: { startTime: { lt: to }, endTime: { gt: from }, status: { not: 'CANCELED' } },
       select: { resource: true, startTime: true, endTime: true, totalAmount: true, status: true },
     }),
-    getRentalSchedule(),
+    scheduleConfig ? Promise.resolve(scheduleConfig) : getRentalSchedule(),
   ]);
   return buildRegularOccupancy(rentals, from, to, schedule);
 }

@@ -1,7 +1,7 @@
 import { prisma } from './prisma';
 import { isFut5, isFut7 } from './analytics';
 import {
-  getOccupancyReport,
+  buildRegularOccupancy,
   type OccupancyReport,
 } from './commercial-analytics';
 import {
@@ -12,7 +12,8 @@ import {
   type RentalScheduleBlock,
   type RentalScheduleConfig,
 } from './rental-schedule';
-import { monthRange } from './official-financials';
+import { currentCuiabaMonth, monthRange } from './official-financials';
+import { cacheWrap, invalidateCache, managementTtlMs } from './intelligence-cache';
 
 export type PriceScenario =
   | 'maintain'
@@ -176,15 +177,16 @@ export interface PricingScenarioResult {
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 const weekdayLabel = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-const localMonthKey = (d: Date) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit' }).format(d);
+const monthKeyFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit' });
+const localMonthKey = (d: Date) => monthKeyFormatter.format(d);
 
 function classifyRental(rental: RentalPricingInput, schedule: RentalScheduleBlock[]) {
   const totalMinutes = Math.max(0, (rental.endTime.getTime() - rental.startTime.getTime()) / 60000);
+  const field = rental.resource.toUpperCase();
   let regularMinutes = 0;
   let extraMinutes = 0;
   for (let t = rental.startTime.getTime(); t < rental.endTime.getTime(); t += 60000) {
     const d = new Date(t);
-    const field = rental.resource.toUpperCase();
     if (isRegularMinute(schedule, d, field, localMinuteOfDay(d))) regularMinutes++;
     else extraMinutes++;
   }
@@ -555,15 +557,22 @@ export function simulatePricingScenario(report: PricingReport, input: PricingSce
 
 export async function getPricingReport(period: string, includeCustomerNames = true): Promise<PricingReport> {
   const range = monthRange(period, { capToToday: true });
-  const [schedule, occupancy, rentals] = await Promise.all([
+  const [schedule, rentals] = await Promise.all([
     getRentalSchedule(),
-    getOccupancyReport(range.from, range.to),
     prisma.rental.findMany({
       where: { startTime: { lte: range.to } },
       select: { id: true, customerId: true, resource: true, startTime: true, endTime: true, totalAmount: true, status: true, customer: { select: { name: true } } },
       orderBy: { startTime: 'asc' },
     }),
   ]);
+  const occupancy = buildRegularOccupancy(
+    rentals
+      .filter(r => r.startTime < range.to && r.endTime > range.from && r.status !== 'CANCELED')
+      .map(r => ({ resource: r.resource, startTime: r.startTime, endTime: r.endTime, totalAmount: r.totalAmount, status: r.status })),
+    range.from,
+    range.to,
+    schedule
+  );
   return buildPricingReport(
     rentals.map(r => ({ id: r.id, customerId: r.customerId, customerName: r.customer.name, resource: r.resource, startTime: r.startTime, endTime: r.endTime, totalAmount: r.totalAmount, status: r.status })),
     occupancy,
@@ -571,4 +580,14 @@ export async function getPricingReport(period: string, includeCustomerNames = tr
     period,
     includeCustomerNames
   );
+}
+
+export async function getPricingReportCached(
+  period: string,
+  includeCustomerNames = true,
+  forceRefresh = false
+): Promise<PricingReport> {
+  if (forceRefresh) invalidateCache('pricing-report:');
+  const key = `pricing-report:${period}:${includeCustomerNames ? 'names' : 'redacted'}`;
+  return cacheWrap(key, managementTtlMs(period, currentCuiabaMonth()), () => getPricingReport(period, includeCustomerNames));
 }

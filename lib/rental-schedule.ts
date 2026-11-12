@@ -1,5 +1,9 @@
 import { prisma } from './prisma';
 
+const weekdayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Cuiaba', weekday: 'short' });
+const dateKeyFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit', day: '2-digit' });
+const minuteOfDayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Cuiaba', hour: '2-digit', minute: '2-digit', hour12: false });
+
 export interface RentalScheduleBlock {
   id?: string;
   weekday: number; // 0 domingo ... 6 sábado
@@ -84,16 +88,16 @@ export function minuteToTime(minute: number): string {
 }
 
 export function weekDayCuiaba(date: Date): number {
-  const name = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Cuiaba', weekday: 'short' }).format(date);
+  const name = weekdayFormatter.format(date);
   return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(name);
 }
 
 export function localDateKey(date: Date): string {
-  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+  return dateKeyFormatter.format(date);
 }
 
 export function localMinuteOfDay(date: Date): number {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Cuiaba', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(date);
+  const parts = minuteOfDayFormatter.formatToParts(date);
   const hour = Number(parts.find(p => p.type === 'hour')?.value || 0);
   const minute = Number(parts.find(p => p.type === 'minute')?.value || 0);
   return hour * 60 + minute;

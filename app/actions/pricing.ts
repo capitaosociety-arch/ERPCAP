@@ -3,10 +3,9 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../api/auth/[...nextauth]/route';
 import { prisma } from '../../lib/prisma';
-import { cacheWrap, managementTtlMs, invalidateCache } from '../../lib/intelligence-cache';
-import { currentCuiabaMonth, isMonthKey } from '../../lib/official-financials';
+import { isMonthKey } from '../../lib/official-financials';
 import {
-  getPricingReport,
+  getPricingReportCached,
   simulatePricingScenario,
   type PricingReport,
   type PricingScenarioInput,
@@ -30,9 +29,7 @@ export async function getPricingReportAction(
     if (!user) return { success: false, error: 'Sem permissão para acessar precificação.' };
     if (!isMonthKey(period)) return { success: false, error: 'Período inválido. Use AAAA-MM.' };
     const canSeeNames = user.role === 'ADMIN' || !!user.permCustomers;
-    const key = `pricing-report:${period}:${canSeeNames ? 'names' : 'redacted'}`;
-    if (forceRefresh) invalidateCache('pricing-report:');
-    const data = await cacheWrap(key, managementTtlMs(period, currentCuiabaMonth()), () => getPricingReport(period, canSeeNames));
+    const data = await getPricingReportCached(period, canSeeNames, forceRefresh);
     return { success: true, data };
   } catch (error: any) {
     console.error('ERRO_PRICING_REPORT:', error);
@@ -48,7 +45,7 @@ export async function simulatePricingScenarioAction(
     const user = await requireUser();
     if (!user) return { success: false, error: 'Sem permissão para simular precificação.' };
     if (!isMonthKey(period)) return { success: false, error: 'Período inválido. Use AAAA-MM.' };
-    const report = await getPricingReport(period, user.role === 'ADMIN' || !!user.permCustomers);
+    const report = await getPricingReportCached(period, user.role === 'ADMIN' || !!user.permCustomers);
     const clean: PricingScenarioInput = {
       scenario: input.scenario,
       discountPct: Math.max(0, Math.min(100, Number(input.discountPct) || 0)),

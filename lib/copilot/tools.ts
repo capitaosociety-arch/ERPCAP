@@ -40,7 +40,7 @@ import {
   type ScenarioInput,
 } from '../strategic-analytics';
 import {
-  getPricingReport,
+  getPricingReportCached,
   simulatePricingScenario,
   type PriceScenario,
   type TargetSegment,
@@ -701,7 +701,7 @@ const precificacaoOportunidadesTool: CopilotTool = {
   async execute(ctx, args) {
     if (!isAdmin(ctx) && !ctx.user.permFinance) return deny();
     const period = resolveFinancialPeriod(args);
-    const report = await getPricingReport(period, isAdmin(ctx) || !!ctx.user.permCustomers);
+    const report = await getPricingReportCached(period, isAdmin(ctx) || !!ctx.user.permCustomers);
     return ok({
       disponivel: report.available,
       motivoIndisponivel: report.reason || null,
@@ -760,7 +760,7 @@ const simularPrecificacaoTool: CopilotTool = {
   async execute(ctx, args) {
     if (!isAdmin(ctx) && !ctx.user.permFinance) return deny();
     const period = resolveFinancialPeriod(args);
-    const report = await getPricingReport(period, isAdmin(ctx) || !!ctx.user.permCustomers);
+    const report = await getPricingReportCached(period, isAdmin(ctx) || !!ctx.user.permCustomers);
     const scenario = String(args.cenario || 'new_group_package') as PriceScenario;
     const target = String(args.publico || 'new_or_inactive') as TargetSegment;
     const result = simulatePricingScenario(report, {

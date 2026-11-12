@@ -54,7 +54,7 @@ export function invalidateCache(prefix?: string): void {
 }
 
 export function invalidateOperationalCaches(): void {
-  for (const prefix of ['strategy-', 'management-', 'pricing-report:', 'financial-', 'commercial-']) {
+  for (const prefix of ['strategy-', 'management-', 'pricing-report:', 'financial-', 'commercial-', 'copilot-answer:']) {
     invalidateCache(prefix);
   }
 }

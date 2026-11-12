@@ -6,8 +6,8 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 const CACHE_AFFECTING_MODELS = new Set([
   'Product', 'Stock', 'StockMovement', 'DepotStock', 'DepotMovement', 'TransferRequest',
   'Order', 'OrderItem', 'Payment', 'FinancialEntry', 'FinancialPeriodClose',
-  'FinancialPeriodAudit', 'Rental', 'RentalOperatingHour', 'Subscription',
-  'SubscriptionPayment', 'PriceHistory',
+  'FinancialPeriodAudit', 'Rental', 'RentalOperatingHour', 'Customer', 'Subscription',
+  'SubscriptionPayment', 'PriceHistory', 'CostCenter', 'CostAllocation', 'OperatingCostRule',
 ]);
 const CACHE_MUTATIONS = new Set(['create', 'createMany', 'update', 'updateMany', 'upsert', 'delete', 'deleteMany']);
 
