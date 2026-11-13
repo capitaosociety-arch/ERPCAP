@@ -47,6 +47,7 @@ export type RenewalRentalDraft = {
   end: string;
   amount: number;
   status: 'PENDING';
+  source?: 'SUBSCRIPTION' | 'WALK_IN' | 'MANUAL' | 'LEGACY';
 };
 
 function weekdayOf(value: Date | string): number {
@@ -174,6 +175,7 @@ export function generateRenewalDraftsFromPattern(
       end: pattern.end,
       amount: pattern.amount,
       status: 'PENDING',
+      source: 'SUBSCRIPTION',
     });
   }
   return generated;

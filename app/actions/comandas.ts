@@ -9,6 +9,7 @@ import { createAuditLog } from "./audit";
 import { effectiveAverageCost, recordInventoryCost, weightedAverageCost } from "../../lib/inventory-cost";
 import { formatQuantityInput, maxQuantityForExistingItem } from "../../lib/quantity-input";
 import { lockOrderItemRow, lockStockRow } from "../../lib/stock-lock";
+import { resolveLinkedRental, type RentalBookingInput } from "../../lib/rental-booking";
 import { assertFinancialPeriodOpen } from "./financial-periods";
 
 const COMANDAS_ACCESS = ["permPDV", "permComandas"] as const;
@@ -53,10 +54,21 @@ export async function closeComanda(orderId: string) {
     revalidatePath("/dashboard");
 }
 
-export async function addItemToOrder(orderId: string, itemId: string, quantity: number, price: number, isService: boolean = false) {
+export async function addItemToOrder(orderId: string, itemId: string, quantity: number, price: number, isService: boolean = false, rentalId?: string, rentalBooking?: RentalBookingInput) {
     await requirePermission([...COMANDAS_ACCESS]);
 
     await prisma.$transaction(async (tx) => {
+        const linkedRental = rentalBooking
+            ? await resolveLinkedRental(tx, { ...rentalBooking, amount: rentalBooking.amount ?? price * quantity })
+            : null;
+        const finalRentalId = rentalId || linkedRental?.id || null;
+        if (finalRentalId) {
+            const duplicateLink = await tx.orderItem.findFirst({
+                where: { rentalId: finalRentalId, status: "ACTIVE" },
+                select: { id: true },
+            });
+            if (duplicateLink) throw new Error("Esta reserva ja esta vinculada a um item ativo.");
+        }
         const product = !isService
             ? await tx.product.findUnique({ where: { id: itemId }, select: { cost: true, isService: true, stockControlled: true, allowFractional: true } })
             : null;
@@ -82,7 +94,8 @@ export async function addItemToOrder(orderId: string, itemId: string, quantity: 
                 quantity,
                 unitPrice: price,
                 subtotal: quantity * price,
-                status: "ACTIVE"
+                status: "ACTIVE",
+                rentalId: finalRentalId || undefined
             }
         });
 
@@ -174,7 +187,7 @@ export async function processPayment(orderId: string, amount: number, method: st
         // 3. Avalia o Fechamento
         const order = await tx.order.findUnique({
             where: { id: orderId },
-            include: { payments: true }
+            include: { payments: true, items: { select: { rentalId: true } } }
         });
 
         if (order) {
@@ -187,6 +200,13 @@ export async function processPayment(orderId: string, amount: number, method: st
                     where: { id: orderId },
                     data: { status: "CLOSED", closedAt: new Date() }
                 });
+                const rentalIds = Array.from(new Set(order.items.map(item => item.rentalId).filter((id): id is string => !!id)));
+                if (rentalIds.length > 0) {
+                    await tx.rental.updateMany({
+                        where: { id: { in: rentalIds }, status: { not: 'CANCELED' } },
+                        data: { status: 'PAID' },
+                    });
+                }
             }
         }
     });
@@ -368,6 +388,13 @@ export async function removeItemFromOrder(orderItemId: string) {
             data: { total: { decrement: item.subtotal } }
         });
 
+        if (item.rentalId) {
+            await tx.rental.updateMany({
+                where: { id: item.rentalId, status: { not: 'CANCELED' } },
+                data: { status: 'CANCELED', cancelledAt: new Date() },
+            });
+        }
+
         // 3. Deleta o item
         await tx.orderItem.delete({
             where: { id: orderItemId }
@@ -455,6 +482,14 @@ export async function deleteComandaAction(orderId: string) {
             });
         }
 
+        const linkedRentalIds = Array.from(new Set(order.items.map(item => item.rentalId).filter((id): id is string => !!id)));
+        if (linkedRentalIds.length > 0) {
+            await tx.rental.updateMany({
+                where: { id: { in: linkedRentalIds }, status: { not: 'CANCELED' } },
+                data: { status: 'CANCELED', cancelledAt: new Date() },
+            });
+        }
+
         // 3. Marca como cancelado
         await tx.order.update({
             where: { id: orderId },
@@ -503,6 +538,17 @@ export async function voidPaymentAction(paymentId: string) {
                         closedAt: null
                     }
                 });
+                const linkedItems = await tx.orderItem.findMany({
+                    where: { orderId: payment.orderId, rentalId: { not: null } },
+                    select: { rentalId: true },
+                });
+                const rentalIds = Array.from(new Set(linkedItems.map(item => item.rentalId).filter((id): id is string => !!id)));
+                if (rentalIds.length > 0) {
+                    await tx.rental.updateMany({
+                        where: { id: { in: rentalIds }, status: 'PAID' },
+                        data: { status: 'PENDING' },
+                    });
+                }
             }
 
             await tx.auditLog.create({

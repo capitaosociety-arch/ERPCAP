@@ -41,6 +41,7 @@ export interface RentalInput {
   endTime: Date;
   totalAmount: number;
   status: string;
+  source?: string;
 }
 
 export interface OccupancyConfig {
@@ -169,6 +170,13 @@ export interface OccupancyOpportunity {
   demandWeight?: number;
 }
 
+export interface OccupancySourceBreakdown {
+  source: string;
+  reservedHours: number;
+  effectiveHours: number;
+  count: number;
+}
+
 export interface OccupancyReport {
   available: boolean;
   reason?: string;
@@ -188,6 +196,7 @@ export interface OccupancyReport {
     extraHoras?: number;
     extraReceita?: number;
     extraReservas?: number;
+    bySource?: OccupancySourceBreakdown[];
   };
   schedule?: RentalScheduleConfig;
   opportunities: OccupancyOpportunity[];
@@ -663,6 +672,7 @@ export function buildRegularOccupancy(
   const byHour = new Map<string, OccupancyHourRow & { field: string }>();
   const extraByHour = new Map<string, { field: string; hora: number; hours: number; revenue: number }>();
   const fieldAgg = new Map<string, { effective: number; reserved: number; noShow: number; revenue: number; agendaRevenue: number; extra: number; extraRevenue: number; extraReservations: number; count: number }>();
+  const sourceAgg = new Map<string, { reserved: number; effective: number; count: number }>();
 
   fieldNames.forEach(field => {
     fieldAgg.set(field, { effective: 0, reserved: 0, noShow: 0, revenue: 0, agendaRevenue: 0, extra: 0, extraRevenue: 0, extraReservations: 0, count: 0 });
@@ -688,6 +698,12 @@ export function buildRegularOccupancy(
     }
   });
 
+  const referenceNow = new Date();
+  const reservedSeen = new Set<string>();
+  const effectiveSeen = new Set<string>();
+  const noShowSeen = new Set<string>();
+  const extraSeen = new Set<string>();
+
   rentals.forEach(rental => {
     const field = rental.resource.toUpperCase();
     if (!fieldNames.includes(field) || rental.status === 'CANCELED' || rental.endTime <= rental.startTime) return;
@@ -695,9 +711,14 @@ export function buildRegularOccupancy(
     if (totalMinutes <= 0) return;
     const agg = fieldAgg.get(field)!;
     agg.count++;
-    const effective = rental.status === 'PAID' || rental.status === 'CONFIRMED';
-    const noShow = rental.status === 'NO_SHOW';
-    const amountPerMinute = rental.status === 'PAID' ? rental.totalAmount / totalMinutes : 0;
+    const source = rental.source || 'LEGACY';
+    const sourceStats = sourceAgg.get(source) || { reserved: 0, effective: 0, count: 0 };
+    sourceStats.count++;
+    sourceAgg.set(source, sourceStats);
+    const realized = rental.endTime <= referenceNow;
+    const effective = realized && (rental.status === 'PAID' || rental.status === 'CONFIRMED');
+    const noShow = realized && rental.status === 'NO_SHOW';
+    const amountPerMinute = rental.status === 'PAID' && realized ? rental.totalAmount / totalMinutes : 0;
     const agendaPerMinute = rental.totalAmount / totalMinutes;
     let rentalExtra = 0;
     for (let t = rental.startTime.getTime(); t < rental.endTime.getTime(); t += 60000) {
@@ -708,29 +729,47 @@ export function buildRegularOccupancy(
       const regular = isRegularMinute(schedule, d, field, minute);
       const dayKey = `${field}|${day}`;
       const hourKey = `${field}|${minute >= 0 ? Math.floor(minute / 60) : 0}`;
+      const minuteKey = `${field}|${day}|${minute}`;
       if (regular) {
-        const dayRow = byDay.get(dayKey);
-        const hourRow = byHour.get(hourKey);
-        if (dayRow) {
-          dayRow.reservadoMin += 1;
-          if (effective) dayRow.efetivoMin += 1;
-          if (noShow) dayRow.noShowMin += 1;
-          if (rental.status === 'PAID') dayRow.receitaRealizada += amountPerMinute;
+        const firstReserved = !reservedSeen.has(minuteKey);
+        const firstEffective = effective && !effectiveSeen.has(minuteKey);
+        const firstNoShow = noShow && !noShowSeen.has(minuteKey);
+        if (firstReserved) {
+          reservedSeen.add(minuteKey);
+          const dayRow = byDay.get(dayKey);
+          const hourRow = byHour.get(hourKey);
+          if (dayRow) dayRow.reservadoMin += 1;
+          if (hourRow) hourRow.reservadoMin += 1;
+          agg.reserved += 1;
+          sourceStats.reserved += 1;
+          agg.agendaRevenue += agendaPerMinute;
         }
-        if (hourRow) {
-          hourRow.reservadoMin += 1;
-          if (effective) hourRow.efetivoMin += 1;
-          if (noShow) hourRow.noShowMin += 1;
-          if (rental.status === 'PAID') hourRow.receitaRealizada += amountPerMinute;
+        if (firstEffective) {
+          effectiveSeen.add(minuteKey);
+          const dayRow = byDay.get(dayKey);
+          const hourRow = byHour.get(hourKey);
+          if (dayRow) dayRow.efetivoMin += 1;
+          if (hourRow) hourRow.efetivoMin += 1;
+          agg.effective += 1;
+          sourceStats.effective += 1;
+          if (rental.status === 'PAID') {
+            if (dayRow) dayRow.receitaRealizada += amountPerMinute;
+            if (hourRow) hourRow.receitaRealizada += amountPerMinute;
+            agg.revenue += amountPerMinute;
+          }
         }
-        agg.reserved += 1;
-        if (effective) agg.effective += 1;
-        if (noShow) agg.noShow += 1;
-        if (rental.status === 'PAID') agg.revenue += amountPerMinute;
-        agg.agendaRevenue += agendaPerMinute;
+        if (firstNoShow) {
+          noShowSeen.add(minuteKey);
+          const dayRow = byDay.get(dayKey);
+          const hourRow = byHour.get(hourKey);
+          if (dayRow) dayRow.noShowMin += 1;
+          if (hourRow) hourRow.noShowMin += 1;
+          agg.noShow += 1;
+        }
       } else {
         rentalExtra += 1;
-        if (effective) {
+        if (effective && !extraSeen.has(minuteKey)) {
+          extraSeen.add(minuteKey);
           agg.extra += 1;
           if (rental.status === 'PAID') agg.extraRevenue += amountPerMinute;
           const h = Math.floor(minute / 60);
@@ -824,6 +863,12 @@ export function buildRegularOccupancy(
       extraHoras: round2(totalExtra),
       extraReceita: round2(totalExtraRevenue),
       extraReservas: totalExtraReservations,
+      bySource: Array.from(sourceAgg.entries()).map(([sourceKey, stats]) => ({
+        source: sourceKey,
+        reservedHours: round2(stats.reserved / 60),
+        effectiveHours: round2(stats.effective / 60),
+        count: stats.count,
+      })),
     },
     opportunities: opportunities.slice(0, 12),
     source: ['Rental'],
@@ -834,7 +879,7 @@ export async function getOccupancyReport(from: Date, to: Date, scheduleConfig?: 
   const [rentals, schedule] = await Promise.all([
     prisma.rental.findMany({
       where: { startTime: { lt: to }, endTime: { gt: from }, status: { not: 'CANCELED' } },
-      select: { resource: true, startTime: true, endTime: true, totalAmount: true, status: true },
+      select: { resource: true, startTime: true, endTime: true, totalAmount: true, status: true, source: true },
     }),
     scheduleConfig ? Promise.resolve(scheduleConfig) : getRentalSchedule(),
   ]);
@@ -883,7 +928,7 @@ export async function getRevenueMixReport(from: Date, to: Date): Promise<Revenue
     }),
     prisma.rental.findMany({
       where: { startTime: { gte: from, lte: to } },
-      select: { resource: true, startTime: true, endTime: true, totalAmount: true, status: true },
+      select: { resource: true, startTime: true, endTime: true, totalAmount: true, status: true, source: true },
     }),
   ]);
   return buildRevenueMix(orders as any, rentals);

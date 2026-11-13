@@ -6,6 +6,7 @@ import { createComanda, closeComanda, addItemToOrder, processPayment, removeItem
 import { createCustomerQuick } from '../../actions/customers';
 import { sortProducts } from '../../../lib/product-sort';
 import EditableQuantity from '../../../components/EditableQuantity';
+import RentalBookingModal, { type RentalBookingDraft } from '../../../components/RentalBookingModal';
 
 export default function ComandaBoard({ openOrders, products, openRegister, customers }: { openOrders: any[], products: any[], openRegister?: any, customers?: { id: string; name: string; phone: string | null }[] }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -23,6 +24,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
     const [addingItemId, setAddingItemId] = useState<string | null>(null);
     const [productSearch, setProductSearch] = useState("");
     const [selectedQty, setSelectedQty] = useState(1);
+    const [bookingProduct, setBookingProduct] = useState<any>(null);
 
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
     const [viewOrder, setViewOrder] = useState<any>(null);
@@ -72,13 +74,46 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
         setIsProductModalOpen(true);
     };
 
+    const isFieldRentalProduct = (product: any) => /fut\s*5|fut5|fut\s*7|fut7|aluguel.*campo|campo.*aluguel/i.test(String(product?.name || ''));
+
     const handleConfirmAddProduct = async (product: any) => {
         if(!selectedOrder) return;
+        if (isFieldRentalProduct(product)) {
+            setBookingProduct(product);
+            return;
+        }
         setAddingItemId(product.id);
         try {
             await addItemToOrder(selectedOrder.id, product.id, selectedQty, product.price);
         } catch (e: any) {
             alert(e?.message || "Erro ao adicionar produto.");
+        } finally {
+            setSelectedQty(1);
+            setAddingItemId(null);
+        }
+    };
+
+    const handleConfirmBooking = async (draft: RentalBookingDraft | null) => {
+        if (!selectedOrder || !bookingProduct) return;
+        setAddingItemId(bookingProduct.id);
+        try {
+            await addItemToOrder(
+                selectedOrder.id,
+                bookingProduct.id,
+                selectedQty,
+                bookingProduct.price,
+                false,
+                undefined,
+                draft ? {
+                    ...draft,
+                    customerId: selectedOrder.customerId || draft.customerId,
+                    amount: Number(bookingProduct.price) * selectedQty,
+                } : undefined
+            );
+            setIsProductModalOpen(false);
+            setBookingProduct(null);
+        } catch (e: any) {
+            alert(e?.message || "Erro ao adicionar aluguel.");
         } finally {
             setSelectedQty(1);
             setAddingItemId(null);
@@ -650,6 +685,19 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                     </div>
                 </div>
             )})()}
+
+            {bookingProduct && selectedOrder && (
+                <RentalBookingModal
+                    productName={bookingProduct.name}
+                    suggestedResource={/fut7/i.test(bookingProduct.name) ? 'FUT7' : 'FUT5'}
+                    amount={Number(bookingProduct.price) || 0}
+                    customerId={selectedOrder.customerId || undefined}
+                    onConfirm={(draft) => handleConfirmBooking(draft)}
+                    onWithoutOccupancy={() => handleConfirmBooking(null)}
+                    onClose={() => setBookingProduct(null)}
+                    saving={addingItemId === bookingProduct.id}
+                />
+            )}
         </div>
     )
 }

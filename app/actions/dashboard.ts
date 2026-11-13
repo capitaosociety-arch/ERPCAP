@@ -2,7 +2,8 @@
 
 import { prisma } from "../../lib/prisma";
 import { requireUser } from "../../lib/auth-guard";
-import { getRentalSchedule, regularMinutesForDay, weekDayCuiaba } from "../../lib/rental-schedule";
+import { getRentalSchedule } from "../../lib/rental-schedule";
+import { buildRegularOccupancy } from "../../lib/commercial-analytics";
 
 export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') {
   await requireUser();
@@ -141,7 +142,7 @@ export async function getDashboardKpis() {
 
     const [rentals, payments, costMovements, closedOrders, subPayments] = await Promise.all([
       prisma.rental.findMany({ 
-        where: { startTime: { gte: startOfDay, lte: endOfDay } } 
+        where: { startTime: { lt: endOfDay }, endTime: { gt: startOfDay } }
       }),
       prisma.payment.findMany({
         where: { date: { gte: startOfDay, lte: endOfDay } },
@@ -184,18 +185,16 @@ export async function getDashboardKpis() {
 
     // 1. Taxa de Ocupação (Capacidade: 16h/dia)
     const schedule = await getRentalSchedule();
-    const todayDate = new Date(`${todayStr}T12:00:00-04:00`);
-    const capacityHours = ['FUT5', 'FUT7'].reduce(
-      (sum, field) => sum + regularMinutesForDay(schedule.entries, weekDayCuiaba(todayDate), field) / 60,
-      0
+    const occupancy = buildRegularOccupancy(
+      rentals
+        .filter(r => r.status !== 'CANCELED' && r.startTime < endOfDay && r.endTime > startOfDay)
+        .map(r => ({ resource: r.resource, startTime: r.startTime, endTime: r.endTime, totalAmount: r.totalAmount, status: r.status, source: r.source })),
+      startOfDay,
+      endOfDay,
+      schedule
     );
-    const totalBookedHours = rentals
-      .filter(r => r.status !== 'CANCELED' && (isFut5(r.resource) || isFut7(r.resource)))
-      .reduce((acc, r) => {
-        const duration = (r.endTime.getTime() - r.startTime.getTime()) / (1000 * 60 * 60);
-        return acc + duration;
-      }, 0);
-    const occupancyRate = capacityHours > 0 ? (totalBookedHours / capacityHours) * 100 : 0;
+    const occupancyRate = occupancy.available ? occupancy.overall.ocupacaoEfetivaPct : 0;
+    const totalRentals = occupancy.fields.reduce((sum, field) => sum + field.reservas, 0);
 
     // 2. Ticket Médio Bar (Apenas produtos, excluindo aluguéis de campo)
     const barOrdersToday = closedOrders.filter(order => 
@@ -237,7 +236,7 @@ export async function getDashboardKpis() {
         barTicketAverage,
         fieldRevenue,
         dailyProfit,
-        totalRentals: rentals.length,
+        totalRentals,
         todayRevenue
     };
   } catch (error) {

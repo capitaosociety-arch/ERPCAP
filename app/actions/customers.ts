@@ -61,6 +61,7 @@ export type CustomerDossierRental = {
     end: string;
     amount: number;
     status?: string;
+    source?: string;
 };
 
 export type CustomerDossierPaymentUpdate = {
@@ -188,7 +189,7 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
 
         const existingRentals = await tx.rental.findMany({
             where: { customerId: customerId! },
-            select: { id: true, resource: true, status: true, startTime: true, endTime: true, totalAmount: true },
+            select: { id: true, resource: true, status: true, startTime: true, endTime: true, totalAmount: true, source: true },
         });
         const existingById = new Map(existingRentals.map((rental: any) => [rental.id, rental]));
         const deleteIds = Array.from(new Set((data.rentalDeleteIds || []).map(String)));
@@ -207,7 +208,11 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
                 || startTime.getTime() !== new Date(previous.startTime).getTime()
                 || endTime.getTime() !== new Date(previous.endTime).getTime();
             const changed = timeChanged || !previous || status !== previous.status || amount !== Number(previous.totalAmount);
-            return { ...rental, resource, status, amount, startTime, endTime, changed, timeChanged };
+            const source = rental.source || (previous?.source || (previous ? undefined : 'MANUAL'));
+            if (source && !['SUBSCRIPTION', 'WALK_IN', 'MANUAL', 'LEGACY'].includes(source)) {
+                throw new Error("Origem da reserva invalida.");
+            }
+            return { ...rental, resource, status, amount, startTime, endTime, changed, timeChanged, source };
         });
         const changedIds = preparedRentals
             .filter((rental) => rental.timeChanged && rental.id)
@@ -250,6 +255,17 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
             }
         }
 
+        const changedLinkedIds = preparedRentals
+            .filter((rental) => rental.id && rental.changed)
+            .map((rental) => rental.id!);
+        const protectedRentalIds = [...new Set([...deleteIds, ...changedLinkedIds])];
+        if (protectedRentalIds.length > 0) {
+            const linkedToOrder = await tx.orderItem.findFirst({
+                where: { rentalId: { in: protectedRentalIds }, status: 'ACTIVE' },
+                select: { id: true },
+            });
+            if (linkedToOrder) throw new Error("Reserva vinculada a um lancamento ativo nao pode ser alterada ou excluida por aqui.");
+        }
         for (const id of deleteIds) {
             if (!existingById.has(id)) throw new Error("Reserva para exclusao nao pertence a este cliente.");
             await tx.rental.delete({ where: { id } });
@@ -266,6 +282,7 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
                     totalAmount: rental.amount,
                     status: rental.status,
                     cancelledAt: rental.status === 'CANCELED' ? (previous.status === 'CANCELED' ? undefined : new Date()) : null,
+                    ...(rental.source ? { source: rental.source } : {}),
                 },
             });
         }
@@ -279,6 +296,7 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
                     endTime: rental.endTime,
                     totalAmount: rental.amount,
                     status: rental.status,
+                    source: rental.source || 'MANUAL',
                     cancelledAt: rental.status === 'CANCELED' ? new Date() : null,
                 })),
             });
@@ -479,7 +497,7 @@ export async function createRental(customerId: string, resource: string, date: s
     await prisma.$transaction(async (tx) => {
         await assertRentalAvailable(tx, resource.trim(), startTime, endTime);
         await tx.rental.create({
-            data: { customerId, resource: resource.trim(), startTime, endTime, totalAmount: validAmount, status: 'PENDING' }
+            data: { customerId, resource: resource.trim(), startTime, endTime, totalAmount: validAmount, status: 'PENDING', source: 'MANUAL' }
         });
     });
 

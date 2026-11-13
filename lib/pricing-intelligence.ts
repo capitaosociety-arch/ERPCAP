@@ -561,20 +561,20 @@ export async function getPricingReport(period: string, includeCustomerNames = tr
     getRentalSchedule(),
     prisma.rental.findMany({
       where: { startTime: { lte: range.to } },
-      select: { id: true, customerId: true, resource: true, startTime: true, endTime: true, totalAmount: true, status: true, customer: { select: { name: true } } },
+      select: { id: true, customerId: true, resource: true, startTime: true, endTime: true, totalAmount: true, status: true, source: true, customer: { select: { name: true } } },
       orderBy: { startTime: 'asc' },
     }),
   ]);
   const occupancy = buildRegularOccupancy(
     rentals
       .filter(r => r.startTime < range.to && r.endTime > range.from && r.status !== 'CANCELED')
-      .map(r => ({ resource: r.resource, startTime: r.startTime, endTime: r.endTime, totalAmount: r.totalAmount, status: r.status })),
+      .map(r => ({ resource: r.resource, startTime: r.startTime, endTime: r.endTime, totalAmount: r.totalAmount, status: r.status, source: r.source })),
     range.from,
     range.to,
     schedule
   );
   return buildPricingReport(
-    rentals.map(r => ({ id: r.id, customerId: r.customerId, customerName: r.customer.name, resource: r.resource, startTime: r.startTime, endTime: r.endTime, totalAmount: r.totalAmount, status: r.status })),
+    rentals.map(r => ({ id: r.id, customerId: r.customerId, customerName: r.customer.name, resource: r.resource, startTime: r.startTime, endTime: r.endTime, totalAmount: r.totalAmount, status: r.status, source: r.source })),
     occupancy,
     schedule,
     period,

@@ -16,6 +16,7 @@
     "test:pricing": "tsx scripts/tests/pricing-intelligence.test.ts",
     "test:quantity": "tsx scripts/tests/quantity-input.test.ts",
     "test:rental-time": "tsx scripts/tests/rental-time.test.ts",
+    "test:rental-booking": "tsx scripts/tests/rental-booking.test.ts",
     "test:rental-renewal": "tsx scripts/tests/rental-renewal.test.ts",
     "test:subscription-date": "tsx scripts/tests/subscription-date.test.ts",
     "seed": "tsx prisma/seed.ts"

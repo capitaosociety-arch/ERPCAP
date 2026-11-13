@@ -92,6 +92,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       end: formatRentalTimeInput(rent.endTime),
       amount: Number(rent.totalAmount) || 0,
       status: rent.status,
+      source: rent.source || 'LEGACY',
   });
 
   const createRequestKey = () => {
@@ -217,6 +218,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                   end: rental.end,
                   amount: Number(rental.amount) || 0,
                   status: rental.status,
+                  source: rental.source,
               })),
               rentalDeleteIds: Array.from(originalRentalIds).filter((id: any) => !draftRentalIds.has(id)).map(String),
               paymentUpdates: paymentDrafts
@@ -440,6 +442,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
               end: formatRentalTimeInput(endTime),
               amount: Number(rentalAmount) || 0,
               status: 'PENDING',
+              source: 'MANUAL',
           };
           setRentalDrafts(prev => [...prev, draft]);
           setRentalResource("");

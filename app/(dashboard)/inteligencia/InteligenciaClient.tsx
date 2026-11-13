@@ -24,6 +24,13 @@ function shiftMonthKey(period: string, delta: number): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+const OCCUPANCY_SOURCE_LABEL: Record<string, string> = {
+  SUBSCRIPTION: 'Mensalista',
+  WALK_IN: 'Avulso (PDV)',
+  MANUAL: 'Manual',
+  LEGACY: 'Não identificada',
+};
+
 const SECTION_META: Record<Secao, { titulo: string; icone: any; cores: { bg: string; border: string; text: string; badge: string; grad: string } }> = {
   RISCO: {
     titulo: 'Riscos',
@@ -349,6 +356,15 @@ export default function InteligenciaClient({
                       <span className="text-slate-700">{f.ocupacaoEfetivaPct}% · {f.efetivoHoras}h reg.</span>
                     </div>
                   ))}
+                  {(report.commercial.occupancy.overall.bySource || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1 border-t border-slate-100">
+                      {(report.commercial.occupancy.overall.bySource || []).map((origem: any) => (
+                        <span key={origem.source} className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-600">
+                          {OCCUPANCY_SOURCE_LABEL[origem.source] || origem.source}: {origem.effectiveHours}h
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {report.commercial.occupancy.overall.extraHoras > 0 && (
                     <div className="flex justify-between text-[11px] font-bold text-amber-700 pt-1 border-t border-amber-100">
                       <span>Extraordinário</span>

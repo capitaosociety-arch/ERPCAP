@@ -6,6 +6,7 @@ import { requirePermission } from "../../lib/auth-guard";
 import { effectiveAverageCost, recordInventoryCost, weightedAverageCost } from "../../lib/inventory-cost";
 import { formatQuantityInput } from "../../lib/quantity-input";
 import { lockStockRow } from "../../lib/stock-lock";
+import { assertUniqueRentalBookings, resolveLinkedRental, type RentalBookingInput } from "../../lib/rental-booking";
 
 export async function processCheckoutAction(cart: any[]) {
   const user = await requirePermission("permPDV");
@@ -55,8 +56,24 @@ export async function processCheckoutAction(cart: any[]) {
 
   const total = safeCart.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
 
+  assertUniqueRentalBookings(
+    safeCart
+      .map((item): RentalBookingInput | null => item.rentalBooking || null)
+      .filter((booking): booking is RentalBookingInput => booking !== null)
+  );
+
   // Registra a venda como OPEN (Pendente de pagamento para usar Modal)
   const order = await prisma.$transaction(async (tx) => {
+    const linkedRentalIds = new Map<number, string>();
+    for (let index = 0; index < safeCart.length; index++) {
+      const item = safeCart[index];
+      if (!item.rentalBooking) continue;
+      const linked = await resolveLinkedRental(tx, {
+        ...item.rentalBooking,
+        amount: item.rentalBooking.amount ?? item.product.price * item.quantity,
+      });
+      linkedRentalIds.set(index, linked.id);
+    }
     const newOrder = await tx.order.create({
       data: {
         userId,
@@ -64,12 +81,13 @@ export async function processCheckoutAction(cart: any[]) {
         total,
         notes: "Caixa Rápido (PDV)",
         items: {
-          create: safeCart.map(item => ({
+          create: safeCart.map((item, index) => ({
             productId: item.product.catalogType === 'service' ? undefined : item.product.id,
             serviceId: item.product.catalogType === 'service' ? item.product.id : undefined,
             quantity: item.quantity,
             unitPrice: item.product.price,
-            subtotal: item.product.price * item.quantity
+            subtotal: item.product.price * item.quantity,
+            rentalId: item.rentalId || linkedRentalIds.get(index) || undefined
           }))
         }
       }
@@ -217,6 +235,14 @@ export async function cancelOrderAction(orderId: string) {
     }
 
     // Marca como cancelado (Podemos também deletar para não lixar o banco, mas CANCELED é melhor para auditoria)
+    const linkedRentalIds = Array.from(new Set(order.items.map(item => item.rentalId).filter((id): id is string => !!id)));
+    if (linkedRentalIds.length > 0) {
+      await tx.rental.updateMany({
+        where: { id: { in: linkedRentalIds }, status: { not: 'CANCELED' } },
+        data: { status: 'CANCELED', cancelledAt: new Date() },
+      });
+    }
+
     await tx.order.update({
       where: { id: orderId },
       data: { status: "CANCELED", notes: (order.notes || "") + " [CANCELADO]" }

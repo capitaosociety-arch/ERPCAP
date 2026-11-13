@@ -8,6 +8,7 @@ import { Check, Search, X, Receipt, QrCode, CreditCard, Banknote, ShoppingCart, 
 import { sortProducts } from '../../../lib/product-sort';
 import { formatQuantityInput } from '../../../lib/quantity-input';
 import EditableQuantity from '../../../components/EditableQuantity';
+import RentalBookingModal, { type RentalBookingDraft } from '../../../components/RentalBookingModal';
 
 export default function PDVClient({ products, services = [], categories, user, openRegister }: any) {
   const [cart, setCart] = useState<any[]>([]);
@@ -37,6 +38,7 @@ export default function PDVClient({ products, services = [], categories, user, o
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [addingItemId, setAddingItemId] = useState<string | null>(null);
   const [itemSearch, setItemSearch] = useState('');
+  const [bookingProduct, setBookingProduct] = useState<any>(null);
 
   const virtualCategories = [...categories, { id: 'SERVICES', name: 'Serviços' }];
   const allItems = useMemo(() => sortProducts([
@@ -69,7 +71,9 @@ export default function PDVClient({ products, services = [], categories, user, o
     alert(`Estoque insuficiente! Quantidade maxima permitida: ${formatQuantityInput(max, allowFractional)}.`);
   };
 
-  const addItem = (product: any) => {
+  const isFieldRentalProduct = (product: any) => /fut\s*5|fut5|fut\s*7|fut7|aluguel.*campo|campo.*aluguel/i.test(String(product?.name || ''));
+
+  const addItem = (product: any, rentalBooking?: RentalBookingDraft) => {
     const step = product.allowFractional ? 0.5 : 1;
     const existing = cart.find(c => c.product.id === product.id);
     const next = existing ? roundQty(existing.quantity + step) : step;
@@ -80,7 +84,15 @@ export default function PDVClient({ products, services = [], categories, user, o
     }
     setCart(prev => existing
       ? prev.map(c => c.product.id === product.id ? { ...c, quantity: next } : c)
-      : [...prev, { product, quantity: next }]);
+      : [...prev, { product, quantity: next, rentalBooking }]);
+  };
+
+  const handleProductSelect = (product: any) => {
+    if (isFieldRentalProduct(product)) {
+      setBookingProduct(product);
+      return;
+    }
+    addItem(product);
   };
 
   const updateCartQty = (id: string, delta: number) => {
@@ -329,7 +341,7 @@ export default function PDVClient({ products, services = [], categories, user, o
           {filteredProducts.length === 0 ? (
               <div className="col-span-full py-10 text-center text-gray-400 font-bold">Nenhum produto cadastrado com estoque &gt; 0.</div>
           ) : filteredProducts.map((product: any) => (
-            <div key={product.id} onClick={() => addItem(product)} className="bg-slate-50 p-2.5 sm:p-4 rounded-2xl cursor-pointer border-2 border-transparent hover:border-mrts-blue hover:shadow-lg transition transform hover:-translate-y-1 group relative">
+            <div key={product.id} onClick={() => handleProductSelect(product)} className="bg-slate-50 p-2.5 sm:p-4 rounded-2xl cursor-pointer border-2 border-transparent hover:border-mrts-blue hover:shadow-lg transition transform hover:-translate-y-1 group relative">
                <span className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 bg-mrts-blue text-white text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded-md shadow-sm">
                  {product.isService ? 'SERVIÇO' : `ESTOQUE ${product.stock?.quantity}`}
                </span>
@@ -797,6 +809,23 @@ export default function PDVClient({ products, services = [], categories, user, o
                   </div>
               </div>
           </div>
+      )}
+
+      {bookingProduct && (
+        <RentalBookingModal
+          productName={bookingProduct.name}
+          suggestedResource={/fut7/i.test(bookingProduct.name) ? 'FUT7' : 'FUT5'}
+          amount={Number(bookingProduct.price) || 0}
+          onConfirm={(draft) => {
+            addItem(bookingProduct, { ...draft, amount: Number(bookingProduct.price) || 0 });
+            setBookingProduct(null);
+          }}
+          onWithoutOccupancy={() => {
+            addItem(bookingProduct);
+            setBookingProduct(null);
+          }}
+          onClose={() => setBookingProduct(null)}
+        />
       )}
     </div>
   );

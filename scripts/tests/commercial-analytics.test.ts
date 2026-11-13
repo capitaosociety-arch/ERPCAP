@@ -95,8 +95,8 @@ assert.equal(defaultConfig.source, 'default');
 assert.ok(defaultConfig.closeHour > defaultConfig.openHour);
 
 const regularOccupancy = buildRegularOccupancy([
-  { resource: 'FUT5', startTime: new Date('2026-10-05T18:00:00-04:00'), endTime: new Date('2026-10-05T19:00:00-04:00'), totalAmount: 100, status: 'PAID' },
-  { resource: 'FUT5', startTime: new Date('2026-10-05T17:00:00-04:00'), endTime: new Date('2026-10-05T18:00:00-04:00'), totalAmount: 80, status: 'PAID' },
+  { resource: 'FUT5', startTime: new Date('2026-10-05T18:00:00-04:00'), endTime: new Date('2026-10-05T19:00:00-04:00'), totalAmount: 100, status: 'PAID', source: 'SUBSCRIPTION' },
+  { resource: 'FUT5', startTime: new Date('2026-10-05T17:00:00-04:00'), endTime: new Date('2026-10-05T18:00:00-04:00'), totalAmount: 80, status: 'PAID', source: 'WALK_IN' },
   { resource: 'FUT7', startTime: new Date('2026-10-05T22:00:00-04:00'), endTime: new Date('2026-10-06T00:00:00-04:00'), totalAmount: 150, status: 'PAID' },
 ], new Date('2026-10-05T00:00:00-04:00'), new Date('2026-10-06T23:59:59-04:00'), {
   entries: DEFAULT_RENTAL_SCHEDULE,
@@ -113,5 +113,32 @@ assert.equal(regularOccupancy.overall.extraReservas, 2);
 assert.equal(regularOccupancy.overall.ocupacaoEfetivaPct, 10);
 assert.equal(regularOccupancy.fields.find(f => f.campo === 'FUT7')?.porDia.length, 2);
 assert.equal(regularOccupancy.fields.find(f => f.campo === 'FUT5')?.extraHoras, 1);
+assert.equal(regularOccupancy.overall.bySource?.find(s => s.source === 'SUBSCRIPTION')?.effectiveHours, 1);
+assert.equal(regularOccupancy.overall.bySource?.find(s => s.source === 'WALK_IN')?.count, 1);
+assert.equal(regularOccupancy.overall.bySource?.find(s => s.source === 'LEGACY')?.count, 1);
 
 console.log('commercial-analytics tests: OK');
+
+const overlapping = buildRegularOccupancy([
+  { resource: 'FUT5', startTime: new Date('2026-10-05T18:00:00-04:00'), endTime: new Date('2026-10-05T19:00:00-04:00'), totalAmount: 100, status: 'PAID' },
+  { resource: 'FUT5', startTime: new Date('2026-10-05T18:00:00-04:00'), endTime: new Date('2026-10-05T19:00:00-04:00'), totalAmount: 100, status: 'PAID' },
+], new Date('2026-10-05T00:00:00-04:00'), new Date('2026-10-05T23:59:59-04:00'), {
+  entries: DEFAULT_RENTAL_SCHEDULE,
+  source: 'default',
+  configured: false,
+  note: DEFAULT_SCHEDULE_NOTE,
+});
+assert.equal(overlapping.overall.reservadoHoras, 1);
+assert.equal(overlapping.overall.efetivoHoras, 1);
+assert.equal(overlapping.overall.receitaRealizada, 100);
+
+const futureOccupancy = buildRegularOccupancy([
+  { resource: 'FUT5', startTime: new Date('2099-01-05T18:00:00-04:00'), endTime: new Date('2099-01-05T19:00:00-04:00'), totalAmount: 100, status: 'CONFIRMED' },
+], new Date('2099-01-05T00:00:00-04:00'), new Date('2099-01-05T23:59:59-04:00'), {
+  entries: DEFAULT_RENTAL_SCHEDULE,
+  source: 'default',
+  configured: false,
+  note: DEFAULT_SCHEDULE_NOTE,
+});
+assert.equal(futureOccupancy.overall.reservadoHoras, 1);
+assert.equal(futureOccupancy.overall.efetivoHoras, 0);

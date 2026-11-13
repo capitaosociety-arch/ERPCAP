@@ -114,13 +114,16 @@ model OrderItem {
   subtotal    Float
   notes       String?
   status      String   @default("ACTIVE") // ACTIVE, CANCELED
+  rentalId    String?
 
   order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product     Product? @relation(fields: [productId], references: [id])
   service     Service? @relation(fields: [serviceId], references: [id])
+  rental      Rental?  @relation(fields: [rentalId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([productId])
+  @@index([rentalId])
 }
 
 model Product {
@@ -350,14 +353,17 @@ model Rental {
   endTime     DateTime
   totalAmount Float
   status      String   @default("PENDING") // PENDING, PAID, CANCELED, NO_SHOW
+  source      String   @default("LEGACY") // SUBSCRIPTION, WALK_IN, MANUAL, LEGACY
   cancelledAt DateTime?
   createdAt   DateTime @default(now())
 
   customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderItems  OrderItem[]
 
   @@index([customerId])
   @@index([status])
   @@index([startTime])
+  @@index([source])
 }
 
 model RentalOperatingHour {
