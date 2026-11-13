@@ -14,12 +14,19 @@ export type RentalBookingDraft = {
   amount: number;
 };
 
+type CustomerOption = {
+  id: string;
+  name: string;
+  phone?: string | null;
+};
+
 type Props = {
   productName: string;
   suggestedResource: string;
   amount: number;
   customerName?: string;
   customerId?: string;
+  customers?: CustomerOption[];
   onConfirm: (draft: RentalBookingDraft) => Promise<void> | void;
   onWithoutOccupancy: () => Promise<void> | void;
   onClose: () => void;
@@ -32,6 +39,7 @@ export default function RentalBookingModal({
   amount,
   customerName = '',
   customerId,
+  customers = [],
   onConfirm,
   onWithoutOccupancy,
   onClose,
@@ -46,13 +54,24 @@ export default function RentalBookingModal({
     end: '21:00',
     amount,
   });
+  const [selectedCustomerId, setSelectedCustomerId] = useState(customerId || '');
+  const [newCustomerName, setNewCustomerName] = useState(customerId ? customerName : '');
   const [error, setError] = useState('');
+
+  const lockedCustomer = Boolean(customerId);
+  const creatingCustomer = !lockedCustomer && selectedCustomerId === '__new__';
 
   const submit = async () => {
     if (!draft.resource.trim()) return setError('Informe o campo.');
-    if (!customerId && !draft.customerName.trim() && !customerName) return setError('Informe o cliente.');
+    if (!lockedCustomer && !selectedCustomerId) return setError('Selecione o cliente ou escolha novo cliente avulso.');
+    if (creatingCustomer && !newCustomerName.trim()) return setError('Informe o nome do novo cliente.');
     setError('');
-    await onConfirm({ ...draft, customerId, customerName: draft.customerName.trim(), resource: draft.resource.trim() });
+    await onConfirm({
+      ...draft,
+      customerId: lockedCustomer ? customerId : (creatingCustomer ? undefined : selectedCustomerId),
+      customerName: creatingCustomer ? newCustomerName.trim() : (customerName || ''),
+      resource: draft.resource.trim(),
+    });
   };
 
   return (
@@ -71,7 +90,36 @@ export default function RentalBookingModal({
         <div className="p-4 overflow-y-auto space-y-3">
           <div>
             <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Cliente</label>
-            <input value={draft.customerName} onChange={e => setDraft({ ...draft, customerName: e.target.value })} placeholder="Nome do cliente" className="w-full rounded-xl border-2 border-gray-200 px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue" />
+            {lockedCustomer ? (
+              <div className="w-full rounded-xl border-2 border-gray-100 bg-gray-50 px-3 py-2 text-sm font-bold text-slate-700">
+                {customerName || 'Cliente vinculado à comanda'}
+              </div>
+            ) : (
+              <>
+                <select
+                  value={selectedCustomerId}
+                  onChange={e => setSelectedCustomerId(e.target.value)}
+                  className="w-full rounded-xl border-2 border-gray-200 px-3 py-2 text-sm font-bold text-slate-700 bg-white outline-none focus:border-mrts-blue"
+                >
+                  <option value="">Selecione o cliente</option>
+                  {customers.map(customer => (
+                    <option key={customer.id} value={customer.id}>{customer.name}</option>
+                  ))}
+                  <option value="__new__">Novo cliente avulso</option>
+                </select>
+                {creatingCustomer && (
+                  <input
+                    value={newCustomerName}
+                    onChange={e => setNewCustomerName(e.target.value)}
+                    placeholder="Nome do novo cliente"
+                    className="mt-2 w-full rounded-xl border-2 border-gray-200 px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue"
+                  />
+                )}
+                {!creatingCustomer && selectedCustomerId && (
+                  <p className="text-[10px] text-gray-400 font-medium mt-1">A reserva será vinculada ao cliente selecionado.</p>
+                )}
+              </>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
@@ -94,7 +142,7 @@ export default function RentalBookingModal({
               <input type="time" value={draft.end} onChange={e => setDraft({ ...draft, end: e.target.value })} className="w-full rounded-xl border-2 border-gray-200 px-2 py-2 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue" />
             </div>
           </div>
-          <p className="text-[11px] text-gray-500 font-medium">O sistema reutiliza uma reserva existente com o mesmo cliente, campo, data e horario. Caso nao exista, cria uma nova reserva pendente.</p>
+          <p className="text-[11px] text-gray-500 font-medium">A reserva existente só é reutilizada quando o cliente selecionado, campo, data e horário coincidem. Caso não exista, uma nova reserva pendente será criada.</p>
           {error && <p className="text-xs text-red-600 font-bold">{error}</p>}
         </div>
 

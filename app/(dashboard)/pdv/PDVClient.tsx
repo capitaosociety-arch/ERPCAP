@@ -10,7 +10,7 @@ import { formatQuantityInput } from '../../../lib/quantity-input';
 import EditableQuantity from '../../../components/EditableQuantity';
 import RentalBookingModal, { type RentalBookingDraft } from '../../../components/RentalBookingModal';
 
-export default function PDVClient({ products, services = [], categories, user, openRegister }: any) {
+export default function PDVClient({ products, services = [], categories, customers = [], user, openRegister }: any) {
   const [cart, setCart] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCat, setActiveCat] = useState<string | null>(null);
@@ -39,6 +39,7 @@ export default function PDVClient({ products, services = [], categories, user, o
   const [addingItemId, setAddingItemId] = useState<string | null>(null);
   const [itemSearch, setItemSearch] = useState('');
   const [bookingProduct, setBookingProduct] = useState<any>(null);
+  const [bookingContext, setBookingContext] = useState<'cart' | 'payment'>('cart');
 
   const virtualCategories = [...categories, { id: 'SERVICES', name: 'Serviços' }];
   const allItems = useMemo(() => sortProducts([
@@ -73,9 +74,15 @@ export default function PDVClient({ products, services = [], categories, user, o
 
   const isFieldRentalProduct = (product: any) => /fut\s*5|fut5|fut\s*7|fut7|aluguel.*campo|campo.*aluguel/i.test(String(product?.name || ''));
 
+  const newCartLineId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
   const addItem = (product: any, rentalBooking?: RentalBookingDraft) => {
     const step = product.allowFractional ? 0.5 : 1;
-    const existing = cart.find(c => c.product.id === product.id);
+    if (rentalBooking) {
+      setCart(prev => [...prev, { lineId: newCartLineId(), product, quantity: 1, rentalBooking }]);
+      return;
+    }
+    const existing = cart.find(c => c.product.id === product.id && !c.rentalBooking);
     const next = existing ? roundQty(existing.quantity + step) : step;
     const max = cartStockLimit(product);
     if (next > max + 1e-9) {
@@ -83,21 +90,23 @@ export default function PDVClient({ products, services = [], categories, user, o
       return;
     }
     setCart(prev => existing
-      ? prev.map(c => c.product.id === product.id ? { ...c, quantity: next } : c)
-      : [...prev, { product, quantity: next, rentalBooking }]);
+      ? prev.map(c => c.lineId === existing.lineId ? { ...c, quantity: next } : c)
+      : [...prev, { lineId: newCartLineId(), product, quantity: next }]);
   };
 
   const handleProductSelect = (product: any) => {
     if (isFieldRentalProduct(product)) {
+      setBookingContext('cart');
       setBookingProduct(product);
       return;
     }
     addItem(product);
   };
 
-  const updateCartQty = (id: string, delta: number) => {
-    const item = cart.find(c => c.product.id === id);
+  const updateCartQty = (lineId: string, delta: number) => {
+    const item = cart.find(c => c.lineId === lineId);
     if (!item) return;
+    if (item.rentalBooking) return alert('A quantidade de uma reserva de campo nao pode ser alterada. Remova a linha e adicione novamente.');
     const step = item.product.allowFractional ? 0.5 : 1;
     const newQty = roundQty(item.quantity + delta);
     if (newQty < step) return;
@@ -106,20 +115,68 @@ export default function PDVClient({ products, services = [], categories, user, o
       stockLimitMessage(max, !!item.product.allowFractional);
       return;
     }
-    setCart(prev => prev.map(c => c.product.id === id ? { ...c, quantity: newQty } : c));
+    setCart(prev => prev.map(c => c.lineId === lineId ? { ...c, quantity: newQty } : c));
   };
 
-  const handleCartQuantityCommit = async (product: any, newQty: number) => {
+  const handleCartQuantityCommit = async (lineId: string, product: any, newQty: number) => {
+    const line = cart.find(c => c.lineId === lineId);
+    if (line?.rentalBooking) throw new Error('A quantidade de uma reserva de campo nao pode ser alterada.');
     const max = cartStockLimit(product);
     if (newQty > max + 1e-9) {
       stockLimitMessage(max, !!product.allowFractional);
       throw new Error('Quantidade acima do estoque.');
     }
-    setCart(prev => prev.map(c => c.product.id === product.id ? { ...c, quantity: newQty } : c));
+    setCart(prev => prev.map(c => c.lineId === lineId ? { ...c, quantity: newQty } : c));
   };
 
-  const removeItem = (id: string) => {
-    setCart(cart.filter((c) => c.product.id !== id));
+  const removeItem = (lineId: string) => {
+    setCart(cart.filter((c) => c.lineId !== lineId));
+  };
+
+  const refreshPaymentOrder = async (orderId: string) => {
+    const updatedOrder = await getOrderWithPayments(orderId);
+    if (!updatedOrder) return;
+    setPaymentOrder(updatedOrder);
+    const totalPaid = updatedOrder.payments?.reduce((acc: number, payment: any) => acc + payment.amount, 0) || 0;
+    const balance = updatedOrder.total - updatedOrder.discount - totalPaid;
+    setPaymentAmount(Math.max(0, balance).toFixed(2));
+  };
+
+  const handleBookingConfirm = async (draft: RentalBookingDraft | null) => {
+    if (!bookingProduct) return;
+    const unitPrice = Number(bookingProduct.price) || 0;
+    if (bookingContext === 'payment') {
+      if (!paymentOrder) return;
+      setAddingItemId(bookingProduct.id);
+      try {
+        await addItemToOrder(
+          paymentOrder.id,
+          bookingProduct.id,
+          1,
+          unitPrice,
+          false,
+          undefined,
+          draft ? { ...draft, amount: unitPrice } : undefined
+        );
+        await refreshPaymentOrder(paymentOrder.id);
+        setIsProductModalOpen(false);
+        setItemSearch('');
+        setBookingProduct(null);
+        setBookingContext('cart');
+      } catch (e: any) {
+        alert(e?.message || 'Erro ao adicionar aluguel.');
+      } finally {
+        setAddingItemId(null);
+      }
+      return;
+    }
+    if (draft) {
+      addItem(bookingProduct, { ...draft, amount: unitPrice });
+    } else {
+      addItem(bookingProduct);
+    }
+    setBookingProduct(null);
+    setBookingContext('cart');
   };
 
   const finalize = () => {
@@ -217,16 +274,15 @@ export default function PDVClient({ products, services = [], categories, user, o
   // Botao Magico para retocar pedido caso esqueceram algo
   const handleConfirmAddProduct = async (product: any) => {
       if(!paymentOrder) return;
+      if (isFieldRentalProduct(product)) {
+          setBookingContext('payment');
+          setBookingProduct(product);
+          return;
+      }
       setAddingItemId(product.id);
       try {
           await addItemToOrder(paymentOrder.id, product.id, 1, product.price, product.catalogType === 'service');
-          const updatedOrder = await getOrderWithPayments(paymentOrder.id);
-          if(updatedOrder) {
-              setPaymentOrder(updatedOrder);
-              const totalPaid = updatedOrder.payments?.reduce((acc: any, p: any) => acc + p.amount, 0) || 0;
-              const balance = updatedOrder.total - updatedOrder.discount - totalPaid;
-              setPaymentAmount(Math.max(0, balance).toFixed(2));
-          }
+          await refreshPaymentOrder(paymentOrder.id);
       } catch (e: any) {
           alert(e?.message || "Erro ao adicionar produto.");
       } finally {
@@ -384,7 +440,7 @@ export default function PDVClient({ products, services = [], categories, user, o
             </div>
           ) : (
             cart.map((item) => (
-              <div key={item.product.id} className="flex justify-between items-center bg-white p-2.5 sm:p-3 rounded-xl border border-gray-100 shadow-sm transition hover:shadow-md">
+              <div key={item.lineId} className="flex justify-between items-center bg-white p-2.5 sm:p-3 rounded-xl border border-gray-100 shadow-sm transition hover:shadow-md">
                 
                 <div className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-50 rounded-lg flex justify-center items-center mr-2 sm:mr-3 shrink-0 text-gray-500 font-bold border border-gray-100">
                   {item.quantity}x
@@ -393,26 +449,35 @@ export default function PDVClient({ products, services = [], categories, user, o
                 <div className="flex-1 min-w-0 pr-1.5 sm:pr-2">
                   <p className="font-bold text-slate-800 text-xs sm:text-sm truncate">{item.product.name}</p>
                   <p className="text-[11px] sm:text-xs font-semibold text-mrts-blue mt-0.5">R$ {item.product.price.toFixed(2).replace('.',',')}</p>
+                  {item.rentalBooking && (
+                    <p className="text-[10px] text-emerald-700 font-bold mt-0.5">
+                      {item.rentalBooking.resource} · {new Date(`${item.rentalBooking.date}T12:00:00`).toLocaleDateString('pt-BR')} · {item.rentalBooking.start}–{item.rentalBooking.end}
+                    </p>
+                  )}
                 </div>
                 
                 <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                  <div className="flex items-center gap-0.5 sm:gap-1 bg-gray-50 border border-gray-200 rounded-lg px-1 py-0.5">
-                    <button onClick={() => updateCartQty(item.product.id, -(item.product.allowFractional ? 0.5 : 1))} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-white hover:bg-red-400 rounded transition" title="Diminuir quantidade">
-                      <Minus size={13} strokeWidth={3} />
-                    </button>
-                    <EditableQuantity
-                      value={item.quantity}
-                      allowFractional={!!item.product.allowFractional}
-                      onCommit={(next) => handleCartQuantityCommit(item.product, next)}
-                      className="w-8 sm:w-9 text-center font-black text-slate-800 text-xs bg-transparent outline-none"
-                      ariaLabel="Quantidade no carrinho"
-                    />
-                    <button onClick={() => updateCartQty(item.product.id, (item.product.allowFractional ? 0.5 : 1))} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-white hover:bg-green-500 rounded transition" title="Aumentar quantidade">
-                      <Plus size={13} strokeWidth={3} />
-                    </button>
-                  </div>
+                  {item.rentalBooking ? (
+                    <span className="rounded-lg bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">Reserva</span>
+                  ) : (
+                    <div className="flex items-center gap-0.5 sm:gap-1 bg-gray-50 border border-gray-200 rounded-lg px-1 py-0.5">
+                      <button onClick={() => updateCartQty(item.lineId, -(item.product.allowFractional ? 0.5 : 1))} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-white hover:bg-red-400 rounded transition" title="Diminuir quantidade">
+                        <Minus size={13} strokeWidth={3} />
+                      </button>
+                      <EditableQuantity
+                        value={item.quantity}
+                        allowFractional={!!item.product.allowFractional}
+                        onCommit={(next) => handleCartQuantityCommit(item.lineId, item.product, next)}
+                        className="w-8 sm:w-9 text-center font-black text-slate-800 text-xs bg-transparent outline-none"
+                        ariaLabel="Quantidade no carrinho"
+                      />
+                      <button onClick={() => updateCartQty(item.lineId, (item.product.allowFractional ? 0.5 : 1))} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-white hover:bg-green-500 rounded transition" title="Aumentar quantidade">
+                        <Plus size={13} strokeWidth={3} />
+                      </button>
+                    </div>
+                  )}
                   <span className="font-black text-slate-800 text-xs sm:text-sm">R$ {(item.quantity * item.product.price).toFixed(2).replace('.',',')}</span>
-                  <button onClick={() => removeItem(item.product.id)} className="text-red-400 hover:text-white bg-red-50 hover:bg-red-500 p-1.5 sm:p-2 rounded-lg transition shadow-sm" title="Remover">
+                  <button onClick={() => removeItem(item.lineId)} className="text-red-400 hover:text-white bg-red-50 hover:bg-red-500 p-1.5 sm:p-2 rounded-lg transition shadow-sm" title="Remover">
                     <X size={15} strokeWidth={3}/>
                   </button>
                 </div>
@@ -816,15 +881,11 @@ export default function PDVClient({ products, services = [], categories, user, o
           productName={bookingProduct.name}
           suggestedResource={/fut7/i.test(bookingProduct.name) ? 'FUT7' : 'FUT5'}
           amount={Number(bookingProduct.price) || 0}
-          onConfirm={(draft) => {
-            addItem(bookingProduct, { ...draft, amount: Number(bookingProduct.price) || 0 });
-            setBookingProduct(null);
-          }}
-          onWithoutOccupancy={() => {
-            addItem(bookingProduct);
-            setBookingProduct(null);
-          }}
-          onClose={() => setBookingProduct(null)}
+          customers={customers}
+          onConfirm={handleBookingConfirm}
+          onWithoutOccupancy={() => handleBookingConfirm(null)}
+          onClose={() => { setBookingProduct(null); setBookingContext('cart'); }}
+          saving={addingItemId === bookingProduct.id}
         />
       )}
     </div>

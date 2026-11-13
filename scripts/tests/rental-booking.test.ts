@@ -78,6 +78,13 @@ async function main() {
     assert.throws(() => assertUniqueRentalBookings([input, { ...input }]), /mesma reserva/);
   }
 
+  {
+    const { tx, calls } = fakeTx();
+    const result = await resolveLinkedRental(tx, { ...input, customerId: null, customerName: 'Cliente Avulso' });
+    assert.deepEqual(result, { id: 'rental-new', created: true });
+    assert.equal(calls.rentalCreate, 1);
+  }
+
   console.log('rental-booking tests: OK');
 }
 

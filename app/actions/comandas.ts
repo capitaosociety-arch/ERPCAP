@@ -58,6 +58,9 @@ export async function addItemToOrder(orderId: string, itemId: string, quantity: 
     await requirePermission([...COMANDAS_ACCESS]);
 
     await prisma.$transaction(async (tx) => {
+        const order = await tx.order.findUnique({ where: { id: orderId }, select: { status: true } });
+        if (!order) throw new Error("Comanda nao encontrada.");
+        if (order.status !== "OPEN") throw new Error("Comanda fechada. Abra uma nova comanda para lancar o aluguel.");
         const linkedRental = rentalBooking
             ? await resolveLinkedRental(tx, { ...rentalBooking, amount: rentalBooking.amount ?? price * quantity })
             : null;
@@ -228,6 +231,9 @@ export async function processPayment(orderId: string, amount: number, method: st
 
         if (!item) throw new Error("Item não encontrado");
         if (item.order.status !== "OPEN") throw new Error("Apenas itens de comandas em aberto podem ser alterados");
+        const received = (await tx.payment.findMany({ where: { orderId: item.orderId }, select: { amount: true } }))
+            .reduce((sum, payment) => sum + payment.amount, 0);
+        if (received > 0.01) throw new Error("Comanda possui pagamento parcial. Estorne o valor recebido antes de alterar itens.");
 
         const delta = newQuantity - item.quantity;
         if (delta === 0) return;
@@ -328,6 +334,9 @@ export async function removeItemFromOrder(orderItemId: string) {
 
         if (!item) throw new Error("Item não encontrado");
         if (item.order.status !== "OPEN") throw new Error("Apenas itens de comandas em aberto podem ser removidos");
+        const received = (await tx.payment.findMany({ where: { orderId: item.orderId }, select: { amount: true } }))
+            .reduce((sum, payment) => sum + payment.amount, 0);
+        if (received > 0.01) throw new Error("Comanda possui pagamento parcial. Estorne o valor recebido antes de remover itens.");
 
         // 1. Estorna estoque se for produto, usando o custo original da venda
         const product = item.productId
@@ -419,6 +428,10 @@ export async function deleteComandaAction(orderId: string) {
 
         if (!order) throw new Error("Comanda não encontrada");
         if (order.status !== "OPEN") throw new Error("Apenas comandas abertas podem ser canceladas");
+        const received = order.payments.reduce((sum, payment) => sum + payment.amount, 0);
+        if (received > 0.01) {
+            throw new Error("Comanda possui pagamento parcial. Estorne o valor recebido antes de cancelar; os registros financeiros serao preservados.");
+        }
 
         // 1. Estorna estoque de todos os itens usando o custo original da venda
         for (const item of order.items) {
@@ -476,11 +489,7 @@ export async function deleteComandaAction(orderId: string) {
         }
 
         // 2. Remove pagamentos vinculados (se houver parciais) para não sujar o caixa
-        if (order.payments.length > 0) {
-            await tx.payment.deleteMany({
-                where: { orderId: orderId }
-            });
-        }
+        // Pagamentos existentes sao preservados para auditoria.
 
         const linkedRentalIds = Array.from(new Set(order.items.map(item => item.rentalId).filter((id): id is string => !!id)));
         if (linkedRentalIds.length > 0) {
@@ -524,10 +533,17 @@ export async function voidPaymentAction(paymentId: string) {
             });
 
             if (!payment) throw new Error("Pagamento nao encontrado.");
+            if (payment.amount <= 0) throw new Error("Este registro e um estorno e nao pode ser estornado novamente.");
             await assertFinancialPeriodOpen(payment.date);
 
-            await tx.payment.delete({
-                where: { id: normalizedPaymentId }
+            await tx.payment.create({
+                data: {
+                    orderId: payment.orderId,
+                    cashRegisterId: payment.cashRegisterId,
+                    userId: actor.id,
+                    method: payment.method,
+                    amount: -Math.abs(payment.amount),
+                },
             });
 
             if (payment.order.status === "CLOSED") {
@@ -555,7 +571,7 @@ export async function voidPaymentAction(paymentId: string) {
                 data: {
                     userId: actor.id,
                     action: "Estorno de Pagamento",
-                    details: `Estornou R$ ${payment.amount.toFixed(2)} (${payment.method}) da comanda [${payment.orderId.slice(-6)}].`,
+                    details: `Registrou estorno de R$ ${Math.abs(payment.amount).toFixed(2)} (${payment.method}) da comanda [${payment.orderId.slice(-6)}]. Pagamento original preservado.`,
                 },
             });
             await tx.auditLog.create({
@@ -569,8 +585,9 @@ export async function voidPaymentAction(paymentId: string) {
             return {
                 alreadyApplied: false,
                 orderId: payment.orderId,
-                amount: payment.amount,
+                amount: Math.abs(payment.amount),
                 method: payment.method,
+                refunded: true,
             };
         }, { maxWait: 10000, timeout: 15000 });
 

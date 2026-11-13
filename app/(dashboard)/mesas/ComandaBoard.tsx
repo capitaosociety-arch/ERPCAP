@@ -692,6 +692,8 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                     suggestedResource={/fut7/i.test(bookingProduct.name) ? 'FUT7' : 'FUT5'}
                     amount={Number(bookingProduct.price) || 0}
                     customerId={selectedOrder.customerId || undefined}
+                    customerName={selectedOrder.customer?.name || undefined}
+                    customers={customers || []}
                     onConfirm={(draft) => handleConfirmBooking(draft)}
                     onWithoutOccupancy={() => handleConfirmBooking(null)}
                     onClose={() => setBookingProduct(null)}

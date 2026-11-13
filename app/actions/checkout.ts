@@ -172,11 +172,15 @@ export async function cancelOrderAction(orderId: string) {
   await prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({
       where: { id: orderId },
-      include: { items: true }
+      include: { items: true, payments: true }
     });
 
-    if (!order) throw new Error("Pedido não encontrado");
+    if (!order) throw new Error("Pedido nǜo encontrado");
     if (order.status !== "OPEN") throw new Error("Apenas pedidos abertos podem ser cancelados");
+    const received = order.payments.reduce((sum, payment) => sum + payment.amount, 0);
+    if (received > 0.01) {
+      throw new Error("Pedido possui pagamento parcial. Estorne o valor recebido antes de cancelar; os registros financeiros serao preservados.");
+    }
 
     // Estorna Estoque usando o custo originalmente registrado na venda
     for (const item of order.items) {

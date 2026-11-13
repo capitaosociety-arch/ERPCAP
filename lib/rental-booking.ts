@@ -41,8 +41,7 @@ export async function resolveLinkedRental(tx: any, input: RentalBookingInput) {
   if (!customerId) {
     const name = String(input.customerName || '').trim();
     if (!name) throw new Error('Informe o cliente do aluguel.');
-    const existingCustomer = await tx.customer.findFirst({ where: { name }, select: { id: true } });
-    customerId = existingCustomer?.id || (await tx.customer.create({
+    customerId = (await tx.customer.create({
       data: { name, phone: '', notes: 'Cliente avulso de aluguel de campo' },
       select: { id: true },
     })).id;
