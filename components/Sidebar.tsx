@@ -47,15 +47,15 @@ export default function Sidebar({ user, isOpen, onClose }: { user: any, isOpen?:
           </button>
         </div>
 
-        <nav className="flex-1 w-full flex flex-col gap-2">
+        <nav className="flex-1 min-h-0 w-full flex flex-col gap-1 overflow-y-auto">
           {filteredNav.map((item) => {
             const isActive = pathname.startsWith(item.href);
             return (
               <Link key={item.href} href={item.href}
                 onClick={onClose}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-medium ${isActive ? 'bg-mrts-blue text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+                className={`flex items-center gap-3 px-4 py-2 min-h-[40px] rounded-xl transition-all duration-200 font-medium leading-tight ${isActive ? 'bg-mrts-blue text-white shadow-md' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
               >
-                <item.icon size={20} />
+                <item.icon size={20} className="shrink-0" />
                 {item.label}
               </Link>
             );
