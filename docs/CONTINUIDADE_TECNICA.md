@@ -3,14 +3,14 @@
 **Última atualização:** 24/11/2026  
 **Documento de referência permanente:** `AGENTS.md` (não substituído por este arquivo)  
 **Branch:** `dev/inteligencia-p3`  
-**Commit atual:** `7eba295a93ce81a71ab823e6f5b6e03e8f063e94`  
-**Deployment de produção:** `dpl_AkBhnFSYvYbosqjWx3C7TeSMMB8Y`  
-**URL de produção:** https://capitao-society-il6qculq5-capitaosociety-1198s-projects.vercel.app  
+**Commit atual:** `61f2a3073cb6ae250dca7e930ee3c659c2ba4684`  
+**Deployment de produção:** `dpl_ATCieStiPSg39pVy6FKYmAtiR9fQ`  
+**URL de produção:** https://capitao-society-5nam1r4mn-capitaosociety-1198s-projects.vercel.app  
 **Alias:** https://capitao-society-erp.vercel.app
 
 > Este documento foi produzido por auditoria read-only de código, Git e banco de produção. Não altera código, dados, configurações, permissões, migrações ou registros históricos.
 
-> **Atualização de 24/11/2026:** auditoria automática de reservas publicada, migração 0012 aplicada, 0007 substituída, duas execuções manuais concluídas com 35 ocorrências e cron diário ainda não ativado.
+> **Atualização de 24/11/2026:** auditoria automática de reservas publicada, migração 0012 aplicada, 0007 substituída, duas execuções manuais concluídas com 35 ocorrências e cron diário ativado para 07:00 UTC (03:00 em America/Cuiaba). A primeira execução automática ainda não ocorreu.
 
 ---
 
@@ -247,12 +247,32 @@ Publicado no commit `7eba295a93ce81a71ab823e6f5b6e03e8f063e94`, deployment `dpl_
 - Segunda execução: `cmwv8aeb1002yu784g0igcru6`, MANUAL, SUCCESS, mesmos totais, 0 eliminadas.
 - 35 fingerprints únicos; 70 detecções acumuladas; nenhuma duplicação.
 - Snapshot operacional idêntico antes/depois das execuções.
+- Nenhuma execução com `trigger = CRON` foi registrada até o momento; a primeira está prevista para 25/11/2026 às 07:00 UTC.
 
 ### Cron
-O cron diário **não está ativo**. `vercel.json` permanece sem o novo cron. `CRON_SECRET` não foi configurado. A rota `/api/internal/rental-audit` existe, mas retorna 503 sem segredo.
+- Status: **ativo**.
+- Expressão: `0 7 * * *`.
+- Horário UTC: 07:00.
+- Horário oficial: 03:00 em `America/Cuiaba`.
+- Rota: `/api/internal/rental-audit`.
+- `vercel.json`: contém somente esse cron; não havia agendamentos preexistentes.
+- `CRON_SECRET`: configurado em Production na Vercel; o valor não foi registrado em log, relatório, código ou Git.
+- `vercel crons list` confirmou 1 cron registrado, sem necessidade de upgrade de plano.
+- Requisição sem autorização retorna 401.
+- A Vercel envia o header `Authorization: Bearer <CRON_SECRET>` nas execuções automáticas.
+- Execução manual pelo administrador permanece disponível.
+- A primeira execução automática ainda não ocorreu; não foi simulada.
+- Concorrência é bloqueada por advisory lock; fingerprints únicos impedem duplicação.
+
+### Rollback do cron
+1. Remover o bloco `crons` do `vercel.json`.
+2. Opcionalmente remover `CRON_SECRET` do ambiente Production.
+3. Reimplantar o projeto na Vercel.
+4. Não excluir tabelas, execuções, ocorrências ou eventos de auditoria.
+5. A execução manual permanece disponível.
 
 ### Pendência de validação
-A interface autenticada não foi validada por falta de sessão administrativa. A conferência visual da aba “Auditoria de Reservas”, dos filtros e dos botões de resolução permanece pendente para o administrador.
+A interface autenticada não foi validada por falta de sessão administrativa. A conferência visual da aba “Auditoria de Reservas”, dos filtros e dos botões de resolução permanece pendente para o administrador. A primeira execução automática deve ser conferida quando ocorrer às 03:00 de Cuiaba.
 
 ---
 
@@ -422,14 +442,16 @@ Todas estão com `timeConvention = LEGACY_FORTALEZA`. A auditoria publicada as s
 
 ## 13. Commit e deployment atual de produção
 
-- **Commit:** `7eba295a93ce81a71ab823e6f5b6e03e8f063e94`
-- **Mensagem:** `feat: implementar auditoria automatica de reservas`
-- **Deployment ID:** `dpl_AkBhnFSYvYbosqjWx3C7TeSMMB8Y`
+- **Commit:** `61f2a3073cb6ae250dca7e930ee3c659c2ba4684`
+- **Mensagem:** `feat: ativar cron diario da auditoria de reservas`
+- **Deployment ID:** `dpl_ATCieStiPSg39pVy6FKYmAtiR9fQ`
 - **Status:** Production / Ready
-- **URL:** https://capitao-society-il6qculq5-capitaosociety-1198s-projects.vercel.app
+- **URL:** https://capitao-society-5nam1r4mn-capitaosociety-1198s-projects.vercel.app
 - **Alias:** https://capitao-society-erp.vercel.app
 - **Branch remoto:** `origin/dev/inteligencia-p3` no mesmo commit.
-- **HTTP:** `/login` 200; `/agenda` 307 para autenticação; `/api/internal/rental-audit` 503 sem `CRON_SECRET`.
+- **HTTP:** `/login` 200; `/agenda` 307 para autenticação; `/api/internal/rental-audit` 401 sem autorização.
+- **Cron:** `0 7 * * *` registrado; 03:00 em America/Cuiaba.
+- **Primeira execução automática:** pendente.
 
 ---
 
@@ -445,6 +467,10 @@ Todas estão com `timeConvention = LEGACY_FORTALEZA`. A auditoria publicada as s
 - Migração 0012 aplicada em transação com timeout e advisory lock.
 - `0012_rental_audit_verify.sql`: tabelas, colunas, índices, FKs, checks e RLS confirmados.
 - Primeira e segunda auditoria manual em produção: SUCCESS; 35 ocorrências, 35 fingerprints únicos, 0 eliminadas e 0 duplicações.
+- `vercel crons list`: 1 cron registrado (`/api/internal/rental-audit`, `0 7 * * *`).
+- Rota sem autorização: 401; `/login`: 200; `/agenda`: 307.
+- `CRON_SECRET` confirmado em Production sem exposição do valor.
+- Nenhuma execução `CRON` registrada antes da primeira ocorrência agendada.
 
 ### Dry-run e auditoria em produção
 - 203 reservas e 43 vínculos analisados.
@@ -494,7 +520,7 @@ A mudança é operacional/compatibilidade de leitura; não altera pagamentos ou 
   - preservação de comanda/pagamentos;
   - conversão explícita, se usada.
 - Testar em navegador/dispositivo de Cáceres e outra localidade (ex.: Natal) para confirmar independência do fuso do cliente.
-- A rota `/api/internal/rental-audit` retornou 503 sem `CRON_SECRET`; o cron permanece desativado.
+- A rota `/api/internal/rental-audit` retornou 401 sem autorização; o cron está ativo com `CRON_SECRET` configurado.
 
 ---
 
@@ -507,7 +533,7 @@ A mudança é operacional/compatibilidade de leitura; não altera pagamentos ou 
 - `Rental.cancelledAt` está como `timestamptz`, diferente dos demais campos de Rental.
 - Não há exclusion constraint de intervalos no PostgreSQL; a proteção é transacional/aplicacional.
 - Ações administrativas de edição/exclusão de pagamento e exclusão de sessão de caixa continuam existindo fora do escopo da correção de reservas; não devem ser usadas como mecanismo de correção.
-- A auditoria de reservas está publicada em modo manual; o cron diário não está ativo e `CRON_SECRET` não está configurado.
+- A auditoria de reservas está publicada com execução manual e cron diário ativo; `CRON_SECRET` está configurado em Production.
 - A interface autenticada da auditoria ainda não foi validada visualmente.
 - Exclusões de reservas via `deleteRental`/Dossiê não geram evento específico; a auditoria detecta redução de contagem e eventos genéricos, mas não identifica com precisão o registro removido.
 - Ocorrências históricas são consolidadas em agregados informativos (835 itens sem reserva, 129 reservas pagas sem comprovação e 14 sem operação).
@@ -553,7 +579,7 @@ A T2 é a normalização histórica em massa, opcional. Só pode ocorrer com aut
 
 ## 18. Alterações pendentes no Git não publicadas
 
-A auditoria de reservas foi publicada no commit `7eba295`. Permanecem no working tree, sem publicação:
+A auditoria de reservas foi publicada no commit `7eba295`; o cron diário foi ativado no commit `61f2a30`. Permanecem no working tree, sem publicação:
 
 ### Untracked
 - `scripts/homologation/`
@@ -563,7 +589,7 @@ A auditoria de reservas foi publicada no commit `7eba295`. Permanecem no working
 
 Esses itens **não** pertencem à auditoria publicada. Não devem ser incluídos em commits/deploys sem autorização específica e revisão própria.
 
-O `vercel.json` permanece **sem cron** nesta etapa. A ativação do cron diário exige autorização específica, configuração de `CRON_SECRET` e validação funcional prévia.
+O `vercel.json` contém o cron diário autorizado (`0 7 * * *`) e `CRON_SECRET` está configurado em Production. A primeira execução automática ainda não ocorreu.
 
 ---
 
@@ -571,7 +597,7 @@ O `vercel.json` permanece **sem cron** nesta etapa. A ativação do cron diário
 
 Copiar o texto abaixo como primeira mensagem de uma nova sessão do OpenCode:
 
-> Retome o desenvolvimento do Capitão Society ERP (ERPCAP). Leia obrigatoriamente `AGENTS.md` e `docs/CONTINUIDADE_TECNICA.md` antes de qualquer ação. O estado de produção é o commit `7eba295a93ce81a71ab823e6f5b6e03e8f063e94`, deployment `dpl_AkBhnFSYvYbosqjWx3C7TeSMMB8Y`, fuso oficial `America/Cuiaba`, T1, Fase 2A, `RentalChangeLog`, `permAgenda` e Auditoria de Reservas publicados. As migrações 0008–0012 estão aplicadas; a 0007 foi substituída e não deve ser aplicada. A auditoria está em modo manual: o cron diário NÃO está ativo, `CRON_SECRET` não está configurado e a interface autenticada ainda precisa de validação visual pelo administrador. No snapshot de 24/11/2026 21:51Z existiam 203 reservas (10 `CUIABA`, 193 legadas), 17 futuras e 35 ocorrências abertas. Há 3 possíveis overpayments e 4 reservas de fronteira de data que não devem ser corrigidas automaticamente. Não iniciar T2 nem Fase 2B sem autorização específica. Não executar ERP, banco ou Next.js localmente; validar por análise, typecheck, lint, testes puros e, quando autorizado, build/deploy em produção. Preservar todos os dados financeiros e históricos. Pergunte qual próximo escopo autorizado antes de implementar.
+> Retome o desenvolvimento do Capitão Society ERP (ERPCAP). Leia obrigatoriamente `AGENTS.md` e `docs/CONTINUIDADE_TECNICA.md` antes de qualquer ação. O estado de produção é o commit `61f2a3073cb6ae250dca7e930ee3c659c2ba4684`, deployment `dpl_ATCieStiPSg39pVy6FKYmAtiR9fQ`, fuso oficial `America/Cuiaba`, T1, Fase 2A, `RentalChangeLog`, `permAgenda` e Auditoria de Reservas publicados. As migrações 0008–0012 estão aplicadas; a 0007 foi substituída e não deve ser aplicada. O cron diário está ativo às 07:00 UTC (03:00 em America/Cuiaba), com `CRON_SECRET` configurado em Production, mas a primeira execução automática ainda não ocorreu. A interface autenticada ainda precisa de validação visual pelo administrador. No snapshot de 24/11/2026 21:51Z existiam 203 reservas (10 `CUIABA`, 193 legadas), 17 futuras e 35 ocorrências abertas. Há 3 possíveis overpayments e 4 reservas de fronteira de data que não devem ser corrigidas automaticamente. Não iniciar T2 nem Fase 2B sem autorização específica. Não executar ERP, banco ou Next.js localmente; validar por análise, typecheck, lint, testes puros e, quando autorizado, build/deploy em produção. Preservar todos os dados financeiros e históricos. Pergunte qual próximo escopo autorizado antes de implementar.
 
 ---
 
@@ -618,6 +644,6 @@ Snapshot após duas execuções manuais: 35 ocorrências, 35 fingerprints único
 Nenhum ajuste financeiro, estorno, compensação, conversão histórica ou resolução automática foi executado.
 
 ### Próxima etapa pendente
+- Registrar e conferir a primeira execução automática às 03:00 de Cuiaba.
 - Validação visual da interface autenticada pelo administrador.
-- Autorização específica para configurar `CRON_SECRET` e ativar o cron diário.
 - Fase 2B e T2 permanecem não iniciadas.
