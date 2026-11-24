@@ -43,6 +43,7 @@ export const authOptions: NextAuthOptions = {
           permCustomers: user.permCustomers,
           permFinance: user.permFinance,
           permUsers: user.permUsers,
+          permAgenda: user.permAgenda,
           permCopilot: user.permCopilot
         };
       }
@@ -61,6 +62,7 @@ export const authOptions: NextAuthOptions = {
         token.permCustomers = user.permCustomers;
         token.permFinance = user.permFinance;
         token.permUsers = user.permUsers;
+        token.permAgenda = user.permAgenda;
         token.permCopilot = user.permCopilot;
       }
       return token;
@@ -79,6 +81,7 @@ export const authOptions: NextAuthOptions = {
           permCustomers: token.permCustomers,
           permFinance: token.permFinance,
           permUsers: token.permUsers,
+          permAgenda: token.permAgenda,
           permCopilot: token.permCopilot,
         };
       }

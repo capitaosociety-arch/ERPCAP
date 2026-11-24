@@ -18,7 +18,7 @@ export async function getUsers() {
 const ALLOWED_ROLES = ['ADMIN', 'MANAGER', 'CASHIER', 'WAITER'] as const;
 const ALLOWED_PERMISSION_FIELDS = new Set([
     'permDashboard', 'permPDV', 'permComandas', 'permProducts', 'permStock',
-    'permCustomers', 'permFinance', 'permUsers', 'permDepot', 'permInteligencia', 'permCopilot'
+    'permCustomers', 'permFinance', 'permUsers', 'permDepot', 'permInteligencia', 'permAgenda', 'permCopilot'
 ]);
 
 export async function createUser(data: any) {
@@ -138,6 +138,7 @@ export async function toggleUserPermission(id: string, field: string) {
         permUsers: "Usuários",
         permDepot: "Depósito",
         permInteligencia: "Central de Inteligência",
+        permAgenda: "Agenda",
         permCopilot: "Copiloto IA"
     };
 

@@ -5,7 +5,7 @@ import { getAgendaDataAction } from '../../actions/agenda';
 import AgendaClient from './AgendaClient';
 
 export default async function AgendaPage() {
-  await requirePagePermission('permInteligencia');
+  await requirePagePermission('permAgenda');
 
   const anchor = formatRentalDateInput(new Date());
   const result = await getAgendaDataAction({

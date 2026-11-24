@@ -6,7 +6,7 @@ import type { AgendaData } from '../../lib/agenda';
 
 export async function getAgendaDataAction(params: AgendaDataParams = {}): Promise<{ success: true; data: AgendaData } | { success: false; error: string }> {
   try {
-    await requirePermission('permInteligencia');
+    await requirePermission('permAgenda');
     const data = await loadAgendaData(params);
     return { success: true, data };
   } catch (error: any) {

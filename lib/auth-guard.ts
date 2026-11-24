@@ -2,19 +2,9 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { permissionGranted, type SystemPermission } from "@/lib/permissions";
 
-export type Permission =
-  | "permDashboard"
-  | "permPDV"
-  | "permComandas"
-  | "permProducts"
-  | "permStock"
-  | "permCustomers"
-  | "permFinance"
-  | "permUsers"
-  | "permDepot"
-  | "permInteligencia"
-  | "permCopilot";
+export type Permission = SystemPermission;
 
 export interface AuthUser {
   id: string;
@@ -32,6 +22,7 @@ export interface AuthUser {
   permUsers: boolean;
   permDepot: boolean;
   permInteligencia: boolean;
+  permAgenda: boolean;
   permCopilot: boolean;
 }
 
@@ -68,7 +59,7 @@ export async function requireUser(): Promise<AuthUser> {
 }
 
 export function hasPermission(user: AuthUser, permission: Permission): boolean {
-  return user.role === "ADMIN" || Boolean(user[permission]);
+  return permissionGranted(user, permission);
 }
 
 export async function requirePermission(

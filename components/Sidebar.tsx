@@ -2,11 +2,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, ShoppingCart, Coffee, Box, Users, DollarSign, Settings, FileText, X, Warehouse, CalendarDays, BrainCircuit } from 'lucide-react';
+import { permissionGranted, type SystemPermission } from '../lib/permissions';
 
 const MENU_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permKey: 'permDashboard' },
   { href: '/inteligencia', label: 'Central de Inteligência', icon: BrainCircuit, permKey: 'permInteligencia' },
-  { href: '/agenda', label: 'Agenda', icon: CalendarDays, permKey: 'permInteligencia' },
+  { href: '/agenda', label: 'Agenda', icon: CalendarDays, permKey: 'permAgenda' },
   { href: '/pdv', label: 'PDV', icon: ShoppingCart, permKey: 'permPDV' },
   { href: '/mesas', label: 'Comandas', icon: Coffee, permKey: 'permComandas' },
   { href: '/produtos', label: 'Produtos', icon: Box, permKey: 'permProducts' },
@@ -21,13 +22,9 @@ export default function Sidebar({ user, isOpen, onClose }: { user: any, isOpen?:
   const pathname = usePathname();
 
   // Filter menu based on role + granular permission flags
-  const filteredNav = MENU_ITEMS.filter(item => {
-    if (!user) return false;
-    // ADMINs always see everything
-    if (user.role === 'ADMIN') return true;
-    // All other roles (MANAGER, CASHIER, WAITER) follow granular permission flags
-    return user[item.permKey] === true;
-  });
+  const filteredNav = MENU_ITEMS.filter(item =>
+    permissionGranted(user, item.permKey as SystemPermission)
+  );
 
   return (
     <>

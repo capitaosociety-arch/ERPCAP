@@ -26,6 +26,7 @@ model User {
   permUsers       Boolean @default(false)
   permDepot       Boolean @default(false)
   permInteligencia Boolean @default(false)
+  permAgenda      Boolean @default(false)
   permCopilot     Boolean @default(false)
 
   createdAt     DateTime  @default(now())
