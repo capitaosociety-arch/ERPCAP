@@ -35,13 +35,44 @@ export async function saveStockCounts(
         await verifyAuth();
 
         const cleanItems = items.filter(i => i.productId && Number.isFinite(i.quantity) && i.quantity >= 0);
+        if (cleanItems.length === 0) throw new Error('Nenhum item válido informado.');
 
-        for (const item of cleanItems) {
-            await prisma.stockCount.upsert({
-                where: { productId_date_location: { productId: item.productId, date: dateStr, location } },
-                update: { quantity: item.quantity },
-                create: { productId: item.productId, location, date: dateStr, quantity: item.quantity }
-            });
+        const saveCounts = () => prisma.$transaction(async (tx) => {
+            for (const item of cleanItems) {
+                let systemQuantity: number | null = null;
+                if (location === 'DEPOT') {
+                    const depot = await tx.depotStock.findUnique({
+                        where: { productId: item.productId },
+                        select: { quantity: true }
+                    });
+                    systemQuantity = Number(depot?.quantity) || 0;
+                }
+
+                await tx.stockCount.upsert({
+                    where: { productId_date_location: { productId: item.productId, date: dateStr, location } },
+                    update: {
+                        quantity: item.quantity,
+                        ...(location === 'DEPOT' ? { systemQuantity } : {})
+                    },
+                    create: {
+                        productId: item.productId,
+                        location,
+                        date: dateStr,
+                        quantity: item.quantity,
+                        ...(location === 'DEPOT' ? { systemQuantity } : {})
+                    }
+                });
+            }
+        }, { isolationLevel: 'Serializable', timeout: 30000 });
+
+        for (let attempt = 0; ; attempt++) {
+            try {
+                await saveCounts();
+                break;
+            } catch (error: any) {
+                if (error?.code === 'P2034' && attempt < 2) continue;
+                throw error;
+            }
         }
 
         const locLabel = location === 'BALCAO' ? 'Balcão' : 'Matriz';
@@ -65,6 +96,6 @@ export async function getStockCountsForDate(dateStr: string, location: 'DEPOT' |
 
     return prisma.stockCount.findMany({
         where: { date: dateStr, location },
-        select: { productId: true, quantity: true, date: true, location: true }
+        select: { productId: true, quantity: true, systemQuantity: true, date: true, location: true }
     });
 }

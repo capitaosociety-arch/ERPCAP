@@ -7,6 +7,7 @@ import { quickCreateProductFromInvoice } from '../../actions/products';
 import { saveStockCounts } from '../../actions/stock-count';
 import { downloadExcel } from '../../../lib/excel-export';
 import { PRODUCT_SORT_OPTIONS, ProductSortOption, sortProducts } from '../../../lib/product-sort';
+import { calculateStockCountDifference, formatStockQuantity, stockCountDifferenceTone } from '../../../lib/stock-count-diff';
 
 export default function DepotClient({ 
     initialInventory, 
@@ -656,24 +657,52 @@ export default function DepotClient({
                                         <tr className="bg-slate-50 border-b border-gray-100 text-xs uppercase text-slate-500 font-bold tracking-wider">
                                             <th className="p-4">Data</th>
                                             <th className="p-4">Produto</th>
+                                            <th className="p-4 text-right">Estoque do Sistema</th>
                                             <th className="p-4 text-right">Contagem Salva</th>
+                                            <th className="p-4 text-right">Diferença</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-50 text-sm font-medium">
                                         {countHistory.map(h => (
                                             <tr key={h.id} className="hover:bg-slate-50/50 transition">
-                                                <td className="p-4 text-xs text-slate-400">
+                                                <td className="p-4 text-xs text-slate-400 whitespace-nowrap">
                                                     {new Date(h.date + 'T12:00:00').toLocaleDateString('pt-BR')}
                                                 </td>
-                                                <td className="p-4 font-bold text-slate-800">{h.product?.name || 'Produto removido'}</td>
+                                                <td className="p-4 font-bold text-slate-800 max-w-[260px]">
+                                                    <span className="block truncate" title={h.product?.name || 'Produto removido'}>{h.product?.name || 'Produto removido'}</span>
+                                                </td>
                                                 <td className="p-4 text-right">
-                                                    <span className="text-base font-black text-slate-700">{h.quantity}</span>
+                                                    {h.systemQuantity == null ? (
+                                                        <span className="text-sm font-medium text-slate-300">—</span>
+                                                    ) : (
+                                                        <>
+                                                            <span className="text-base font-black text-slate-700">{formatStockQuantity(h.systemQuantity)}</span>
+                                                            <span className="text-xs font-medium opacity-60 ml-1">{h.product?.unit || 'UN'}</span>
+                                                        </>
+                                                    )}
+                                                </td>
+                                                <td className="p-4 text-right">
+                                                    <span className="text-base font-black text-slate-700">{formatStockQuantity(h.quantity)}</span>
                                                     <span className="text-xs font-medium opacity-60 ml-1">{h.product?.unit || 'UN'}</span>
+                                                </td>
+                                                <td className="p-4 text-right">
+                                                    {(() => {
+                                                        const difference = calculateStockCountDifference(h.quantity, h.systemQuantity);
+                                                        const tone = stockCountDifferenceTone(difference);
+                                                        if (difference == null) return <span className="text-sm font-medium text-slate-300">—</span>;
+                                                        const toneClass = tone === 'equal' ? 'text-emerald-600' : tone === 'below' ? 'text-red-600' : 'text-amber-600';
+                                                        return (
+                                                            <span className={`text-sm font-black ${toneClass}`}>
+                                                                {difference > 0 ? '+' : ''}{formatStockQuantity(difference)}
+                                                                <span className="text-xs font-medium opacity-60 ml-1">{h.product?.unit || 'UN'}</span>
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </td>
                                             </tr>
                                         ))}
                                         {countHistory.length === 0 && (
-                                            <tr><td colSpan={3} className="p-10 text-center text-slate-400 font-bold">Nenhuma contagem salva no período selecionado.</td></tr>
+                                            <tr><td colSpan={5} className="p-10 text-center text-slate-400 font-bold">Nenhuma contagem salva no período selecionado.</td></tr>
                                         )}
                                     </tbody>
                                 </table>

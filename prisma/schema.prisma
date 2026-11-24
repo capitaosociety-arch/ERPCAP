@@ -578,6 +578,7 @@ model StockCount {
   location  String   @default("DEPOT") // DEPOT (Matriz) ou BALCAO
   date      String   // YYYY-MM-DD (dia da contagem)
   quantity  Float    // Quantidade contada fisicamente
+  systemQuantity Float? // Saldo do Depósito no momento do salvamento
   createdAt DateTime @default(now())
 
   product   Product  @relation(fields: [productId], references: [id])
