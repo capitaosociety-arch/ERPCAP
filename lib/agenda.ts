@@ -1,4 +1,5 @@
-import { RENTAL_TIME_ZONE, buildRentalWindow, formatRentalDateInput, formatRentalTimeInput } from './rental-time';
+import { buildRentalWindow, formatRentalDateInput, formatRentalTimeInput } from './rental-time';
+import { APP_TIME_ZONE, isLegacyRentalConvention, normalizeRentalTimeConvention, rentalTimeConventionLabel, type RentalTimeConvention } from './time-zone';
 
 export type AgendaView = 'day' | 'week' | 'month';
 export type AgendaField = 'FUT5' | 'FUT7';
@@ -127,6 +128,7 @@ export type AgendaRentalInput = {
   totalAmount: number;
   status: string;
   source: string;
+  timeConvention?: string;
   cancelledAt?: string | null;
   createdAt: string;
   orderItems: AgendaRentalItemInput[];
@@ -193,6 +195,9 @@ export type AgendaReservation = {
   status: string;
   source: string;
   sourceLabel: string;
+  timeConvention: RentalTimeConvention;
+  timeConventionLabel: string;
+  isLegacyTime: boolean;
   operationalStatus: AgendaOperationalStatus;
   operationalLabel: string;
   financialStatus: AgendaFinancialStatus;
@@ -333,32 +338,32 @@ const dayMs = 24 * 60 * 60 * 1000;
 const minuteMs = 60 * 1000;
 
 const dateKeyFormatter = new Intl.DateTimeFormat('sv-SE', {
-  timeZone: RENTAL_TIME_ZONE,
+  timeZone: APP_TIME_ZONE,
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
 });
 
 const timeFormatter = new Intl.DateTimeFormat('en-GB', {
-  timeZone: RENTAL_TIME_ZONE,
+  timeZone: APP_TIME_ZONE,
   hour: '2-digit',
   minute: '2-digit',
   hourCycle: 'h23',
 });
 
 const weekdayFormatter = new Intl.DateTimeFormat('en-US', {
-  timeZone: RENTAL_TIME_ZONE,
+  timeZone: APP_TIME_ZONE,
   weekday: 'short',
 });
 
 const monthFormatter = new Intl.DateTimeFormat('pt-BR', {
-  timeZone: RENTAL_TIME_ZONE,
+  timeZone: APP_TIME_ZONE,
   month: 'long',
   year: 'numeric',
 });
 
 const shortDateFormatter = new Intl.DateTimeFormat('pt-BR', {
-  timeZone: RENTAL_TIME_ZONE,
+  timeZone: APP_TIME_ZONE,
   day: '2-digit',
   month: '2-digit',
   year: 'numeric',
@@ -399,7 +404,7 @@ export function formatAgendaTime(value: string | Date | null | undefined): strin
 }
 
 export function formatAgendaWeekdayShort(value: string | Date): string {
-  return new Intl.DateTimeFormat('pt-BR', { weekday: 'short', timeZone: RENTAL_TIME_ZONE })
+  return new Intl.DateTimeFormat('pt-BR', { weekday: 'short', timeZone: APP_TIME_ZONE })
     .format(new Date(value))
     .replace('.', '');
 }
@@ -410,7 +415,7 @@ export function agendaDateKey(value: string | Date): string {
 
 export function agendaMinuteOfDay(value: string | Date): number {
   const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: RENTAL_TIME_ZONE,
+    timeZone: APP_TIME_ZONE,
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
@@ -1027,6 +1032,7 @@ function normalizeRental(rental: AgendaRentalInput, now: Date): AgendaReservatio
   const durationMinutes = Math.max(0, Math.round((new Date(rental.endTime).getTime() - new Date(rental.startTime).getTime()) / minuteMs));
   const isHistorical = new Date(rental.createdAt) < AGENDA_LINK_FEATURE_START;
   const source = String(rental.source || 'LEGACY').toUpperCase();
+  const timeConvention = normalizeRentalTimeConvention(rental.timeConvention);
 
   return {
     id: rental.id,
@@ -1046,6 +1052,9 @@ function normalizeRental(rental: AgendaRentalInput, now: Date): AgendaReservatio
     status: String(rental.status || '').toUpperCase(),
     source,
     sourceLabel: AGENDA_SOURCE_LABELS[source] || source,
+    timeConvention,
+    timeConventionLabel: rentalTimeConventionLabel(timeConvention),
+    isLegacyTime: isLegacyRentalConvention(timeConvention),
     operationalStatus,
     operationalLabel: AGENDA_OPERATIONAL_LABELS[operationalStatus],
     financialStatus: financial.financialStatus,
@@ -1404,7 +1413,7 @@ export function buildAgendaData(input: BuildAgendaInput): AgendaData {
       'Pagamentos de mensalidade não possuem vínculo individual com cada jogo.',
       'Canal Comanda/PDV não é gravado explicitamente; a Agenda exibe a operação vinculada.',
       'O horário efetivamente jogado não é registrado.',
-      'As reservas usam o fuso America/Fortaleza em lib/rental-time; a Agenda segue esse fuso para exibir os horários como foram cadastrados.',
+      'Reservas legadas preservam a convenção histórica exibida; novos lançamentos usam America/Cuiaba. Nenhum timestamp histórico foi convertido.',
     ],
   };
 }

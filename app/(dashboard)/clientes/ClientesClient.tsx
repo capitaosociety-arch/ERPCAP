@@ -6,10 +6,12 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Respon
 import { deleteCustomer, saveCustomerDossier } from '../../actions/customers';
 import { getScores, saveScoreConfig, recalcScore, getScoreHistory, getScoreConfig } from '../../actions/score';
 import { buildRentalWindow, defaultRentalDateInput, formatRentalDateInput, formatRentalTimeInput } from '../../../lib/rental-time';
+import { NEW_RENTAL_TIME_CONVENTION, normalizeRentalTimeConvention, operationalRentalWindow } from '../../../lib/time-zone';
+import { APP_TIME_ZONE, formatCuiabaDate, formatCuiabaDateTime, formatDateKeyInZone, isCivilDateBeforeTodayCuiaba } from '../../../lib/time-zone';
 import { calculateRenewalTotal, generateRenewalDraftsFromPattern, inferRentalPattern, resolveRenewalTotal, sortRentalDraftsDesc } from '../../../lib/rental-renewal';
 import { formatDateDisplay, formatDateOnlyInput, parseDateOnlyInput } from '../../../lib/subscription-date';
 
-const TZ = 'America/Cuiaba';
+const TZ = APP_TIME_ZONE;
 
 const CLASS_ORDER = ['PREMIUM', 'FREQUENTE', 'REGULAR', 'EM_RISCO', 'INATIVO'];
 
@@ -83,17 +85,22 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   
   const [isPending, startTransition] = useTransition();
 
-  const rentalDraftFromCustomer = (rent: any) => ({
-      id: rent.id,
-      resource: rent.resource,
-      startDate: formatRentalDateInput(rent.startTime),
-      endDate: formatRentalDateInput(rent.endTime),
-      start: formatRentalTimeInput(rent.startTime),
-      end: formatRentalTimeInput(rent.endTime),
-      amount: Number(rent.totalAmount) || 0,
-      status: rent.status,
-      source: rent.source || 'LEGACY',
-  });
+  const rentalDraftFromCustomer = (rent: any) => {
+      const timeConvention = normalizeRentalTimeConvention(rent.timeConvention);
+      const { startTime, endTime } = operationalRentalWindow(rent.startTime, rent.endTime, timeConvention);
+      return {
+          id: rent.id,
+          resource: rent.resource,
+          startDate: formatRentalDateInput(startTime),
+          endDate: formatRentalDateInput(endTime),
+          start: formatRentalTimeInput(startTime),
+          end: formatRentalTimeInput(endTime),
+          amount: Number(rent.totalAmount) || 0,
+          status: rent.status,
+          source: rent.source || 'LEGACY',
+          timeConvention,
+      };
+  };
 
   const createRequestKey = () => {
       const cryptoApi = globalThis.crypto;
@@ -128,7 +135,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       setPaymentDrafts((customer?.subscription?.payments || []).map((payment: any) => ({
           id: payment.id,
           amount: payment.amount,
-          paymentDate: new Date(payment.paymentDate).toLocaleDateString('sv-SE'),
+          paymentDate: formatDateKeyInZone(payment.paymentDate, APP_TIME_ZONE),
       })));
       setPendingSubscriptionPayment(null);
       setIsDirty(false);
@@ -178,7 +185,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
 
       for (const rental of rentalDrafts) {
           try {
-              buildRentalWindow(rental.startDate, rental.start, rental.end);
+              buildRentalWindow(rental.startDate, rental.start, rental.end, normalizeRentalTimeConvention(rental.timeConvention || NEW_RENTAL_TIME_CONVENTION));
           } catch (error: any) {
               return alert(error?.message || "Horário da reserva inválido.");
           }
@@ -188,7 +195,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       const draftRentalIds = new Set(rentalDrafts.map((rental: any) => rental.id).filter(Boolean));
       const originalPayments = new Map((selectedCustomer?.subscription?.payments || []).map((payment: any) => [payment.id, {
           amount: Number(payment.amount),
-          paymentDate: new Date(payment.paymentDate).toLocaleDateString('sv-SE'),
+          paymentDate: formatDateKeyInZone(payment.paymentDate, APP_TIME_ZONE),
       }]));
       const originalPaymentIds = new Set(originalPayments.keys());
       const draftPaymentIds = new Set(paymentDrafts.map((payment: any) => payment.id));
@@ -219,6 +226,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                   amount: Number(rental.amount) || 0,
                   status: rental.status,
                   source: rental.source,
+                  timeConvention: rental.timeConvention,
               })),
               rentalDeleteIds: Array.from(originalRentalIds).filter((id: any) => !draftRentalIds.has(id)).map(String),
               paymentUpdates: paymentDrafts
@@ -312,19 +320,18 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       const existingWindows = [
           ...(selectedCustomer.rentals || []).filter((rental: any) => rental.status !== 'CANCELED').map((rental: any) => ({
               resource: rental.resource,
-              startTime: new Date(rental.startTime),
-              endTime: new Date(rental.endTime),
+              ...operationalRentalWindow(rental.startTime, rental.endTime, rental.timeConvention),
           })),
           ...rentalDrafts.filter((rental: any) => rental.status !== 'CANCELED').map((rental: any) => {
               try {
-                  return { resource: rental.resource, ...buildRentalWindow(rental.startDate, rental.start, rental.end) };
+                  return { resource: rental.resource, ...buildRentalWindow(rental.startDate, rental.start, rental.end, normalizeRentalTimeConvention(rental.timeConvention || NEW_RENTAL_TIME_CONVENTION)) };
               } catch {
                   return null;
               }
           }).filter(Boolean),
       ];
       const conflicting = generated.some((rental) => {
-          const window = buildRentalWindow(rental.startDate, rental.start, rental.end);
+          const window = buildRentalWindow(rental.startDate, rental.start, rental.end, normalizeRentalTimeConvention(rental.timeConvention || NEW_RENTAL_TIME_CONVENTION));
           return existingWindows.some((existing: any) =>
               existing.resource === rental.resource
               && window.startTime < existing.endTime
@@ -398,15 +405,17 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   const handleSaveRentalEdit = () => {
       if (!editingRental || !rentalResource.trim()) return alert("Informe o espaço/mesa da reserva.");
       try {
-          const { startTime, endTime } = buildRentalWindow(rentalDate, rentalStart, rentalEnd);
+          const convention = normalizeRentalTimeConvention(editingRental.timeConvention);
+          const { startTime, endTime } = buildRentalWindow(rentalDate, rentalStart, rentalEnd, convention);
           const updated = {
               ...editingRental,
               resource: rentalResource.trim(),
-              startDate: formatRentalDateInput(startTime),
-              endDate: formatRentalDateInput(endTime),
-              start: formatRentalTimeInput(startTime),
-              end: formatRentalTimeInput(endTime),
+              startDate: formatRentalDateInput(startTime, convention),
+              endDate: formatRentalDateInput(endTime, convention),
+              start: formatRentalTimeInput(startTime, convention),
+              end: formatRentalTimeInput(endTime, convention),
               amount: Number(rentalAmount) || 0,
+              timeConvention: convention,
           };
           setRentalDrafts(prev => prev.map(rental => rental.id === editingRental.id ? updated : rental));
           setEditingRental(null);
@@ -432,17 +441,19 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   const handleCreateRental = () => {
       if (!selectedCustomer || !rentalResource.trim()) return alert("Informe o espaço/mesa da reserva.");
       try {
-          const { startTime, endTime } = buildRentalWindow(rentalDate, rentalStart, rentalEnd);
+          const convention = NEW_RENTAL_TIME_CONVENTION;
+          const { startTime, endTime } = buildRentalWindow(rentalDate, rentalStart, rentalEnd, convention);
           const draft = {
               id: `new-${Date.now()}`,
               resource: rentalResource.trim(),
-              startDate: formatRentalDateInput(startTime),
-              endDate: formatRentalDateInput(endTime),
-              start: formatRentalTimeInput(startTime),
-              end: formatRentalTimeInput(endTime),
+              startDate: formatRentalDateInput(startTime, convention),
+              endDate: formatRentalDateInput(endTime, convention),
+              start: formatRentalTimeInput(startTime, convention),
+              end: formatRentalTimeInput(endTime, convention),
               amount: Number(rentalAmount) || 0,
               status: 'PENDING',
               source: 'MANUAL',
+              timeConvention: convention,
           };
           setRentalDrafts(prev => [...prev, draft]);
           setRentalResource("");
@@ -544,7 +555,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
 
   const checkIsOverdue = (sub: any) => {
       if(!sub) return false;
-      return new Date(sub.nextDueDate) < new Date();
+      return isCivilDateBeforeTodayCuiaba(sub.nextDueDate);
   };
 
   const filteredCustomers = customers.filter((c: any) => {
@@ -951,7 +962,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                             </div>
                                         ) : (
                                             <div key={payment.id} className="text-xs flex justify-between p-2 pb-2 border-b border-gray-100 last:border-0 items-center">
-                                                <span className="text-gray-500 font-medium">{new Date(payment.paymentDate).toLocaleDateString('pt-BR')}</span>
+                                                <span className="text-gray-500 font-medium">{formatCuiabaDate(payment.paymentDate)}</span>
                                                 <span className="flex items-center gap-2">
                                                     <span className="font-bold text-slate-700">R$ {payment.amount.toFixed(2).replace('.',',')}</span>
                                                     <button onClick={() => openEditPayment(payment)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar lançamento">
@@ -1023,7 +1034,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                                </div>
                                                <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Última Reserva</p>
-                                                   <p className="text-[10px] font-bold text-white mt-0.5">{sc.ultimaReserva ? new Date(sc.ultimaReserva).toLocaleDateString('pt-BR') : '—'}</p>
+                                                   <p className="text-[10px] font-bold text-white mt-0.5">{sc.ultimaReserva ? formatCuiabaDate(sc.ultimaReserva) : '—'}</p>
                                                </div>
                                                <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Cancel. praz.</p>
@@ -1360,7 +1371,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                         const meta = CLASS_META[h.classificacao];
                         return (
                             <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-slate-50 border border-gray-200 rounded-xl">
-                                <span className="text-xs text-gray-500 font-medium">{new Date(h.snapshotAt).toLocaleString('pt-BR')}</span>
+                                <span className="text-xs text-gray-500 font-medium">{formatCuiabaDateTime(h.snapshotAt)}</span>
                                 <span className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2 py-1 rounded-lg border ${meta?.bg || 'bg-gray-100 border-gray-200'} ${meta?.color || 'text-gray-600'}`}>
                                     {h.score} · {meta?.label || h.classificacao}
                                 </span>

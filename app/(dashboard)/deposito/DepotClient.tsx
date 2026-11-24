@@ -6,6 +6,8 @@ import { addDepotStock, requestTransfer, authorizeTransfer, rejectTransfer, adju
 import { quickCreateProductFromInvoice } from '../../actions/products';
 import { saveStockCounts } from '../../actions/stock-count';
 import { downloadExcel } from '../../../lib/excel-export';
+import { APP_TIME_ZONE, currentCuiabaDateKey, formatCuiabaDate, formatCuiabaDateTime, wallTimeToUtcInZone } from '../../../lib/time-zone';
+import { formatDateDisplay } from '../../../lib/subscription-date';
 import { PRODUCT_SORT_OPTIONS, ProductSortOption, sortProducts } from '../../../lib/product-sort';
 import { calculateStockCountDifference, formatStockQuantity, stockCountDifferenceTone } from '../../../lib/stock-count-diff';
 
@@ -34,7 +36,7 @@ export default function DepotClient({
     const [viewingMovement, setViewingMovement] = useState<any>(null);
 
     // Contagem diária de estoque
-    const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
+    const todayStr = currentCuiabaDateKey();
     const [countDate, setCountDate] = useState<string>(todayStr);
     const [countQty, setCountQty] = useState<Record<string, string>>(() => {
         const map: Record<string, string> = {};
@@ -190,11 +192,11 @@ export default function DepotClient({
     ).filter(m => {
         const d = new Date(m.date);
         if (movFrom) {
-            const from = new Date(movFrom + 'T00:00:00');
+            const from = wallTimeToUtcInZone(movFrom, '00:00', APP_TIME_ZONE);
             if (d < from) return false;
         }
         if (movTo) {
-            const to = new Date(movTo + 'T23:59:59');
+            const to = wallTimeToUtcInZone(movTo, '23:59', APP_TIME_ZONE);
             if (d > to) return false;
         }
         return true;
@@ -810,7 +812,7 @@ export default function DepotClient({
                                     <tbody className="divide-y divide-gray-50 text-sm font-medium">
                                         {allMovements.map((mov: any) => (
                                             <tr key={mov.id} className="hover:bg-slate-50 transition">
-                                                <td className="p-4 text-xs text-slate-400">{new Date(mov.date).toLocaleDateString('pt-BR')}</td>
+                                                <td className="p-4 text-xs text-slate-400">{formatCuiabaDate(mov.date)}</td>
                                                 <td className="p-4 font-bold text-slate-800">{mov.product?.name}</td>
                                                 <td className="p-4">
                                                     {mov.type === 'IN' ? (
@@ -825,10 +827,10 @@ export default function DepotClient({
                                                     <span className="text-xs font-medium text-slate-500">{mov.document || '-'}</span>
                                                 </td>
                                                 <td className="p-4 text-center">
-                                                    <span className="text-xs font-medium text-slate-500">{mov.issueDate ? new Date(mov.issueDate).toLocaleDateString('pt-BR') : '-'}</span>
+                                                    <span className="text-xs font-medium text-slate-500">{mov.issueDate ? formatDateDisplay(mov.issueDate) : '-'}</span>
                                                 </td>
                                                 <td className="p-4 text-center">
-                                                    <span className="text-xs font-medium text-slate-500">{mov.receivedDate ? new Date(mov.receivedDate).toLocaleDateString('pt-BR') : '-'}</span>
+                                                    <span className="text-xs font-medium text-slate-500">{mov.receivedDate ? formatDateDisplay(mov.receivedDate) : '-'}</span>
                                                 </td>
                                                 <td className="p-4 text-right text-base font-black">
                                                     <span className={mov.type === 'IN' ? 'text-emerald-500' : 'text-amber-500'}>
@@ -875,7 +877,7 @@ export default function DepotClient({
                                         <tr key={req.id} className="hover:bg-amber-50/20">
                                             <td className="p-4">
                                                 <p className="font-bold text-slate-800">{req.user?.name}</p>
-                                                <p className="text-[10px] text-slate-400">{new Date(req.createdAt).toLocaleString('pt-BR')}</p>
+                                                <p className="text-[10px] text-slate-400">{formatCuiabaDateTime(req.createdAt)}</p>
                                             </td>
                                             <td className="p-4">
                                                 <p className="font-bold text-slate-700">{req.product?.name}</p>
@@ -1235,7 +1237,7 @@ export default function DepotClient({
                                 </div>
                                 <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Data do Lançamento</p>
-                                    <p className="text-sm font-bold text-slate-700">{new Date(viewingMovement.date).toLocaleString('pt-BR')}</p>
+                                    <p className="text-sm font-bold text-slate-700">{formatCuiabaDateTime(viewingMovement.date)}</p>
                                 </div>
                                 <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Quantidade</p>
@@ -1245,11 +1247,11 @@ export default function DepotClient({
                                 </div>
                                 <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Emissão</p>
-                                    <p className="text-sm font-bold text-slate-700">{viewingMovement.issueDate ? new Date(viewingMovement.issueDate).toLocaleDateString('pt-BR') : '-'}</p>
+                                    <p className="text-sm font-bold text-slate-700">{viewingMovement.issueDate ? formatDateDisplay(viewingMovement.issueDate) : '-'}</p>
                                 </div>
                                 <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Recebimento</p>
-                                    <p className="text-sm font-bold text-slate-700">{viewingMovement.receivedDate ? new Date(viewingMovement.receivedDate).toLocaleDateString('pt-BR') : '-'}</p>
+                                    <p className="text-sm font-bold text-slate-700">{viewingMovement.receivedDate ? formatDateDisplay(viewingMovement.receivedDate) : '-'}</p>
                                 </div>
                             </div>
 

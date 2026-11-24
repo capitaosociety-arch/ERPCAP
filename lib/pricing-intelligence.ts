@@ -12,6 +12,7 @@ import {
   type RentalScheduleBlock,
   type RentalScheduleConfig,
 } from './rental-schedule';
+import { APP_TIME_ZONE, operationalRentalWindow } from './time-zone';
 import { currentCuiabaMonth, monthRange } from './official-financials';
 import { cacheWrap, invalidateCache, managementTtlMs } from './intelligence-cache';
 
@@ -177,7 +178,7 @@ export interface PricingScenarioResult {
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 const weekdayLabel = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-const monthKeyFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit' });
+const monthKeyFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: APP_TIME_ZONE, year: 'numeric', month: '2-digit' });
 const localMonthKey = (d: Date) => monthKeyFormatter.format(d);
 
 function classifyRental(rental: RentalPricingInput, schedule: RentalScheduleBlock[]) {
@@ -560,13 +561,17 @@ export async function getPricingReport(period: string, includeCustomerNames = tr
   const [schedule, rentals] = await Promise.all([
     getRentalSchedule(),
     prisma.rental.findMany({
-      where: { startTime: { lte: range.to } },
-      select: { id: true, customerId: true, resource: true, startTime: true, endTime: true, totalAmount: true, status: true, source: true, customer: { select: { name: true } } },
+      where: { startTime: { lte: new Date(range.to.getTime() + 2 * 60 * 60 * 1000) } },
+      select: { id: true, customerId: true, resource: true, startTime: true, endTime: true, totalAmount: true, status: true, source: true, timeConvention: true, customer: { select: { name: true } } },
       orderBy: { startTime: 'asc' },
     }),
   ]);
+  const operationalRentals = rentals.map(r => {
+    const window = operationalRentalWindow(r.startTime, r.endTime, r.timeConvention);
+    return { ...r, startTime: window.startTime, endTime: window.endTime };
+  });
   const occupancy = buildRegularOccupancy(
-    rentals
+    operationalRentals
       .filter(r => r.startTime < range.to && r.endTime > range.from && r.status !== 'CANCELED')
       .map(r => ({ resource: r.resource, startTime: r.startTime, endTime: r.endTime, totalAmount: r.totalAmount, status: r.status, source: r.source })),
     range.from,
@@ -574,7 +579,7 @@ export async function getPricingReport(period: string, includeCustomerNames = tr
     schedule
   );
   return buildPricingReport(
-    rentals.map(r => ({ id: r.id, customerId: r.customerId, customerName: r.customer.name, resource: r.resource, startTime: r.startTime, endTime: r.endTime, totalAmount: r.totalAmount, status: r.status, source: r.source })),
+    operationalRentals.map(r => ({ id: r.id, customerId: r.customerId, customerName: r.customer.name, resource: r.resource, startTime: r.startTime, endTime: r.endTime, totalAmount: r.totalAmount, status: r.status, source: r.source })),
     occupancy,
     schedule,
     period,

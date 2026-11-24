@@ -1,3 +1,4 @@
+import { APP_TIME_ZONE } from './time-zone';
 import { jsPDF } from 'jspdf';
 
 // Cores da marca (Capitao Society)
@@ -174,7 +175,7 @@ export function downloadDrePdf(
     doc.setFontSize(7.5);
     doc.setTextColor(C.gray);
     doc.text(regime === 'competence' ? 'Regime de competência - receitas e despesas reconhecidas no período.' : 'Regime de caixa - receitas recebidas e despesas pagas no período.', M, y);
-    doc.text('Gerado em ' + new Date().toLocaleString('pt-BR', { timeZone: 'America/Cuiaba' }) + ' pelo sistema ERPCap.', W - M, y, { align: 'right' });
+    doc.text('Gerado em ' + new Date().toLocaleString('pt-BR', { timeZone: APP_TIME_ZONE }) + ' pelo sistema ERPCap.', W - M, y, { align: 'right' });
 
     // ===== PÁGINA 2+: DETALHAMENTO DAS CONTAS =====
     doc.addPage();

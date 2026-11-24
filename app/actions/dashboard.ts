@@ -3,6 +3,7 @@
 import { prisma } from "../../lib/prisma";
 import { requireUser } from "../../lib/auth-guard";
 import { getRentalSchedule } from "../../lib/rental-schedule";
+import { APP_TIME_ZONE, operationalRentalWindow, rawQueryRangeForOperational } from "../../lib/time-zone";
 import { buildRegularOccupancy } from "../../lib/commercial-analytics";
 
 export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') {
@@ -43,12 +44,12 @@ export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') 
     
     if (filter === 'day') {
       // Pega a hora exata em Cuiabá
-      const hour = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', hour12: false, timeZone: 'America/Cuiaba' }).format(date);
+      const hour = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', hour12: false, timeZone: APP_TIME_ZONE }).format(date);
       key = `${hour}h`;
     } else if (filter === 'week' || filter === 'month') {
-      key = date.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
+      key = date.toLocaleDateString('sv-SE', { timeZone: APP_TIME_ZONE });
     } else if (filter === 'year') {
-      const parts = new Intl.DateTimeFormat('pt-BR', { year: 'numeric', month: '2-digit', timeZone: 'America/Cuiaba' }).format(date).split('/');
+      const parts = new Intl.DateTimeFormat('pt-BR', { year: 'numeric', month: '2-digit', timeZone: APP_TIME_ZONE }).format(date).split('/');
       key = `${parts[1]}-${parts[0]}`;
     }
 
@@ -61,12 +62,12 @@ export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') 
     const date = new Date(p.paymentDate);
     
     if (filter === 'day') {
-      const hour = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', hour12: false, timeZone: 'America/Cuiaba' }).format(date);
+      const hour = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', hour12: false, timeZone: APP_TIME_ZONE }).format(date);
       key = `${hour}h`;
     } else if (filter === 'week' || filter === 'month') {
-      key = date.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
+      key = date.toLocaleDateString('sv-SE', { timeZone: APP_TIME_ZONE });
     } else if (filter === 'year') {
-      const parts = new Intl.DateTimeFormat('pt-BR', { year: 'numeric', month: '2-digit', timeZone: 'America/Cuiaba' }).format(date).split('/');
+      const parts = new Intl.DateTimeFormat('pt-BR', { year: 'numeric', month: '2-digit', timeZone: APP_TIME_ZONE }).format(date).split('/');
       key = `${parts[1]}-${parts[0]}`;
     }
 
@@ -126,7 +127,7 @@ export async function getDashboardKpis() {
 
   try {
     // Pegar a data atual em Cuiabá e forçar o início e fim do dia absoluto
-    const formatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit', day: '2-digit' });
+    const formatter = new Intl.DateTimeFormat('sv-SE', { timeZone: APP_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
     const parts = formatter.formatToParts(new Date());
     const year = parts.find(p => p.type === 'year')?.value;
     const month = parts.find(p => p.type === 'month')?.value;
@@ -140,9 +141,10 @@ export async function getDashboardKpis() {
     const startOfDay = new Date(`${todayStr}T00:00:00-04:00`);
     const endOfDay = new Date(`${todayStr}T23:59:59-04:00`);
 
+    const rawRentalRange = rawQueryRangeForOperational(startOfDay, endOfDay);
     const [rentals, payments, costMovements, closedOrders, subPayments] = await Promise.all([
       prisma.rental.findMany({ 
-        where: { startTime: { lt: endOfDay }, endTime: { gt: startOfDay } }
+        where: { startTime: { lt: rawRentalRange.to }, endTime: { gt: rawRentalRange.from } }
       }),
       prisma.payment.findMany({
         where: { date: { gte: startOfDay, lte: endOfDay } },
@@ -187,6 +189,10 @@ export async function getDashboardKpis() {
     const schedule = await getRentalSchedule();
     const occupancy = buildRegularOccupancy(
       rentals
+        .map(r => {
+          const window = operationalRentalWindow(r.startTime, r.endTime, r.timeConvention);
+          return { ...r, startTime: window.startTime, endTime: window.endTime };
+        })
         .filter(r => r.status !== 'CANCELED' && r.startTime < endOfDay && r.endTime > startOfDay)
         .map(r => ({ resource: r.resource, startTime: r.startTime, endTime: r.endTime, totalAmount: r.totalAmount, status: r.status, source: r.source })),
       startOfDay,

@@ -71,4 +71,41 @@ const unchanged = diffRentalSnapshots(before, before);
 assert.deepEqual(unchanged.changedFields, []);
 assert.equal(unchanged.requiresFinancialReview, false);
 
+
+const legacyRawStart = '2026-11-25T02:00:00.000Z';
+const legacyRawEnd = '2026-11-25T03:00:00.000Z';
+const legacySnapshot = buildRentalSnapshot({
+  id: 'r-legacy',
+  customerId: 'c1',
+  orderId: 'o1',
+  resource: 'FUT5',
+  startTime: legacyRawStart,
+  endTime: legacyRawEnd,
+  totalAmount: 110,
+  status: 'PAID',
+  source: 'WALK_IN',
+  timeConvention: 'LEGACY_FORTALEZA',
+});
+const convertedSnapshot = buildRentalSnapshot({
+  id: 'r-legacy',
+  customerId: 'c1',
+  orderId: 'o1',
+  resource: 'FUT5',
+  startTime: '2026-11-25T03:00:00.000Z',
+  endTime: '2026-11-25T04:00:00.000Z',
+  totalAmount: 110,
+  status: 'PAID',
+  source: 'WALK_IN',
+  timeConvention: 'CUIABA',
+});
+assert.equal(legacySnapshot.start, '23:00');
+assert.equal(convertedSnapshot.start, '23:00');
+assert.equal(legacySnapshot.date, convertedSnapshot.date);
+assert.equal(legacySnapshot.durationMinutes, convertedSnapshot.durationMinutes);
+assert.equal(legacySnapshot.totalAmount, convertedSnapshot.totalAmount);
+assert.equal(legacySnapshot.status, convertedSnapshot.status);
+const conventionDiff = diffRentalSnapshots(legacySnapshot, convertedSnapshot);
+assert.equal(conventionDiff.changedFields.includes('timeConvention'), true);
+assert.equal(conventionDiff.changedFields.includes('startTime'), true);
+assert.equal(conventionDiff.requiresFinancialReview, true);
 console.log('rental-corrections tests: OK');

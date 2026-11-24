@@ -11,6 +11,7 @@
 // ===========================================================================
 
 import { prisma } from '../prisma';
+import { operationalRentalWindow } from '../time-zone';
 import { buildPeriods, isRentalItem, isFut5, isFut7, round2, fmtMoney } from '../analytics';
 import {
   currentCuiabaMonth,
@@ -994,14 +995,15 @@ const inativosTool: CopilotTool = {
 
     const [customers, rentals, linkedOrders, subs] = await Promise.all([
       prisma.customer.findMany({ select: { id: true, name: true } }),
-      prisma.rental.findMany({ where: { startTime: { gte: corte } }, select: { customerId: true, startTime: true } }),
+      prisma.rental.findMany({ where: { startTime: { gte: new Date(corte.getTime() - 2 * 60 * 60 * 1000) } }, select: { customerId: true, startTime: true, endTime: true, timeConvention: true } }),
       prisma.order.findMany({ where: { customerId: { not: null }, closedAt: { gte: corte } }, select: { customerId: true, closedAt: true } }),
       prisma.subscription.findMany({ include: { customer: { select: { name: true } } } })
     ]);
 
     const lastRental: Record<string, Date> = {};
     rentals.forEach(r => {
-      if (r.customerId && (!lastRental[r.customerId] || r.startTime > lastRental[r.customerId])) lastRental[r.customerId] = r.startTime;
+      const window = operationalRentalWindow(r.startTime, r.endTime, r.timeConvention);
+      if (r.customerId && (!lastRental[r.customerId] || window.startTime > lastRental[r.customerId])) lastRental[r.customerId] = window.startTime;
     });
     const lastOrder: Record<string, Date> = {};
     linkedOrders.forEach(o => {
@@ -1244,7 +1246,7 @@ const resumoTool: CopilotTool = {
         where: { status: 'ACTIVE', order: { status: 'CLOSED', closedAt: { gte: P.from, lte: P.to } } },
         select: { quantity: true, subtotal: true, product: { select: { name: true, isService: true, stockControlled: true } } }
       }),
-      prisma.rental.findMany({ where: { startTime: { gte: P.from, lte: P.to }, status: { not: 'CANCELED' } }, select: { startTime: true, endTime: true } })
+      prisma.rental.findMany({ where: { startTime: { gte: new Date(P.from.getTime() - 2 * 60 * 60 * 1000), lte: new Date(P.to.getTime() + 2 * 60 * 60 * 1000) }, status: { not: 'CANCELED' } }, select: { startTime: true, endTime: true, timeConvention: true } })
     ]);
 
     const comandasPagas = new Set(payments.filter(p => p.orderId).map(p => p.orderId)).size;
@@ -1266,7 +1268,13 @@ const resumoTool: CopilotTool = {
     });
     const topProdutos = Object.entries(prodAgg).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([nome, qtd]) => ({ nome, qtd }));
 
-    const horasOcupadas = rentals.reduce((a, r) => a + (r.endTime.getTime() - r.startTime.getTime()) / 3600000, 0);
+    const operationalRentals = rentals
+      .map(r => {
+        const window = operationalRentalWindow(r.startTime, r.endTime, r.timeConvention);
+        return { ...r, startTime: window.startTime, endTime: window.endTime };
+      })
+      .filter(r => r.startTime >= P.from && r.startTime <= P.to);
+    const horasOcupadas = operationalRentals.reduce((a, r) => a + (r.endTime.getTime() - r.startTime.getTime()) / 3600000, 0);
 
     return ok({
       periodo: P.label,
@@ -1276,7 +1284,7 @@ const resumoTool: CopilotTool = {
       ticketMedio: ticket,
       metodosPagamento: methods,
       topProdutos,
-      totalReservas: rentals.length,
+      totalReservas: operationalRentals.length,
       horasReservadas: round2(horasOcupadas)
     }, {
       periodo: P.label,

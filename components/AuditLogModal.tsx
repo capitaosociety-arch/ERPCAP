@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, History, User, Clock, Package, Briefcase, Key, LogIn, LayoutDashboard } from 'lucide-react';
 import { getAuditLogs } from '../app/actions/audit';
+import { formatCuiabaDateTime } from '../lib/time-zone';
 
 export default function AuditLogModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
     const [logs, setLogs] = useState<any[]>([]);
@@ -79,7 +80,7 @@ export default function AuditLogModal({ isOpen, onClose }: { isOpen: boolean, on
                                             <span className="text-sm font-black text-slate-800">{log.action}</span>
                                         </div>
                                         <span className="text-[10px] font-bold text-slate-400 whitespace-nowrap flex items-center gap-1">
-                                            <Clock size={10} /> {new Date(log.timestamp).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
+                                            <Clock size={10} /> {formatCuiabaDateTime(log.timestamp)}
                                         </span>
                                     </div>
                                     

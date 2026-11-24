@@ -5,10 +5,11 @@ import { revalidatePath } from 'next/cache';
 import { requirePermission } from '../../lib/auth-guard';
 import { computeDre, computeDreAccrual } from '../../lib/dre';
 import { createAuditLog } from './audit';
+import { APP_TIME_ZONE } from '../../lib/time-zone';
 
 function periodFromDate(date: Date): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Cuiaba',
+    timeZone: APP_TIME_ZONE,
     year: 'numeric',
     month: '2-digit',
   }).formatToParts(date);

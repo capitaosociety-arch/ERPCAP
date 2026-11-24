@@ -2,6 +2,7 @@ import { isFut5, isFut7, round2 } from './analytics';
 import { isMonthKey, monthRange } from './official-financials';
 import { NEW_RULES_EFFECTIVE_LABEL, NEW_RULES_EFFECTIVE_PERIOD, isNewRulesPeriod, rulesVersionForPeriod, type RulesVersion } from './effective-rules';
 import { prisma } from './prisma';
+import { operationalRentalWindow, rawQueryRangeForOperational } from './time-zone';
 
 export interface CostCenterRow {
   code: string;
@@ -85,10 +86,10 @@ export async function getCostCenterReport(period: string): Promise<CostCenterRep
     prisma.rental.findMany({
       where: {
         status: 'PAID',
-        startTime: { lt: range.to },
-        endTime: { gt: range.from },
+        startTime: { lt: rawQueryRangeForOperational(range.from, range.to).to },
+        endTime: { gt: rawQueryRangeForOperational(range.from, range.to).from },
       },
-      select: { resource: true, startTime: true, endTime: true, totalAmount: true, status: true },
+      select: { resource: true, startTime: true, endTime: true, totalAmount: true, status: true, timeConvention: true },
     }),
   ]);
 
@@ -96,9 +97,11 @@ export async function getCostCenterReport(period: string): Promise<CostCenterRep
   rentals.forEach((rental) => {
     const field = isFut5(rental.resource) ? 'FUT5' : isFut7(rental.resource) ? 'FUT7' : null;
     if (!field) return;
+    const window = operationalRentalWindow(rental.startTime, rental.endTime, rental.timeConvention);
+    if (window.startTime >= range.to || window.endTime <= range.from) return;
     const current = byField.get(field) || { receita: 0, minutes: 0 };
     current.receita += Number(rental.totalAmount) || 0;
-    current.minutes += Math.max(0, (new Date(rental.endTime).getTime() - new Date(rental.startTime).getTime()) / 60000);
+    current.minutes += Math.max(0, (window.endTime.getTime() - window.startTime.getTime()) / 60000);
     byField.set(field, current);
   });
 

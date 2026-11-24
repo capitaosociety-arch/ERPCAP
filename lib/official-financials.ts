@@ -1,4 +1,5 @@
-﻿import { prisma } from './prisma';
+import { APP_TIME_ZONE } from './time-zone';
+import { prisma } from './prisma';
 import { buildDreAccrualFromData, buildDreCashFromData, computeDre, computeDreAccrual, type DreResultado } from './dre';
 import { getCuiabaDateStr } from './analytics';
 
@@ -60,7 +61,7 @@ export function formatMonthLabel(period: string): string {
   const raw = new Intl.DateTimeFormat('pt-BR', {
     month: 'long',
     year: 'numeric',
-    timeZone: 'America/Cuiaba',
+    timeZone: APP_TIME_ZONE,
   }).format(date);
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 }

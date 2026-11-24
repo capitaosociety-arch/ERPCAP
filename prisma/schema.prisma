@@ -356,6 +356,7 @@ model Rental {
   totalAmount Float
   status      String   @default("PENDING") // PENDING, PAID, CANCELED, NO_SHOW
   source      String   @default("LEGACY") // SUBSCRIPTION, WALK_IN, MANUAL, LEGACY
+  timeConvention String @default("LEGACY_FORTALEZA") // LEGACY_FORTALEZA | CUIABA
   cancelledAt DateTime?
   createdAt   DateTime @default(now())
 

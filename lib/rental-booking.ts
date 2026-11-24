@@ -1,4 +1,6 @@
 import { buildRentalWindow, formatRentalPeriod } from './rental-time';
+import { findOperationalConflict, findReusableOperationalRental, operationalInterval } from './rental-conflicts';
+import { NEW_RENTAL_TIME_CONVENTION } from './time-zone';
 
 export type RentalBookingInput = {
   customerId?: string | null;
@@ -51,30 +53,37 @@ export async function resolveLinkedRental(tx: any, input: RentalBookingInput) {
   }
 
   await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${resource.toLowerCase()}))::text`;
-  const existingRental = await tx.rental.findFirst({
+  const candidateFrom = new Date(startTime.getTime() - 2 * 60 * 60 * 1000);
+  const candidateTo = new Date(endTime.getTime() + 2 * 60 * 60 * 1000);
+  const candidates = await tx.rental.findMany({
     where: {
-      customerId,
       resource,
-      startTime,
-      endTime,
-      status: { in: ['PENDING', 'CONFIRMED'] },
-      orderItems: { none: { status: 'ACTIVE' } },
+      startTime: { lt: candidateTo },
+      endTime: { gt: candidateFrom },
     },
-    select: { id: true },
+    select: {
+      id: true,
+      customerId: true,
+      resource: true,
+      startTime: true,
+      endTime: true,
+      status: true,
+      timeConvention: true,
+      orderItems: { where: { status: 'ACTIVE' }, select: { id: true } },
+    },
   });
-  if (existingRental) return { id: existingRental.id, created: false };
 
-  const conflict = await tx.rental.findFirst({
-    where: {
-      resource,
-      status: { not: 'CANCELED' },
-      startTime: { lt: endTime },
-      endTime: { gt: startTime },
-    },
-    select: { id: true, startTime: true, endTime: true },
-  });
+  const target = { customerId: customerId!, resource, startTime, endTime, timeConvention: NEW_RENTAL_TIME_CONVENTION };
+  const reusable = findReusableOperationalRental(
+    candidates.filter((candidate: any) => candidate.customerId === customerId && candidate.orderItems.length === 0),
+    target
+  );
+  if (reusable) return { id: reusable.id, created: false };
+
+  const conflict = findOperationalConflict(candidates, target);
   if (conflict) {
-    throw new Error(`Horario indisponivel para ${resource}: ${formatRentalPeriod(conflict.startTime, conflict.endTime)}.`);
+    const conflictInterval = operationalInterval(conflict);
+    throw new Error(`Horario indisponivel para ${resource}: ${formatRentalPeriod(conflictInterval.startTime, conflictInterval.endTime, 'CUIABA')}.`);
   }
 
   const created = await tx.rental.create({
@@ -86,6 +95,7 @@ export async function resolveLinkedRental(tx: any, input: RentalBookingInput) {
       totalAmount: amount,
       status: 'PENDING',
       source: 'WALK_IN',
+      timeConvention: NEW_RENTAL_TIME_CONVENTION,
     },
     select: { id: true },
   });

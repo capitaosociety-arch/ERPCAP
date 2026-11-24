@@ -6,6 +6,7 @@ import { registerStockMovement, updateMinStock, registerBatchStockMovement } fro
 import { quickCreateProductFromInvoice } from '../../actions/products';
 import { saveStockCounts } from '../../actions/stock-count';
 import { downloadExcel } from '../../../lib/excel-export';
+import { currentCuiabaDateKey, formatCuiabaDate, formatCuiabaDateTime } from '../../../lib/time-zone';
 import { PRODUCT_SORT_OPTIONS, ProductSortOption, sortProducts } from '../../../lib/product-sort';
 import { calculateStockCountDifference, formatStockQuantity, stockCountDifferenceTone } from '../../../lib/stock-count-diff';
 
@@ -33,7 +34,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
   const [sortBy, setSortBy] = useState<ProductSortOption>('name-asc');
 
   // Contagem diária de estoque (Balcão)
-  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
+  const todayStr = currentCuiabaDateKey();
   const [countDate, setCountDate] = useState<string>(todayStr);
   const [countQty, setCountQty] = useState<Record<string, string>>(() => {
       const map: Record<string, string> = {};
@@ -827,7 +828,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
               <tbody className="divide-y divide-gray-50">
                 {allMovements.map((mov: any) => (
                   <tr key={mov.id} className="hover:bg-slate-50 transition">
-                      <td className="p-4 text-sm font-medium text-gray-500">{new Date(mov.date).toLocaleDateString('pt-BR')}</td>
+                      <td className="p-4 text-sm font-medium text-gray-500">{formatCuiabaDate(mov.date)}</td>
                       <td className="p-4 font-bold text-sm text-slate-800">{mov.product?.name}</td>
                       <td className="p-4">
                           {mov.type === 'IN' ? (
@@ -980,7 +981,7 @@ export default function EstoqueClient({ initialProducts, initialStockCounts = []
                         </div>
                         <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Data do Lançamento</p>
-                            <p className="text-sm font-bold text-slate-700">{new Date(viewingMovement.date).toLocaleString('pt-BR')}</p>
+                            <p className="text-sm font-bold text-slate-700">{formatCuiabaDateTime(viewingMovement.date)}</p>
                         </div>
                         <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Quantidade</p>

@@ -1,6 +1,7 @@
 import { prisma } from './prisma';
 import { formatRentalDateInput } from './rental-time';
 import { getRentalSchedule } from './rental-schedule';
+import { normalizeRentalTimeConvention, operationalRentalWindow, rawQueryRangeForOperational } from './time-zone';
 import {
   DEFAULT_AGENDA_FILTERS,
   buildAgendaData,
@@ -58,10 +59,11 @@ export async function loadAgendaData(params: AgendaDataParams = {}): Promise<Age
   const range = getAgendaRange(view, anchor);
   const from = new Date(range.from);
   const to = new Date(range.to);
+  const queryRange = rawQueryRangeForOperational(from, to);
 
   const rentalWhere: any = {
-    startTime: { lt: to },
-    endTime: { gt: from },
+    startTime: { lt: queryRange.to },
+    endTime: { gt: queryRange.from },
   };
   if (filters.customerId) rentalWhere.customerId = filters.customerId;
   if (filters.source !== 'ALL') rentalWhere.source = filters.source;
@@ -181,11 +183,12 @@ export async function loadAgendaData(params: AgendaDataParams = {}): Promise<Age
     customerPhone: rental.customer?.phone || null,
     isSubscriber: rental.customer?.subscription?.isActive === true,
     resource: rental.resource,
-    startTime: rental.startTime.toISOString(),
-    endTime: rental.endTime.toISOString(),
+    startTime: operationalRentalWindow(rental.startTime, rental.endTime, rental.timeConvention).startTime.toISOString(),
+    endTime: operationalRentalWindow(rental.startTime, rental.endTime, rental.timeConvention).endTime.toISOString(),
     totalAmount: Number(rental.totalAmount) || 0,
     status: rental.status,
     source: rental.source || 'LEGACY',
+    timeConvention: normalizeRentalTimeConvention(rental.timeConvention),
     cancelledAt: rental.cancelledAt ? rental.cancelledAt.toISOString() : null,
     createdAt: rental.createdAt.toISOString(),
     orderItems: (rental.orderItems || []).map((item) => ({

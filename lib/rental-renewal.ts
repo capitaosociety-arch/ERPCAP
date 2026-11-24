@@ -4,6 +4,7 @@ import {
   formatRentalTimeInput,
   RENTAL_TIME_ZONE,
 } from './rental-time';
+import { NEW_RENTAL_TIME_CONVENTION, operationalRentalWindow } from './time-zone';
 
 const weekdayFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: RENTAL_TIME_ZONE,
@@ -27,6 +28,7 @@ export type RentalHistoryItem = {
   endTime: Date | string;
   totalAmount?: number;
   status?: string;
+  timeConvention?: string;
 };
 
 export type RentalPattern = {
@@ -48,6 +50,7 @@ export type RenewalRentalDraft = {
   amount: number;
   status: 'PENDING';
   source?: 'SUBSCRIPTION' | 'WALK_IN' | 'MANUAL' | 'LEGACY';
+  timeConvention?: string;
 };
 
 function weekdayOf(value: Date | string): number {
@@ -81,13 +84,14 @@ export function inferRentalPattern(rentals: RentalHistoryItem[]): RentalPattern 
   for (const rental of rentals) {
     if (!rental?.resource || !rental.startTime || !rental.endTime) continue;
     if (rental.status === 'CANCELED' || rental.status === 'NO_SHOW') continue;
-    const start = formatRentalTimeInput(rental.startTime);
-    const end = formatRentalTimeInput(rental.endTime);
+    const { startTime, endTime } = operationalRentalWindow(rental.startTime, rental.endTime, rental.timeConvention);
+    const start = formatRentalTimeInput(startTime);
+    const end = formatRentalTimeInput(endTime);
     const resource = rental.resource.trim();
-    const weekday = weekdayOf(rental.startTime);
+    const weekday = weekdayOf(startTime);
     const key = `${resource.trim().toLowerCase()}|${weekday}|${start}|${end}`;
     const existing = groups.get(key);
-    const timestamp = new Date(rental.startTime).getTime();
+    const timestamp = startTime.getTime();
     if (timestamp > latestTimestamp) {
       latestTimestamp = timestamp;
       latestKey = key;
@@ -141,11 +145,12 @@ export function generateRenewalDraftsFromPattern(
   const existingKeys = new Set<string>();
   for (const rental of history) {
     if (rental.status === 'CANCELED') continue;
+    const { startTime, endTime } = operationalRentalWindow(rental.startTime, rental.endTime, rental.timeConvention);
     existingKeys.add(rentalDraftKey(
       rental.resource,
-      formatRentalDateInput(rental.startTime),
-      formatRentalTimeInput(rental.startTime),
-      formatRentalTimeInput(rental.endTime)
+      formatRentalDateInput(startTime),
+      formatRentalTimeInput(startTime),
+      formatRentalTimeInput(endTime)
     ));
   }
   for (const rental of existingDrafts) {
@@ -176,6 +181,7 @@ export function generateRenewalDraftsFromPattern(
       amount: pattern.amount,
       status: 'PENDING',
       source: 'SUBSCRIPTION',
+      timeConvention: NEW_RENTAL_TIME_CONVENTION,
     });
   }
   return generated;

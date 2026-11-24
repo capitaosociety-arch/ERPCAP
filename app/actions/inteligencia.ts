@@ -21,6 +21,7 @@ import {
   type FinancialSource
 } from '../../lib/official-financials';
 import { getCommercialSnapshot, getOccupancyReport } from '../../lib/commercial-analytics';
+import { APP_TIME_ZONE } from '../../lib/time-zone';
 import { NEW_RULES_EFFECTIVE_PERIOD, isNewRulesDate, methodologyNoteForPeriod, rulesVersionForPeriod, type RulesVersion } from '../../lib/effective-rules';
 
 export type Secao = 'RISCO' | 'OPORTUNIDADE' | 'RECOMENDACAO' | 'TENDENCIA';
@@ -205,7 +206,7 @@ export async function getIntelligenceReport(
       if (inCur(p.date)) {
         receitasCur += p.amount;
         if (p.orderId) paidOrdersCur.add(p.orderId);
-        const h = parseInt(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Cuiaba' }).format(p.date), 10);
+        const h = parseInt(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: APP_TIME_ZONE }).format(p.date), 10);
         hourAmountCur[h] = (hourAmountCur[h] || 0) + p.amount;
         methodAmountCur[p.method] = (methodAmountCur[p.method] || 0) + p.amount;
       }
@@ -313,7 +314,7 @@ export async function getIntelligenceReport(
     const daily: Record<string, number> = {};
     payments.forEach(p => {
       if (!inCur(p.date)) return;
-      const key = p.date.toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' });
+      const key = p.date.toLocaleDateString('sv-SE', { timeZone: APP_TIME_ZONE });
       daily[key] = (daily[key] || 0) + p.amount;
     });
     const serie: { label: string; valor: number }[] = [];
@@ -397,7 +398,7 @@ export async function getIntelligenceReport(
       impacto: 'Financeiro',
       causa: 'Contas PAYABLE com status PENDING e vencimento anterior à data atual.',
       acao: 'Priorize quitar as vencidas para evitar juros/multas e cobranças adicionais.',
-      dados: vencidas.slice(0, 5).map(e => `${e.description || e.category || 'Conta'} — venc. ${e.dueDate.toLocaleDateString('pt-BR', { timeZone: 'America/Cuiaba' })} · ${fmtMoney(e.amount)}`),
+      dados: vencidas.slice(0, 5).map(e => `${e.description || e.category || 'Conta'} — venc. ${e.dueDate.toLocaleDateString('pt-BR', { timeZone: APP_TIME_ZONE })} · ${fmtMoney(e.amount)}`),
       link: '/financeiro',
       severidade: totalVencido > 0 ? 'ALTA' : 'BAIXA'
     });
@@ -732,7 +733,7 @@ export async function getIntelligenceReport(
       report: {
         periodoLabel: official.label,
         previousPeriodLabel: previousOfficial.label,
-        geradoEm: new Date().toLocaleString('pt-BR', { timeZone: 'America/Cuiaba' }),
+        geradoEm: new Date().toLocaleString('pt-BR', { timeZone: APP_TIME_ZONE }),
         regime,
         status: official.status,
         version: official.version,

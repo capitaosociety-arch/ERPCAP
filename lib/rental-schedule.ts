@@ -1,8 +1,9 @@
 import { prisma } from './prisma';
+import { APP_TIME_ZONE } from './time-zone';
 
-const weekdayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Cuiaba', weekday: 'short' });
-const dateKeyFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit', day: '2-digit' });
-const minuteOfDayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Cuiaba', hour: '2-digit', minute: '2-digit', hour12: false });
+const weekdayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: APP_TIME_ZONE, weekday: 'short' });
+const dateKeyFormatter = new Intl.DateTimeFormat('sv-SE', { timeZone: APP_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
+const minuteOfDayFormatter = new Intl.DateTimeFormat('en-US', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false });
 
 export interface RentalScheduleBlock {
   id?: string;

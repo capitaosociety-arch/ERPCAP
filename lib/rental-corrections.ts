@@ -1,4 +1,5 @@
 import { buildRentalWindow, formatRentalDateInput, formatRentalTimeInput } from './rental-time';
+import { NEW_RENTAL_TIME_CONVENTION, normalizeRentalTimeConvention, operationalRentalWindow, type RentalTimeConvention } from './time-zone';
 
 export type RentalCorrectionField = 'FUT5' | 'FUT7';
 
@@ -7,6 +8,7 @@ export type RentalSnapshot = {
   customerId: string;
   orderId: string | null;
   resource: string;
+  timeConvention?: string;
   date: string;
   start: string;
   end: string;
@@ -58,8 +60,9 @@ export function buildRentalCorrectionWindow(input: {
   start: string;
   end: string;
   field: unknown;
-}): {
+}, convention: RentalTimeConvention = NEW_RENTAL_TIME_CONVENTION): {
   field: RentalCorrectionField;
+  timeConvention: RentalTimeConvention;
   startTime: Date;
   endTime: Date;
   durationMinutes: number;
@@ -69,13 +72,14 @@ export function buildRentalCorrectionWindow(input: {
   if (String(input.start || '').trim() === String(input.end || '').trim()) {
     throw new Error('O horário final deve ser diferente do horário inicial.');
   }
-  const { startTime, endTime } = buildRentalWindow(input.date, input.start, input.end);
+  const normalizedConvention = normalizeRentalTimeConvention(convention);
+  const { startTime, endTime } = buildRentalWindow(input.date, input.start, input.end, normalizedConvention);
   if (endTime <= startTime) throw new Error('Horário final inválido.');
   const durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
   if (durationMinutes <= 0 || durationMinutes > 24 * 60) {
     throw new Error('Duração inválida. Informe entre 1 minuto e 24 horas.');
   }
-  return { field, startTime, endTime, durationMinutes };
+  return { field, timeConvention: normalizedConvention, startTime, endTime, durationMinutes };
 }
 
 export function buildRentalSnapshot(input: {
@@ -88,19 +92,23 @@ export function buildRentalSnapshot(input: {
   totalAmount: number;
   status: string;
   source: string;
+  timeConvention?: string;
 }): RentalSnapshot {
-  const start = new Date(input.startTime);
-  const end = new Date(input.endTime);
+  const convention = normalizeRentalTimeConvention(input.timeConvention);
+  const storedStart = new Date(input.startTime);
+  const storedEnd = new Date(input.endTime);
+  const { startTime: start, endTime: end } = operationalRentalWindow(storedStart, storedEnd, convention);
   return {
     id: input.id,
     customerId: input.customerId,
     orderId: input.orderId || null,
     resource: String(input.resource || '').trim().toUpperCase(),
+    timeConvention: convention,
     date: formatRentalDateInput(start),
     start: formatRentalTimeInput(start),
     end: formatRentalTimeInput(end),
-    startTime: start.toISOString(),
-    endTime: end.toISOString(),
+    startTime: storedStart.toISOString(),
+    endTime: storedEnd.toISOString(),
     durationMinutes: Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000)),
     totalAmount: Number(input.totalAmount) || 0,
     status: String(input.status || '').toUpperCase(),
@@ -114,6 +122,7 @@ export function diffRentalSnapshots(before: RentalSnapshot, after: RentalSnapsho
 } {
   const changedFields: string[] = [];
   if (before.resource !== after.resource) changedFields.push('field');
+  if (normalizeRentalTimeConvention(before.timeConvention) !== normalizeRentalTimeConvention(after.timeConvention)) changedFields.push('timeConvention');
   if (before.date !== after.date) changedFields.push('date');
   if (before.startTime !== after.startTime) changedFields.push('startTime');
   if (before.endTime !== after.endTime) changedFields.push('endTime');

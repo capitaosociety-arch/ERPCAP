@@ -11,7 +11,7 @@ const input = {
 };
 
 function fakeTx(options: { existingRental?: any; conflict?: any; customer?: any } = {}) {
-  const calls: { rentalFindFirst: number; rentalCreate: number; exactWhere?: any; lastCreate?: any } = { rentalFindFirst: 0, rentalCreate: 0 };
+  const calls: { rentalFindMany: number; rentalCreate: number; candidatesWhere?: any; lastCreate?: any } = { rentalFindMany: 0, rentalCreate: 0 };
   const tx = {
     $queryRaw: async () => [{ pg_advisory_xact_lock: '1' }],
     customer: {
@@ -20,10 +20,10 @@ function fakeTx(options: { existingRental?: any; conflict?: any; customer?: any 
       create: async () => ({ id: 'customer-new' }),
     },
     rental: {
-      findFirst: async ({ where }: any) => {
-        calls.rentalFindFirst += 1;
-        if (calls.rentalFindFirst === 1) calls.exactWhere = where;
-        return calls.rentalFindFirst === 1 ? options.existingRental || null : options.conflict || null;
+      findMany: async ({ where }: any) => {
+        calls.rentalFindMany += 1;
+        calls.candidatesWhere = where;
+        return [options.existingRental, options.conflict].filter(Boolean);
       },
       create: async ({ data }: any) => {
         calls.rentalCreate += 1;
@@ -37,10 +37,19 @@ function fakeTx(options: { existingRental?: any; conflict?: any; customer?: any 
 
 async function main() {
   {
-    const { tx, calls } = fakeTx({ existingRental: { id: 'rental-existing' } });
+    const { tx, calls } = fakeTx({ existingRental: {
+      id: 'rental-existing',
+      customerId: 'customer-1',
+      resource: 'FUT5',
+      startTime: new Date('2026-11-14T00:00:00.000Z'),
+      endTime: new Date('2026-11-14T01:00:00.000Z'),
+      status: 'PENDING',
+      timeConvention: 'CUIABA',
+      orderItems: [],
+    } });
     const result = await resolveLinkedRental(tx, input);
     assert.deepEqual(result, { id: 'rental-existing', created: false });
-    assert.deepEqual(calls.exactWhere.status, { in: ['PENDING', 'CONFIRMED'] });
+    assert.equal(calls.rentalFindMany, 1);
     assert.equal(calls.rentalCreate, 0);
   }
 
@@ -51,10 +60,20 @@ async function main() {
     assert.equal(calls.rentalCreate, 1);
     assert.equal(calls.lastCreate.source, 'WALK_IN');
     assert.equal(calls.lastCreate.status, 'PENDING');
+    assert.equal(calls.lastCreate.timeConvention, 'CUIABA');
   }
 
   {
-    const { tx, calls } = fakeTx({ conflict: { id: 'rental-conflict', startTime: new Date(), endTime: new Date() } });
+    const { tx, calls } = fakeTx({ conflict: {
+      id: 'rental-conflict',
+      customerId: 'other',
+      resource: 'FUT5',
+      startTime: new Date('2026-11-14T00:00:00.000Z'),
+      endTime: new Date('2026-11-14T01:00:00.000Z'),
+      status: 'PENDING',
+      timeConvention: 'CUIABA',
+      orderItems: [],
+    } });
     await assert.rejects(() => resolveLinkedRental(tx, input), /Horario indisponivel/);
     assert.equal(calls.rentalCreate, 0);
   }

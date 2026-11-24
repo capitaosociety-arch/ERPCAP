@@ -1,4 +1,5 @@
-﻿export type PeriodoKey = '7d' | '30d' | '90d' | 'month';
+import { APP_TIME_ZONE } from './time-zone';
+export type PeriodoKey = '7d' | '30d' | '90d' | 'month';
 
 export interface Periodos {
   label: string;
@@ -15,7 +16,7 @@ function addDays(dateStr: string, delta: number): string {
 }
 
 export function getCuiabaDateStr(d: Date = new Date()): string {
-  const f = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit', day: '2-digit' });
+  const f = new Intl.DateTimeFormat('sv-SE', { timeZone: APP_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
   const parts = f.formatToParts(d);
   const y = parts.find(p => p.type === 'year')?.value;
   const m = parts.find(p => p.type === 'month')?.value;
@@ -39,7 +40,7 @@ export function buildPeriods(periodo: PeriodoKey): Periodos {
     const prevFrom = new Date(`${prevY}-${String(prevM).padStart(2, '0')}-01T00:00:00-04:00`);
     const prevTo = new Date(from.getTime() - 1000);
 
-    const fLabel = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'America/Cuiaba' });
+    const fLabel = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: APP_TIME_ZONE });
     return { label: `Mês de ${fLabel.format(from)}`, from, to, prevFrom, prevTo };
   }
 
@@ -71,7 +72,7 @@ export function isFut7(name: string): boolean {
 }
 
 export function monthKey(d: Date): string {
-  const f = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Cuiaba', year: 'numeric', month: '2-digit' });
+  const f = new Intl.DateTimeFormat('en-US', { timeZone: APP_TIME_ZONE, year: 'numeric', month: '2-digit' });
   const parts = f.formatToParts(d);
   const y = parts.find(p => p.type === 'year')?.value;
   const mo = parts.find(p => p.type === 'month')?.value;

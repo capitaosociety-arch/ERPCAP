@@ -19,6 +19,8 @@ import { closeFinancialPeriod, reopenFinancialPeriod } from '../../actions/finan
 import { dbPeriodToKey, formatPeriodKey, keyToDbPeriod, monthsForYear as getMonthsForYear, listYears, periodStatus, shiftMonth } from '../../../lib/dre-navigation';
 import { getRegisterSummary, deleteCashSessionAction, getSessionsForDepositAction, recordCashDepositAction, recordGlobalCashDepositAction } from '../../actions/caixa';
 import { voidPaymentAction, editPaymentAction } from '../../actions/comandas';
+import { currentCuiabaDateKey, formatCuiabaDate, formatCuiabaDateTime, formatCuiabaTime, isCivilDateBeforeTodayCuiaba } from '../../../lib/time-zone';
+import { formatDateDisplay, formatDateOnlyInput } from '../../../lib/subscription-date';
 
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -87,7 +89,7 @@ export default function FinanceiroClient({ payload }: any) {
         description: '',
         type: 'PAYABLE',
         amount: '',
-        dueDate: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }),
+        dueDate: currentCuiabaDateKey(),
         category: 'Diversos',
         notes: '',
         method: 'PIX',
@@ -128,7 +130,7 @@ export default function FinanceiroClient({ payload }: any) {
                     'Descrição': e.description,
                     'Tipo': e.type === 'PAYABLE' ? 'A Pagar' : 'A Receber',
                     'Valor': e.amount,
-                    'Vencimento': new Date(e.dueDate).toLocaleDateString('pt-BR'),
+                    'Vencimento': formatDateDisplay(e.dueDate),
                     'Status': e.status === 'PAID' ? 'Pago' : 'Pendente',
                     'Categoria': e.category,
                     'Método': e.method
@@ -168,8 +170,8 @@ export default function FinanceiroClient({ payload }: any) {
                         'ID': c.id,
                         'Operador': c.user?.name || 'N/A',
                         'Status': c.status === 'OPEN' ? 'Aberto' : 'Fechado',
-                        'Abertura': c.openedAt ? new Date(c.openedAt).toLocaleString('pt-BR') : '',
-                        'Fechamento': c.closedAt ? new Date(c.closedAt).toLocaleString('pt-BR') : 'Em curso',
+                        'Abertura': c.openedAt ? formatCuiabaDateTime(c.openedAt) : '',
+                        'Fechamento': c.closedAt ? formatCuiabaDateTime(c.closedAt) : 'Em curso',
                         'Dinheiro': r2(byMethod.CASH),
                         'PIX': r2(byMethod.PIX),
                         'Débito': r2(byMethod.DEBIT),
@@ -183,7 +185,7 @@ export default function FinanceiroClient({ payload }: any) {
             }
         ];
 
-        downloadMultiSheetExcel(sheets, `Financeiro_Capitao_${new Date().toLocaleDateString('sv-SE')}`);
+        downloadMultiSheetExcel(sheets, `Financeiro_Capitao_${currentCuiabaDateKey()}`);
     };
 
     const handleCreateEntry = async (e: React.FormEvent) => {
@@ -203,7 +205,7 @@ export default function FinanceiroClient({ payload }: any) {
                 description: '',
                 type: 'PAYABLE',
                 amount: '',
-                dueDate: new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Cuiaba' }),
+                dueDate: currentCuiabaDateKey(),
                 category: 'Diversos',
                 notes: '',
                 method: 'PIX',
@@ -818,12 +820,12 @@ export default function FinanceiroClient({ payload }: any) {
                                                 <div className="flex flex-col gap-0.5">
                                                     <div className="flex items-center gap-2 text-sm font-black text-slate-700">
                                                         <Calendar size={14} className="text-gray-400" />
-                                                        {new Date(e.dueDate).toLocaleDateString('pt-BR')}
-                                                        {e.status === 'PENDING' && new Date(e.dueDate) < new Date() && (
+                                                        {formatDateDisplay(e.dueDate)}
+                                                        {e.status === 'PENDING' && isCivilDateBeforeTodayCuiaba(e.dueDate) && (
                                                             <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-black italic animate-pulse">ATRASADO</span>
                                                         )}
                                                     </div>
-                                                    <span className="text-[10px] text-gray-400 font-medium pl-5">Lançamento: {new Date(e.createdAt).toLocaleDateString('pt-BR')}</span>
+                                                    <span className="text-[10px] text-gray-400 font-medium pl-5">Lançamento: {formatCuiabaDate(e.createdAt)}</span>
                                                 </div>
                                             </td>
                                             <td className="p-4">
@@ -836,7 +838,7 @@ export default function FinanceiroClient({ payload }: any) {
                                                     <span className="text-xs font-bold text-slate-600 uppercase">{e.method || '-'}</span>
                                                     <span className="text-[10px] text-gray-400 font-medium">Ref: {e.reference || '-'}</span>
                                                     {e.status === 'PAID' && e.paymentDate && (
-                                                        <span className="text-[10px] text-emerald-600 font-bold mt-0.5">Pago em: {new Date(e.paymentDate).toLocaleDateString('pt-BR')}</span>
+                                                        <span className="text-[10px] text-emerald-600 font-bold mt-0.5">Pago em: {formatCuiabaDate(e.paymentDate)}</span>
                                                     )}
                                                 </div>
                                             </td>
@@ -869,7 +871,7 @@ export default function FinanceiroClient({ payload }: any) {
                                                             description: e.description,
                                                             type: e.type,
                                                             amount: String(e.amount),
-                                                            dueDate: new Date(e.dueDate).toLocaleDateString('sv-SE'),
+                                                            dueDate: formatDateOnlyInput(e.dueDate),
                                                             category: e.category,
                                                             notes: e.notes || '',
                                                             method: e.method || 'PIX',
@@ -1467,7 +1469,7 @@ export default function FinanceiroClient({ payload }: any) {
                                                             </span>
                                                         </td>
                                                         <td className="p-4 text-xs text-slate-500 whitespace-nowrap">
-                                                            {new Date(audit.createdAt).toLocaleString('pt-BR', { timeZone: 'America/Cuiaba' })}
+                                                            {formatCuiabaDateTime(audit.createdAt)}
                                                         </td>
                                                         <td className="p-4 text-xs font-bold text-slate-700">{audit.userName || 'Sistema'}</td>
                                                         <td className="p-4 text-center text-xs font-black text-slate-700">v{version}</td>
@@ -1566,7 +1568,7 @@ export default function FinanceiroClient({ payload }: any) {
                                                     </div>
                                                     <div>
                                                         <p className="font-bold text-slate-800 text-sm leading-tight">{cash.user?.name}</p>
-                                                        <p className="text-[10px] text-gray-400 font-medium">Início: {new Date(cash.openedAt).toLocaleDateString('pt-BR')} {new Date(cash.openedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                                        <p className="text-[10px] text-gray-400 font-medium">Início: {formatCuiabaDateTime(cash.openedAt)}</p>
                                                     </div>
                                                 </div>
                                             </td>
@@ -1987,7 +1989,7 @@ export default function FinanceiroClient({ payload }: any) {
                                 </div>
                                 <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Vencimento</p>
-                                    <p className="text-sm font-bold text-slate-700">{new Date(viewingEntry.dueDate).toLocaleDateString('pt-BR')}</p>
+                                    <p className="text-sm font-bold text-slate-700">{formatDateDisplay(viewingEntry.dueDate)}</p>
                                 </div>
                                 <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Status</p>
@@ -2010,12 +2012,12 @@ export default function FinanceiroClient({ payload }: any) {
                                 {viewingEntry.paymentDate && (
                                     <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
                                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Pago em</p>
-                                        <p className="text-sm font-bold text-emerald-600">{new Date(viewingEntry.paymentDate).toLocaleDateString('pt-BR')}</p>
+                                        <p className="text-sm font-bold text-emerald-600">{formatCuiabaDate(viewingEntry.paymentDate)}</p>
                                     </div>
                                 )}
                                 <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
                                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Lançado em</p>
-                                    <p className="text-sm font-bold text-slate-700">{new Date(viewingEntry.createdAt).toLocaleString('pt-BR')}</p>
+                                    <p className="text-sm font-bold text-slate-700">{formatCuiabaDateTime(viewingEntry.createdAt)}</p>
                                 </div>
                             </div>
 
@@ -2029,7 +2031,7 @@ export default function FinanceiroClient({ payload }: any) {
                             </div>
 
                             {viewingEntry.updatedAt && new Date(viewingEntry.updatedAt).getTime() !== new Date(viewingEntry.createdAt).getTime() && (
-                                <p className="text-[10px] text-gray-400 font-medium text-center">Última atualização: {new Date(viewingEntry.updatedAt).toLocaleString('pt-BR')}</p>
+                                <p className="text-[10px] text-gray-400 font-medium text-center">Última atualização: {formatCuiabaDateTime(viewingEntry.updatedAt)}</p>
                             )}
                         </div>
 
@@ -2038,7 +2040,7 @@ export default function FinanceiroClient({ payload }: any) {
                                 Fechar
                             </button>
                             <button
-                                onClick={() => { setEditingEntry({ id: viewingEntry.id, description: viewingEntry.description, type: viewingEntry.type, amount: String(viewingEntry.amount), dueDate: new Date(viewingEntry.dueDate).toLocaleDateString('sv-SE'), category: viewingEntry.category, notes: viewingEntry.notes || '', method: viewingEntry.method || 'PIX', reference: viewingEntry.reference || '' }); setViewingEntry(null); }}
+                                onClick={() => { setEditingEntry({ id: viewingEntry.id, description: viewingEntry.description, type: viewingEntry.type, amount: String(viewingEntry.amount), dueDate: formatDateOnlyInput(viewingEntry.dueDate), category: viewingEntry.category, notes: viewingEntry.notes || '', method: viewingEntry.method || 'PIX', reference: viewingEntry.reference || '' }); setViewingEntry(null); }}
                                 className="flex-[2] bg-slate-900 text-white font-black py-2.5 rounded-xl hover:bg-slate-800 shadow-xl shadow-slate-900/20 transition text-sm flex items-center justify-center gap-2"
                             >
                                 <Edit2 size={16} /> Editar Lançamento
@@ -2157,7 +2159,7 @@ export default function FinanceiroClient({ payload }: any) {
                                                                                         <div className="flex items-center gap-2">
                                                                                             <span className="font-bold text-slate-700 text-[11px] uppercase">{p.method === 'CASH' ? 'Dinheiro' : p.method === 'PIX' ? 'Pix' : p.method === 'DEBIT' ? 'Débito' : 'Crédito'}</span>
                                                                                         </div>
-                                                                                        <p className="text-[9px] text-gray-400 font-medium">{new Date(p.date).toLocaleTimeString('pt-BR')}</p>
+                                                                                        <p className="text-[9px] text-gray-400 font-medium">{formatCuiabaTime(p.date)}</p>
                                                                                     </div>
                                                                                     <div className="flex items-center gap-2">
                                                                                         <span className="font-black text-green-600 text-xs">Pago: R$ {Number(p.amount || 0).toFixed(2).replace('.', ',')}</span>
@@ -2308,10 +2310,10 @@ export default function FinanceiroClient({ payload }: any) {
                                     Operador: <span className="font-black text-slate-800">{sessionToDelete.user?.name || '-'}</span>
                                 </p>
                                 <p className="text-slate-600 font-medium mt-1">
-                                    Abertura: <span className="font-black text-slate-800">{sessionToDelete.openedAt ? new Date(sessionToDelete.openedAt).toLocaleString('pt-BR') : '-'}</span>
+                                    Abertura: <span className="font-black text-slate-800">{sessionToDelete.openedAt ? formatCuiabaDateTime(sessionToDelete.openedAt) : '-'}</span>
                                 </p>
                                 <p className="text-slate-600 font-medium mt-1">
-                                    Fechamento: <span className="font-black text-slate-800">{sessionToDelete.closedAt ? new Date(sessionToDelete.closedAt).toLocaleString('pt-BR') : 'Em curso'}</span>
+                                    Fechamento: <span className="font-black text-slate-800">{sessionToDelete.closedAt ? formatCuiabaDateTime(sessionToDelete.closedAt) : 'Em curso'}</span>
                                 </p>
                             </div>
                             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
@@ -2354,7 +2356,7 @@ export default function FinanceiroClient({ payload }: any) {
                                         <Landmark className="text-mrts-blue" /> {isGlobalDeposit ? 'Depósito Global do Ciclo' : 'Registrar Depósito'}
                                     </h2>
                                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">
-                                        {isGlobalDeposit ? 'Zerar todos os caixas pendentes' : `Sessão: ${selectedSessionForDep?.operatorName} | ${selectedSessionForDep?.closedAt ? new Date(selectedSessionForDep.closedAt).toLocaleDateString() : ''}`}
+                                        {isGlobalDeposit ? 'Zerar todos os caixas pendentes' : `Sessão: ${selectedSessionForDep?.operatorName} | ${selectedSessionForDep?.closedAt ? formatCuiabaDate(selectedSessionForDep.closedAt) : ''}`}
                                     </p>
                                 </div>
                                 <button type="button" onClick={() => setShowDepositModal(false)} className="text-gray-400 hover:text-gray-600 bg-white p-2 rounded-full shadow-sm">

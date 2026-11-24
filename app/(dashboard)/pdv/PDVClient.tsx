@@ -8,6 +8,7 @@ import { Check, Search, X, Receipt, QrCode, CreditCard, Banknote, ShoppingCart, 
 import { sortProducts } from '../../../lib/product-sort';
 import { formatQuantityInput } from '../../../lib/quantity-input';
 import EditableQuantity from '../../../components/EditableQuantity';
+import { formatCuiabaDateTime } from '../../../lib/time-zone';
 import RentalBookingModal, { type RentalBookingDraft } from '../../../components/RentalBookingModal';
 
 export default function PDVClient({ products, services = [], categories, customers = [], user, openRegister }: any) {
@@ -745,7 +746,7 @@ export default function PDVClient({ products, services = [], categories, custome
                           </h2>
                           {registerSummary && (
                               <p className="text-[10px] sm:text-xs text-slate-300 mt-1 truncate">
-                                  Operador: {registerSummary.operatorName} · Abertura: {registerSummary.openedAt ? new Date(registerSummary.openedAt).toLocaleString('pt-BR') : '-'}
+                                  Operador: {registerSummary.operatorName} · Abertura: {registerSummary.openedAt ? formatCuiabaDateTime(registerSummary.openedAt) : '-'}
                               </p>
                           )}
                       </div>

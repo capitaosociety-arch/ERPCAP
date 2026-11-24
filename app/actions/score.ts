@@ -3,6 +3,7 @@
 import { prisma } from '../../lib/prisma';
 import { requirePermission } from '../../lib/auth-guard';
 import { isRentalItem, getCuiabaDateStr } from '../../lib/analytics';
+import { APP_TIME_ZONE, formatMonthYearInZone, isCivilDateBeforeTodayCuiaba, operationalRentalWindow } from '../../lib/time-zone';
 import { isNewRulesDate } from '../../lib/effective-rules';
 import {
   computeScore,
@@ -128,12 +129,16 @@ function buildScoreCliente(c: CustomerAgg, agg: Agg): ScoreCliente {
   const { hoje, inicioJanela, pesos, limiares } = agg;
   const diaMs = dayMs;
 
-  const validos = c.rentals.filter(r => r.status !== 'CANCELED' && r.status !== 'NO_SHOW');
+  const operationalRentals = c.rentals.map(r => {
+    const window = operationalRentalWindow(r.startTime, r.endTime, r.timeConvention);
+    return { ...r, startTime: window.startTime, endTime: window.endTime };
+  });
+  const validos = operationalRentals.filter(r => r.status !== 'CANCELED' && r.status !== 'NO_SHOW');
   const noPeriodo = validos.filter(r => r.startTime >= inicioJanela && r.startTime <= hoje);
 
   const reservasPeriodo = noPeriodo.length;
   const gastoAluguel = noPeriodo.reduce((a, r) => a + (r.totalAmount || 0), 0);
-  const mesesAtivos = new Set(noPeriodo.map(r => `${r.startTime.getFullYear()}-${r.startTime.getMonth()}`)).size;
+  const mesesAtivos = new Set(noPeriodo.map(r => formatMonthYearInZone(r.startTime, APP_TIME_ZONE))).size;
 
   const comandasPeriodo = c.linkedOrders.filter(o => {
     const dt = o.closedAt || o.openedAt;
@@ -152,23 +157,23 @@ function buildScoreCliente(c: CustomerAgg, agg: Agg): ScoreCliente {
     referenceMonth: new Date(p.referenceMonth)
   }));
   const temMensalidade = !!c.subscription;
-  const mensalidadeVencida = !!c.subscription && new Date(c.subscription.nextDueDate).getTime() < hoje.getTime();
+  const mensalidadeVencida = !!c.subscription && isCivilDateBeforeTodayCuiaba(c.subscription.nextDueDate, hoje);
   const lastPayment = payments.length > 0 ? payments[0].paymentDate : null;
   const semPagamentoRecente = temMensalidade && (!lastPayment || lastPayment.getTime() < hoje.getTime() - 60 * diaMs);
 
   let ultimaReserva: Date | null = null;
-  for (const r of c.rentals) {
+  for (const r of operationalRentals) {
     const t = new Date(r.startTime);
     if (!ultimaReserva || t > ultimaReserva) ultimaReserva = t;
   }
 
-  const canceladosForaPrazo = c.rentals.filter(r => {
+  const canceladosForaPrazo = operationalRentals.filter(r => {
     if (r.status !== 'CANCELED') return false;
     if (!r.cancelledAt) return true;
     return (r.startTime.getTime() - new Date(r.cancelledAt).getTime()) < limiares.prazoCancelamentoHoras * 3600000;
   }).length;
 
-  const faltas = c.rentals.filter(r => r.status === 'NO_SHOW').length;
+  const faltas = operationalRentals.filter(r => r.status === 'NO_SHOW').length;
 
   const result = computeScore(
     {
@@ -191,7 +196,7 @@ function buildScoreCliente(c: CustomerAgg, agg: Agg): ScoreCliente {
   );
 
   const diasSemReservar = ultimaReserva ? Math.max(0, Math.floor((hoje.getTime() - ultimaReserva.getTime()) / diaMs)) : null;
-  const gastoTotal = c.rentals.filter(r => r.status !== 'CANCELED' && r.status !== 'NO_SHOW')
+  const gastoTotal = operationalRentals.filter(r => r.status !== 'CANCELED' && r.status !== 'NO_SHOW')
     .reduce((a, r) => a + (r.totalAmount || 0), 0) + c.linkedOrders
       .filter(o => o.status !== 'CANCELED')
       .reduce((a, o) => a + (o.items || []).filter((it: any) => !isRentalItem(it, { useNewRules: isNewRulesDate(o.closedAt || o.openedAt) })).reduce((s: number, it: any) => s + (it.subtotal || 0), 0), 0);

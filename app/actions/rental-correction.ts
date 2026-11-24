@@ -6,6 +6,8 @@ import { createAuditLog } from './audit';
 import { invalidateOperationalCaches } from '../../lib/intelligence-cache';
 import { revalidatePath } from 'next/cache';
 import { formatRentalPeriod } from '../../lib/rental-time';
+import { findOperationalConflict, operationalInterval } from '../../lib/rental-conflicts';
+import { NEW_RENTAL_TIME_CONVENTION, normalizeRentalTimeConvention, type RentalTimeConvention } from '../../lib/time-zone';
 import {
   buildRentalCorrectionWindow,
   buildRentalSnapshot,
@@ -26,6 +28,7 @@ export async function correctRentalScheduleAction(input: {
   end: string;
   field: string;
   reason: string;
+  convertToCuiaba?: boolean;
 }): Promise<CorrectRentalResult> {
   try {
     const user = await requireUser();
@@ -36,7 +39,6 @@ export async function correctRentalScheduleAction(input: {
     const rentalId = String(input.rentalId || '').trim();
     if (!rentalId) return { success: false, error: 'Reserva inválida.' };
     const reason = normalizeRentalCorrectionReason(input.reason);
-    const window = buildRentalCorrectionWindow(input);
 
     const result = await prisma.$transaction(async (tx) => {
       const current = await tx.rental.findUnique({
@@ -49,6 +51,11 @@ export async function correctRentalScheduleAction(input: {
         },
       });
       if (!current) throw new Error('Reserva não encontrada.');
+      const currentConvention = normalizeRentalTimeConvention(current.timeConvention);
+      const targetConvention: RentalTimeConvention = input.convertToCuiaba
+        ? NEW_RENTAL_TIME_CONVENTION
+        : currentConvention;
+      const window = buildRentalCorrectionWindow(input, targetConvention);
       if (current.orderItems.length > 1) {
         throw new Error('A reserva possui múltiplos vínculos ativos. Corrija os vínculos antes de alterar horário ou campo.');
       }
@@ -62,18 +69,26 @@ export async function correctRentalScheduleAction(input: {
         await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${resource}))::text`;
       }
 
-      const conflict = await tx.rental.findFirst({
+      const candidateFrom = new Date(window.startTime.getTime() - 2 * 60 * 60 * 1000);
+      const candidateTo = new Date(window.endTime.getTime() + 2 * 60 * 60 * 1000);
+      const candidates = await tx.rental.findMany({
         where: {
           id: { not: rentalId },
           resource: window.field,
-          status: { not: 'CANCELED' },
-          startTime: { lt: window.endTime },
-          endTime: { gt: window.startTime },
+          startTime: { lt: candidateTo },
+          endTime: { gt: candidateFrom },
         },
-        select: { id: true, resource: true, startTime: true, endTime: true },
+        select: { id: true, resource: true, startTime: true, endTime: true, status: true, timeConvention: true },
+      });
+      const conflict = findOperationalConflict(candidates, {
+        resource: window.field,
+        startTime: window.startTime,
+        endTime: window.endTime,
+        timeConvention: targetConvention,
       });
       if (conflict) {
-        throw new Error(`Horário indisponível para ${window.field}: ${formatRentalPeriod(conflict.startTime, conflict.endTime)}.`);
+        const interval = operationalInterval(conflict);
+        throw new Error(`Horário indisponível para ${window.field}: ${formatRentalPeriod(interval.startTime, interval.endTime, 'CUIABA')}.`);
       }
 
       const before = buildRentalSnapshot({
@@ -86,6 +101,7 @@ export async function correctRentalScheduleAction(input: {
         totalAmount: current.totalAmount,
         status: current.status,
         source: current.source,
+        timeConvention: currentConvention,
       });
 
       const updated = await tx.rental.update({
@@ -94,6 +110,7 @@ export async function correctRentalScheduleAction(input: {
           resource: window.field,
           startTime: window.startTime,
           endTime: window.endTime,
+          timeConvention: targetConvention,
         },
       });
 
@@ -107,6 +124,7 @@ export async function correctRentalScheduleAction(input: {
         totalAmount: updated.totalAmount,
         status: updated.status,
         source: updated.source,
+        timeConvention: targetConvention,
       });
       const diff = diffRentalSnapshots(before, after);
       if (diff.changedFields.length === 0) throw new Error('Nenhuma alteração operacional foi informada.');
@@ -131,7 +149,7 @@ export async function correctRentalScheduleAction(input: {
 
     await createAuditLog(
       'Correção de Reserva',
-      `Corrigiu a reserva ${rentalId}: ${result.before.date} ${result.before.start}-${result.before.end} ${result.before.resource} para ${result.after.date} ${result.after.start}-${result.after.end} ${result.after.resource}. Justificativa: ${reason}`
+      `Corrigiu a reserva ${rentalId}: ${result.before.date} ${result.before.start}-${result.before.end} ${result.before.resource} (${result.before.timeConvention}) para ${result.after.date} ${result.after.start}-${result.after.end} ${result.after.resource} (${result.after.timeConvention}). Justificativa: ${reason}`
     ).catch(() => {});
 
     invalidateOperationalCaches();

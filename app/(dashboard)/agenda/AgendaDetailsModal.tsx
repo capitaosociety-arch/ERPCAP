@@ -17,6 +17,7 @@ import {
   type RentalChangeLogView,
   type RentalSnapshot,
 } from '../../../lib/rental-corrections';
+import { rentalTimeConventionLabel } from '../../../lib/time-zone';
 import {
   correctRentalScheduleAction,
   getRentalChangeLogsAction,
@@ -54,6 +55,7 @@ const changedFieldLabels: Record<string, string> = {
   startTime: 'Início',
   endTime: 'Fim',
   duration: 'Duração',
+  timeConvention: 'Convenção de horário',
 };
 
 function correctionFormFromReservation(reservation: AgendaReservation): CorrectionForm {
@@ -140,6 +142,7 @@ export default function AgendaDetailsModal({
   const [logsLoading, setLogsLoading] = useState(true);
   const [logsError, setLogsError] = useState('');
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [convertToCuiaba, setConvertToCuiaba] = useState(false);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -211,6 +214,7 @@ export default function AgendaDetailsModal({
 
   const startCorrection = () => {
     setForm(correctionFormFromReservation(reservation));
+    setConvertToCuiaba(false);
     setFormError('');
     setSuccessMessage('');
     setIsCorrecting(true);
@@ -221,6 +225,7 @@ export default function AgendaDetailsModal({
 
   const cancelCorrection = () => {
     setForm(correctionFormFromReservation(reservation));
+    setConvertToCuiaba(false);
     setFormError('');
     setIsCorrecting(false);
   };
@@ -237,6 +242,7 @@ export default function AgendaDetailsModal({
         end: form.end,
         field: form.field,
         reason: form.reason,
+        convertToCuiaba: reservation.isLegacyTime ? convertToCuiaba : false,
       });
       if (!result.success) {
         setFormError(result.error);
@@ -244,6 +250,7 @@ export default function AgendaDetailsModal({
       }
       setForm(correctionFormFromSnapshot(result.log.afterData));
       setIsCorrecting(false);
+      setConvertToCuiaba(false);
       setSuccessMessage('Reserva corrigida. Registros financeiros originais preservados.');
       setHistoryVersion((value) => value + 1);
       onCorrected?.();
@@ -281,6 +288,11 @@ export default function AgendaDetailsModal({
               <span className={`rounded-lg border px-2 py-0.5 text-[10px] font-black uppercase ${toneBadge[reservation.financialTone]}`}>
                 {reservation.financialLabel}
               </span>
+              {reservation.isLegacyTime && (
+                <span className="rounded-lg border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-black uppercase text-sky-700">
+                  Horário histórico preservado
+                </span>
+              )}
               {reservation.hasInconsistency && (
                 <span className="inline-flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50 px-2 py-0.5 text-[10px] font-black uppercase text-purple-700">
                   <AlertTriangle size={11} /> Inconsistência
@@ -320,7 +332,7 @@ export default function AgendaDetailsModal({
             <InfoRow label="Início efetivamente jogado" value="Não registrado" />
             <InfoRow label="Fim efetivamente jogado" value="Não registrado" />
             <p className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] font-medium text-amber-800">
-              Correções anteriores à Fase 2A não possuem histórico recuperável. As correções realizadas a partir desta fase aparecem no histórico abaixo.
+              Convenção atual: {reservation.timeConventionLabel}. Correções anteriores à Fase 2A não possuem histórico recuperável; as correções desta fase aparecem no histórico abaixo.
             </p>
           </section>
 
@@ -400,6 +412,7 @@ export default function AgendaDetailsModal({
                         {log.afterData.resource} • {log.afterData.date} {log.afterData.start}–{log.afterData.end}
                       </p>
                       <p className="mt-1 text-[10px] font-medium text-slate-500">Campos: {log.changedFields.map((field) => changedFieldLabels[field] || field).join(', ')}</p>
+                      <p className="mt-1 text-[10px] font-medium text-slate-600">Convenção: {rentalTimeConventionLabel(log.beforeData.timeConvention)} → {rentalTimeConventionLabel(log.afterData.timeConvention)}</p>
                       <p className="mt-1 text-[10px] font-medium text-slate-600">Justificativa: {log.reason}</p>
                       {log.requiresFinancialReview && (
                         <p className="mt-1 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-black uppercase text-amber-800">Conferência financeira necessária — nenhum valor foi alterado</p>
@@ -461,6 +474,12 @@ export default function AgendaDetailsModal({
                     <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">Justificativa obrigatória</span>
                     <textarea value={form.reason} onChange={(event) => { setForm({ ...form, reason: event.target.value }); setFormError(''); }} maxLength={1000} className="h-20 resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 outline-none focus:border-indigo-500" placeholder="Descreva o motivo da correção do lançamento..." />
                   </label>
+                  {reservation.isLegacyTime && (
+                    <label className="flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 p-3 text-[11px] font-medium text-sky-800 sm:col-span-2">
+                      <input type="checkbox" checked={convertToCuiaba} onChange={(event) => setConvertToCuiaba(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-sky-300 accent-sky-600" />
+                      <span>Converter esta reserva para America/Cuiaba. O horário exibido será preservado; a convenção e o instante armazenado serão alterados de forma transacional e auditada.</span>
+                    </label>
+                  )}
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] font-medium text-amber-800 sm:col-span-2">
                     Os registros financeiros originais, vínculos e fechamentos de caixa serão preservados. Se a alteração implicar diferença de preço, nenhum valor será cobrado ou estornado nesta fase; a regularização será tratada na Fase 2B.
                   </div>

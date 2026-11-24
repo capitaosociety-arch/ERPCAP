@@ -8,7 +8,7 @@ import {
   RENTAL_TIME_ZONE,
 } from '../../lib/rental-time';
 
-assert.equal(RENTAL_TIME_ZONE, 'America/Fortaleza');
+assert.equal(RENTAL_TIME_ZONE, 'America/Cuiaba');
 assert.deepEqual(parseRentalTime('00:00'), { hour: 0, minute: 0, minutesOfDay: 0 });
 assert.deepEqual(parseRentalTime('23:59'), { hour: 23, minute: 59, minutesOfDay: 1439 });
 assert.throws(() => parseRentalTime('24:00'));
@@ -40,16 +40,21 @@ for (const [date, start, end, expected] of cases) {
 }
 
 const late = buildRentalWindow('2026-10-05', '20:00', '21:00');
-assert.equal(late.startTime.toISOString(), '2026-10-05T23:00:00.000Z');
-assert.equal(late.endTime.toISOString(), '2026-10-06T00:00:00.000Z');
-assert.equal(formatRentalTimeInput(new Date('2026-10-05T23:00:00.000Z')), '20:00');
+assert.equal(late.startTime.toISOString(), '2026-10-06T00:00:00.000Z');
+assert.equal(late.endTime.toISOString(), '2026-10-06T01:00:00.000Z');
+assert.equal(formatRentalTimeInput(new Date('2026-10-06T00:00:00.000Z')), '20:00');
 
 const crossing = buildRentalWindow('2026-10-05', '23:00', '01:00');
-assert.equal(crossing.startTime.toISOString(), '2026-10-06T02:00:00.000Z');
-assert.equal(crossing.endTime.toISOString(), '2026-10-06T04:00:00.000Z');
+assert.equal(crossing.startTime.toISOString(), '2026-10-06T03:00:00.000Z');
+assert.equal(crossing.endTime.toISOString(), '2026-10-06T05:00:00.000Z');
 
 const crossingLate = buildRentalWindow('2026-10-05', '23:30', '01:00');
-assert.equal(crossingLate.startTime.toISOString(), '2026-10-06T02:30:00.000Z');
-assert.equal(crossingLate.endTime.toISOString(), '2026-10-06T04:00:00.000Z');
+assert.equal(crossingLate.startTime.toISOString(), '2026-10-06T03:30:00.000Z');
+assert.equal(crossingLate.endTime.toISOString(), '2026-10-06T05:00:00.000Z');
+
+const legacy = buildRentalWindow('2026-10-05', '20:00', '21:00', 'LEGACY_FORTALEZA');
+assert.equal(legacy.startTime.toISOString(), '2026-10-05T23:00:00.000Z');
+assert.equal(legacy.endTime.toISOString(), '2026-10-06T00:00:00.000Z');
+assert.equal(formatRentalTimeInput(legacy.startTime, 'LEGACY_FORTALEZA'), '20:00');
 
 console.log('rental-time tests: OK');

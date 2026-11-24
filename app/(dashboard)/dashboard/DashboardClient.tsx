@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { formatCuiabaLongDate, formatCuiabaTime } from '../../../lib/time-zone'
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell 
 } from 'recharts'
@@ -99,9 +100,9 @@ export default function DashboardClient({ stats, payments, userName, userRole }:
                     </div>
                     <div className="flex items-center gap-2 text-slate-500 font-medium">
                         <Calendar size={14} />
-                        <span>{currentTime.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+                        <span>{formatCuiabaLongDate(currentTime)}</span>
                         <span className="text-slate-300">|</span>
-                        <span className="font-mono">{currentTime.toLocaleTimeString('pt-BR')}</span>
+                        <span className="font-mono">{formatCuiabaTime(currentTime)}</span>
                     </div>
                 </div>
                 <div className="flex gap-3">
@@ -296,7 +297,7 @@ export default function DashboardClient({ stats, payments, userName, userRole }:
                                                     <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
                                                         <span className="text-indigo-500">{translateMethod(p.method)}</span>
                                                         <span className="opacity-30">•</span>
-                                                        <span>{new Date(p.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}h</span>
+                                                        <span>{formatCuiabaTime(p.date)}h</span>
                                                     </div>
                                                 </div>
                                             </div>

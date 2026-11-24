@@ -1,3 +1,5 @@
+import { APP_TIME_ZONE, wallPartsInZone } from './time-zone';
+
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export function formatDateOnlyInput(value: Date | string | null | undefined): string {
@@ -43,9 +45,10 @@ export function addMonthClamped(value: Date | string): Date {
 }
 
 export function nextDueDateForDay(day: number, now = new Date()): Date {
-  const currentDay = now.getUTCDate();
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth();
+  const current = wallPartsInZone(now, APP_TIME_ZONE);
+  const currentDay = current.day;
+  const year = current.year;
+  const month = current.month - 1;
   const clamped = Math.max(1, Math.min(31, Math.floor(day)));
   if (clamped >= currentDay) {
     return new Date(Date.UTC(year, month, Math.min(clamped, lastDayOfMonth(year, month))));

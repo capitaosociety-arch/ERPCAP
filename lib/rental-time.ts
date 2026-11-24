@@ -1,28 +1,18 @@
-export const RENTAL_TIME_ZONE = 'America/Fortaleza';
+import {
+  APP_TIME_ZONE,
+  LEGACY_RENTAL_TIME_ZONE,
+  NEW_RENTAL_TIME_CONVENTION,
+  formatDateKeyInZone,
+  formatTimeInZone,
+  normalizeRentalTimeConvention,
+  rentalTimeZoneFor,
+  wallTimeToUtcInZone,
+  type RentalTimeConvention,
+} from './time-zone';
 
-const wallTimeFormatter = new Intl.DateTimeFormat('en-US', {
-  timeZone: RENTAL_TIME_ZONE,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
-
-const dateFormatter = new Intl.DateTimeFormat('sv-SE', {
-  timeZone: RENTAL_TIME_ZONE,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
-
-const timeFormatter = new Intl.DateTimeFormat('en-GB', {
-  timeZone: RENTAL_TIME_ZONE,
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
+export const RENTAL_TIME_ZONE = APP_TIME_ZONE;
+export { LEGACY_RENTAL_TIME_ZONE };
+export type { RentalTimeConvention };
 
 const pad = (value: number) => String(value).padStart(2, '0');
 
@@ -47,87 +37,84 @@ export function parseRentalTime(timeValue: string): { hour: number; minute: numb
   return { hour, minute, minutesOfDay: hour * 60 + minute };
 }
 
-function zonedParts(instant: Date) {
-  const parts = wallTimeFormatter.formatToParts(instant);
-  const get = (type: string) => Number(parts.find(part => part.type === type)?.value || 0);
-  return {
-    year: get('year'),
-    month: get('month'),
-    day: get('day'),
-    hour: get('hour'),
-    minute: get('minute'),
-  };
-}
-
-function wallTimeToUtc(
+export function buildRentalWindow(
   dateValue: string,
-  timeValue: string,
-  dayOffset = 0
-): Date {
-  const { year, month, day } = parseRentalDate(dateValue);
-  const { hour, minute } = parseRentalTime(timeValue);
-  const wallUtcGuess = Date.UTC(year, month - 1, day + dayOffset, hour, minute);
-  const guessParts = zonedParts(new Date(wallUtcGuess));
-  const guessAsUtc = Date.UTC(guessParts.year, guessParts.month - 1, guessParts.day, guessParts.hour, guessParts.minute);
-  const firstOffset = guessAsUtc - wallUtcGuess;
-  let result = new Date(wallUtcGuess - firstOffset);
-
-  const resultParts = zonedParts(result);
-  const resultAsUtc = Date.UTC(resultParts.year, resultParts.month - 1, resultParts.day, resultParts.hour, resultParts.minute);
-  const secondOffset = resultAsUtc - result.getTime();
-  if (secondOffset !== firstOffset) {
-    result = new Date(wallUtcGuess - secondOffset);
-  }
-  return result;
-}
-
-export function buildRentalWindow(dateValue: string, startValue: string, endValue: string): { startTime: Date; endTime: Date } {
+  startValue: string,
+  endValue: string,
+  convention: RentalTimeConvention = NEW_RENTAL_TIME_CONVENTION
+): { startTime: Date; endTime: Date } {
   const start = parseRentalTime(startValue);
   const end = parseRentalTime(endValue);
   const crossesMidnight = end.minutesOfDay <= start.minutesOfDay;
-  const startTime = wallTimeToUtc(dateValue, startValue);
-  const endTime = wallTimeToUtc(dateValue, endValue, crossesMidnight ? 1 : 0);
+  const zone = rentalTimeZoneFor(convention);
+  const startTime = wallTimeToUtcInZone(dateValue, startValue, zone);
+  const endTime = wallTimeToUtcInZone(dateValue, endValue, zone, crossesMidnight ? 1 : 0);
   return { startTime, endTime };
 }
 
-export function formatRentalDateInput(value: Date | string): string {
-  return dateFormatter.format(new Date(value));
+export function formatRentalDateInput(
+  value: Date | string,
+  convention: RentalTimeConvention = NEW_RENTAL_TIME_CONVENTION
+): string {
+  return formatDateKeyInZone(value, rentalTimeZoneFor(convention));
 }
 
-export function formatRentalTimeInput(value: Date | string): string {
-  return timeFormatter.format(new Date(value));
+export function formatRentalTimeInput(
+  value: Date | string,
+  convention: RentalTimeConvention = NEW_RENTAL_TIME_CONVENTION
+): string {
+  return formatTimeInZone(value, rentalTimeZoneFor(convention));
 }
 
-export function formatRentalEndDateInput(startValue: Date | string, endValue: Date | string): string {
-  return formatRentalDateInput(endValue);
+export function formatRentalEndDateInput(
+  startValue: Date | string,
+  endValue: Date | string,
+  convention: RentalTimeConvention = NEW_RENTAL_TIME_CONVENTION
+): string {
+  return formatRentalDateInput(endValue, convention);
 }
 
-export function formatRentalDisplayDate(value: Date | string): string {
-  const [year, month, day] = formatRentalDateInput(value).split('-');
+export function formatRentalDisplayDate(
+  value: Date | string,
+  convention: RentalTimeConvention = NEW_RENTAL_TIME_CONVENTION
+): string {
+  const [year, month, day] = formatRentalDateInput(value, convention).split('-');
   return `${day}/${month}/${year}`;
 }
 
-export function formatRentalDisplayTime(value: Date | string): string {
-  return formatRentalTimeInput(value);
+export function formatRentalDisplayTime(
+  value: Date | string,
+  convention: RentalTimeConvention = NEW_RENTAL_TIME_CONVENTION
+): string {
+  return formatRentalTimeInput(value, convention);
 }
 
-export function formatRentalPeriod(startValue: Date | string, endValue: Date | string): string {
-  const startDate = formatRentalDisplayDate(startValue);
-  const endDate = formatRentalDisplayDate(endValue);
-  const startTime = formatRentalDisplayTime(startValue);
-  const endTime = formatRentalDisplayTime(endValue);
+export function formatRentalPeriod(
+  startValue: Date | string,
+  endValue: Date | string,
+  convention: RentalTimeConvention = NEW_RENTAL_TIME_CONVENTION
+): string {
+  const startDate = formatRentalDisplayDate(startValue, convention);
+  const endDate = formatRentalDisplayDate(endValue, convention);
+  const startTime = formatRentalDisplayTime(startValue, convention);
+  const endTime = formatRentalDisplayTime(endValue, convention);
   return startDate === endDate
     ? `${startDate} das ${startTime} as ${endTime}`
     : `${startDate} ${startTime} ate ${endDate} ${endTime}`;
 }
 
-export function formatRentalDraftTimes(dateValue: string, startValue: string, endValue: string): { startDate: string; endDate: string; start: string; end: string } {
-  const { startTime, endTime } = buildRentalWindow(dateValue, startValue, endValue);
+export function formatRentalDraftTimes(
+  dateValue: string,
+  startValue: string,
+  endValue: string,
+  convention: RentalTimeConvention = NEW_RENTAL_TIME_CONVENTION
+): { startDate: string; endDate: string; start: string; end: string } {
+  const { startTime, endTime } = buildRentalWindow(dateValue, startValue, endValue, convention);
   return {
-    startDate: formatRentalDateInput(startTime),
-    endDate: formatRentalDateInput(endTime),
-    start: formatRentalTimeInput(startTime),
-    end: formatRentalTimeInput(endTime),
+    startDate: formatRentalDateInput(startTime, convention),
+    endDate: formatRentalDateInput(endTime, convention),
+    start: formatRentalTimeInput(startTime, convention),
+    end: formatRentalTimeInput(endTime, convention),
   };
 }
 
@@ -137,11 +124,13 @@ export function isEndTimeAfterStart(startValue: string, endValue: string): boole
   return end.minutesOfDay > start.minutesOfDay;
 }
 
-export function defaultRentalDateInput(): string {
-  return formatRentalDateInput(new Date());
+export function defaultRentalDateInput(convention: RentalTimeConvention = NEW_RENTAL_TIME_CONVENTION): string {
+  return formatRentalDateInput(new Date(), convention);
 }
 
 export function normalizeTimeInput(value: string): string {
   const { hour, minute } = parseRentalTime(value);
   return `${pad(hour)}:${pad(minute)}`;
 }
+
+export { normalizeRentalTimeConvention };

@@ -10,22 +10,23 @@ import {
   weekDayCuiaba,
   type RentalScheduleConfig,
 } from './rental-schedule';
+import { APP_TIME_ZONE, operationalRentalWindow, rawQueryRangeForOperational } from './time-zone';
 
 const dayMs = 24 * 60 * 60 * 1000;
 const round1 = (n: number) => Math.round((n || 0) * 10) / 10;
 const dateFormatter = new Intl.DateTimeFormat('sv-SE', {
-  timeZone: 'America/Cuiaba',
+  timeZone: APP_TIME_ZONE,
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
 });
 const hourFormatter = new Intl.DateTimeFormat('en-US', {
-  timeZone: 'America/Cuiaba',
+  timeZone: APP_TIME_ZONE,
   hour: '2-digit',
   hour12: false,
 });
 const weekdayFormatter = new Intl.DateTimeFormat('pt-BR', {
-  timeZone: 'America/Cuiaba',
+  timeZone: APP_TIME_ZONE,
   weekday: 'long',
 });
 const localDate = (d: Date) => dateFormatter.format(d);
@@ -876,14 +877,21 @@ export function buildRegularOccupancy(
 }
 
 export async function getOccupancyReport(from: Date, to: Date, scheduleConfig?: RentalScheduleConfig): Promise<OccupancyReport> {
+  const queryRange = rawQueryRangeForOperational(from, to);
   const [rentals, schedule] = await Promise.all([
     prisma.rental.findMany({
-      where: { startTime: { lt: to }, endTime: { gt: from }, status: { not: 'CANCELED' } },
-      select: { resource: true, startTime: true, endTime: true, totalAmount: true, status: true, source: true },
+      where: { startTime: { lt: queryRange.to }, endTime: { gt: queryRange.from } },
+      select: { resource: true, startTime: true, endTime: true, totalAmount: true, status: true, source: true, timeConvention: true },
     }),
     scheduleConfig ? Promise.resolve(scheduleConfig) : getRentalSchedule(),
   ]);
-  return buildRegularOccupancy(rentals, from, to, schedule);
+  const operationalRentals = rentals
+    .map(rental => {
+      const window = operationalRentalWindow(rental.startTime, rental.endTime, rental.timeConvention);
+      return { ...rental, startTime: window.startTime, endTime: window.endTime };
+    })
+    .filter(rental => rental.status !== 'CANCELED' && rental.startTime < to && rental.endTime > from);
+  return buildRegularOccupancy(operationalRentals, from, to, schedule);
 }
 
 export async function getProductContributionReport(from: Date, to: Date): Promise<ProductContributionReport> {
@@ -927,11 +935,17 @@ export async function getRevenueMixReport(from: Date, to: Date): Promise<Revenue
       },
     }),
     prisma.rental.findMany({
-      where: { startTime: { gte: from, lte: to } },
-      select: { resource: true, startTime: true, endTime: true, totalAmount: true, status: true, source: true },
+      where: { startTime: { gte: new Date(from.getTime() - 2 * 60 * 60 * 1000), lte: new Date(to.getTime() + 2 * 60 * 60 * 1000) } },
+      select: { resource: true, startTime: true, endTime: true, totalAmount: true, status: true, source: true, timeConvention: true },
     }),
   ]);
-  return buildRevenueMix(orders as any, rentals);
+  const operationalRentals = rentals
+    .map(rental => {
+      const window = operationalRentalWindow(rental.startTime, rental.endTime, rental.timeConvention);
+      return { ...rental, startTime: window.startTime, endTime: window.endTime };
+    })
+    .filter(rental => rental.startTime >= from && rental.startTime <= to);
+  return buildRevenueMix(orders as any, operationalRentals);
 }
 
 export async function getInventoryReconciliationReport(from: Date, to: Date): Promise<InventoryReconciliationReport> {

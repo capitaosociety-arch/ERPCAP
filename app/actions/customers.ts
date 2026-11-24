@@ -4,6 +4,8 @@ import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
 import { requirePermission } from "../../lib/auth-guard";
 import { buildRentalWindow, formatRentalPeriod } from "../../lib/rental-time";
+import { findOperationalConflict, operationalInterval } from "../../lib/rental-conflicts";
+import { NEW_RENTAL_TIME_CONVENTION, normalizeRentalTimeConvention, operationalRentalWindow, type RentalTimeConvention } from "../../lib/time-zone";
 import { roundMoney } from "../../lib/rental-renewal";
 import { addMonthClamped, addMonthForDay, nextDueDateForDay, parseDateOnlyInput } from "../../lib/subscription-date";
 import { createAuditLog } from "./audit";
@@ -35,21 +37,27 @@ async function assertRentalAvailable(
     resource: string,
     startTime: Date,
     endTime: Date,
-    excludeIds: string[] = []
+    excludeIds: string[] = [],
+    convention: RentalTimeConvention = NEW_RENTAL_TIME_CONVENTION
 ) {
     await lockRentalResources(tx, [resource]);
-    const conflict = await tx.rental.findFirst({
+    const target = operationalRentalWindow(startTime, endTime, convention);
+    const candidateFrom = new Date(target.startTime.getTime() - 2 * 60 * 60 * 1000);
+    const candidateTo = new Date(target.endTime.getTime() + 2 * 60 * 60 * 1000);
+    const candidates = await tx.rental.findMany({
         where: {
             resource,
             status: { not: 'CANCELED' },
-            startTime: { lt: endTime },
-            endTime: { gt: startTime },
+            startTime: { lt: candidateTo },
+            endTime: { gt: candidateFrom },
             ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
         },
-        select: { id: true, resource: true, startTime: true, endTime: true },
+        select: { id: true, resource: true, startTime: true, endTime: true, timeConvention: true, status: true },
     });
+    const conflict = findOperationalConflict(candidates, { resource, startTime, endTime, timeConvention: convention });
     if (conflict) {
-        throw new Error(`Horario indisponivel para ${resource}: ${formatRentalPeriod(conflict.startTime, conflict.endTime)}.`);
+        const interval = operationalInterval(conflict);
+        throw new Error(`Horario indisponivel para ${resource}: ${formatRentalPeriod(interval.startTime, interval.endTime, 'CUIABA')}.`);
     }
 }
 
@@ -72,6 +80,7 @@ export type CustomerDossierRental = {
     amount: number;
     status?: string;
     source?: string;
+    timeConvention?: string;
 };
 
 export type CustomerDossierPaymentUpdate = {
@@ -199,7 +208,7 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
 
         const existingRentals = await tx.rental.findMany({
             where: { customerId: customerId! },
-            select: { id: true, resource: true, status: true, startTime: true, endTime: true, totalAmount: true, source: true },
+            select: { id: true, resource: true, status: true, startTime: true, endTime: true, totalAmount: true, source: true, timeConvention: true },
         });
         const existingById = new Map(existingRentals.map((rental: any) => [rental.id, rental]));
         const deleteIds = Array.from(new Set((data.rentalDeleteIds || []).map(String)));
@@ -209,10 +218,13 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
             if (!resource) throw new Error("Informe o espaco/mesa da reserva.");
             const status = validateRentalStatus(rental.status);
             const amount = validateRentalAmount(Number(rental.amount));
-            const { startTime, endTime } = buildRentalWindow(rental.date, rental.start, rental.end);
-            if (endTime <= startTime) throw new Error("Horario final invalido.");
-            if (rental.id && !existingById.has(rental.id)) throw new Error("Reserva nao pertence a este cliente.");
             const previous: any = rental.id ? existingById.get(rental.id) : null;
+            if (rental.id && !previous) throw new Error("Reserva nao pertence a este cliente.");
+            const convention = previous
+                ? normalizeRentalTimeConvention(previous.timeConvention)
+                : normalizeRentalTimeConvention(rental.timeConvention || NEW_RENTAL_TIME_CONVENTION);
+            const { startTime, endTime } = buildRentalWindow(rental.date, rental.start, rental.end, convention);
+            if (endTime <= startTime) throw new Error("Horario final invalido.");
             const timeChanged = !previous
                 || resource !== String(previous.resource || '')
                 || startTime.getTime() !== new Date(previous.startTime).getTime()
@@ -222,7 +234,7 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
             if (source && !['SUBSCRIPTION', 'WALK_IN', 'MANUAL', 'LEGACY'].includes(source)) {
                 throw new Error("Origem da reserva invalida.");
             }
-            return { ...rental, resource, status, amount, startTime, endTime, changed, timeChanged, source };
+            return { ...rental, resource, status, amount, startTime, endTime, changed, timeChanged, source, timeConvention: convention };
         });
         const changedIds = preparedRentals
             .filter((rental) => rental.timeChanged && rental.id)
@@ -241,17 +253,19 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
                     status: { not: 'CANCELED' },
                     ...(excludedIds.length > 0 ? { id: { notIn: excludedIds } } : {}),
                 },
-                select: { id: true, resource: true, startTime: true, endTime: true },
+                select: { id: true, resource: true, startTime: true, endTime: true, status: true, timeConvention: true },
             })
             : [];
         for (const rental of conflictsToCheck) {
-            const conflict = conflictCandidates.find((candidate: any) =>
-                candidate.resource === rental.resource
-                && candidate.startTime < rental.endTime
-                && candidate.endTime > rental.startTime
-            );
+            const conflict = findOperationalConflict(conflictCandidates, {
+                resource: rental.resource,
+                startTime: rental.startTime,
+                endTime: rental.endTime,
+                timeConvention: rental.timeConvention as RentalTimeConvention,
+            });
             if (conflict) {
-                throw new Error(`Horario indisponivel para ${rental.resource}: ${formatRentalPeriod(conflict.startTime, conflict.endTime)}.`);
+                const interval = operationalInterval(conflict);
+                throw new Error(`Horario indisponivel para ${rental.resource}: ${formatRentalPeriod(interval.startTime, interval.endTime, 'CUIABA')}.`);
             }
         }
         for (let i = 0; i < preparedRentals.length; i++) {
@@ -259,7 +273,9 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
                 const a = preparedRentals[i];
                 const b = preparedRentals[j];
                 if ((!a.timeChanged && !b.timeChanged) || a.status === 'CANCELED' || b.status === 'CANCELED' || a.resource !== b.resource) continue;
-                if (a.startTime < b.endTime && a.endTime > b.startTime) {
+                const aWindow = operationalRentalWindow(a.startTime, a.endTime, a.timeConvention as RentalTimeConvention);
+                const bWindow = operationalRentalWindow(b.startTime, b.endTime, b.timeConvention as RentalTimeConvention);
+                if (aWindow.startTime < bWindow.endTime && aWindow.endTime > bWindow.startTime) {
                     throw new Error(`Conflito de horario entre reservas de ${a.resource}.`);
                 }
             }
@@ -291,6 +307,7 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
                     endTime: rental.endTime,
                     totalAmount: rental.amount,
                     status: rental.status,
+                    timeConvention: rental.timeConvention,
                     cancelledAt: rental.status === 'CANCELED' ? (previous.status === 'CANCELED' ? undefined : new Date()) : null,
                     ...(rental.source ? { source: rental.source } : {}),
                 },
@@ -307,6 +324,7 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
                     totalAmount: rental.amount,
                     status: rental.status,
                     source: rental.source || 'MANUAL',
+                    timeConvention: rental.timeConvention,
                     cancelledAt: rental.status === 'CANCELED' ? new Date() : null,
                 })),
             });
@@ -502,12 +520,13 @@ export async function createRental(customerId: string, resource: string, date: s
     if (!customerId || !resource) throw new Error("Faltam dados do agendamento.");
 
     const validAmount = validateRentalAmount(Number(amount));
-    const { startTime, endTime } = buildRentalWindow(date, startHour, endHour);
+    const convention = NEW_RENTAL_TIME_CONVENTION;
+    const { startTime, endTime } = buildRentalWindow(date, startHour, endHour, convention);
 
     await prisma.$transaction(async (tx) => {
-        await assertRentalAvailable(tx, resource.trim(), startTime, endTime);
+        await assertRentalAvailable(tx, resource.trim(), startTime, endTime, [], convention);
         await tx.rental.create({
-            data: { customerId, resource: resource.trim(), startTime, endTime, totalAmount: validAmount, status: 'PENDING', source: 'MANUAL' }
+            data: { customerId, resource: resource.trim(), startTime, endTime, totalAmount: validAmount, status: 'PENDING', source: 'MANUAL', timeConvention: convention }
         });
     });
 
@@ -590,13 +609,14 @@ export async function updateRental(rentalId: string, resource: string, date: str
     if (!rentalId || !resource) throw new Error("Faltam dados do agendamento.");
 
     const validAmount = validateRentalAmount(Number(amount));
-    const { startTime, endTime } = buildRentalWindow(date, startHour, endHour);
 
     await prisma.$transaction(async (tx) => {
-        const current = await tx.rental.findUnique({ where: { id: rentalId }, select: { id: true } });
+        const current = await tx.rental.findUnique({ where: { id: rentalId }, select: { id: true, timeConvention: true } });
         if (!current) throw new Error("Reserva nao encontrada.");
+        const convention = normalizeRentalTimeConvention(current.timeConvention);
+        const { startTime, endTime } = buildRentalWindow(date, startHour, endHour, convention);
         await assertRentalWithoutActiveLink(tx, rentalId);
-        await assertRentalAvailable(tx, resource.trim(), startTime, endTime, [rentalId]);
+        await assertRentalAvailable(tx, resource.trim(), startTime, endTime, [rentalId], convention);
         await tx.rental.update({
             where: { id: rentalId },
             data: { resource: resource.trim(), startTime, endTime, totalAmount: validAmount }
