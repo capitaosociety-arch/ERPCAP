@@ -39,6 +39,7 @@ model User {
   payments      Payment[]
   requestedTransfers  TransferRequest[] @relation("RequestedTransfers")
   authorizedTransfers TransferRequest[] @relation("AuthorizedTransfers")
+  rentalChanges   RentalChangeLog[] @relation("RentalChangesBy")
 
   @@index([name])
   @@index([role])
@@ -360,11 +361,34 @@ model Rental {
 
   customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   orderItems  OrderItem[]
+  changeLogs  RentalChangeLog[]
 
   @@index([customerId])
   @@index([status])
   @@index([startTime])
   @@index([source])
+}
+
+model RentalChangeLog {
+  id                      String   @id @default(cuid())
+  rentalId                String
+  orderId                 String?
+  changedByUserId         String?
+  changedByName           String
+  reason                  String
+  beforeData              Json
+  afterData               Json
+  changedFields           String[]
+  requiresFinancialReview Boolean  @default(false)
+  financialDifference     Float?
+  createdAt               DateTime @default(now())
+
+  rental                  Rental   @relation(fields: [rentalId], references: [id], onDelete: Restrict)
+  changedBy               User?    @relation("RentalChangesBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([rentalId, createdAt])
+  @@index([changedByUserId])
+  @@index([createdAt])
 }
 
 model RentalOperatingHour {

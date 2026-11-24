@@ -432,7 +432,7 @@ function Select({ label, value, onChange, children }: { label: string; value: st
   );
 }
 
-export default function AgendaClient({ initialData }: { initialData: AgendaData }) {
+export default function AgendaClient({ initialData, canCorrect = false }: { initialData: AgendaData; canCorrect?: boolean }) {
   const [view, setView] = useState<AgendaView>(initialData.range.view);
   const [anchor, setAnchor] = useState(initialData.range.anchor);
   const [filters, setFilters] = useState<AgendaFilters>(initialData.filters);
@@ -720,7 +720,15 @@ export default function AgendaClient({ initialData }: { initialData: AgendaData 
         </ul>
       </div>
 
-      {selectedReservation && <AgendaDetailsModal reservation={selectedReservation} onClose={() => setSelectedId(null)} />}
+      {selectedReservation && (
+        <AgendaDetailsModal
+          key={selectedReservation.id}
+          reservation={selectedReservation}
+          canCorrect={canCorrect}
+          onClose={() => setSelectedId(null)}
+          onCorrected={() => { void load(view, anchor, filters, true); }}
+        />
+      )}
     </div>
   );
 }

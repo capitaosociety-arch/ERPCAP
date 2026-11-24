@@ -5,7 +5,7 @@ import { getAgendaDataAction } from '../../actions/agenda';
 import AgendaClient from './AgendaClient';
 
 export default async function AgendaPage() {
-  await requirePagePermission('permAgenda');
+  const user = await requirePagePermission('permAgenda');
 
   const anchor = formatRentalDateInput(new Date());
   const result = await getAgendaDataAction({
@@ -25,7 +25,7 @@ export default async function AgendaPage() {
 
   return (
     <div className="animate-in fade-in duration-500">
-      <AgendaClient initialData={result.data} />
+      <AgendaClient initialData={result.data} canCorrect={user.role === 'ADMIN'} />
     </div>
   );
 }

@@ -53,6 +53,16 @@ async function assertRentalAvailable(
     }
 }
 
+async function assertRentalWithoutActiveLink(tx: any, rentalId: string) {
+    const linked = await tx.orderItem.findFirst({
+        where: { rentalId, status: 'ACTIVE' },
+        select: { id: true },
+    });
+    if (linked) {
+        throw new Error("Reserva vinculada a uma operacao ativa nao pode ser alterada ou excluida por este fluxo. Use a Agenda ou o fluxo financeiro apropriado.");
+    }
+}
+
 export type CustomerDossierRental = {
     id?: string;
     resource: string;
@@ -514,15 +524,18 @@ export async function setRentalStatus(rentalId: string, status: string) {
     const allowed = ['PENDING', 'CONFIRMED', 'PAID', 'CANCELED', 'NO_SHOW'];
     if (!allowed.includes(status)) throw new Error("Status inválido.");
 
-    const rental = await prisma.rental.findUnique({ where: { id: rentalId } });
-    if (!rental) throw new Error("Reserva não encontrada.");
-
-    await prisma.rental.update({
-        where: { id: rentalId },
-        data: {
-            status,
-            cancelledAt: status === 'CANCELED' ? new Date() : null
-        }
+    const rental = await prisma.$transaction(async (tx) => {
+        const current = await tx.rental.findUnique({ where: { id: rentalId } });
+        if (!current) throw new Error("Reserva não encontrada.");
+        await assertRentalWithoutActiveLink(tx, rentalId);
+        await tx.rental.update({
+            where: { id: rentalId },
+            data: {
+                status,
+                cancelledAt: status === 'CANCELED' ? new Date() : null
+            }
+        });
+        return current;
     });
 
     revalidatePath("/clientes");
@@ -582,6 +595,7 @@ export async function updateRental(rentalId: string, resource: string, date: str
     await prisma.$transaction(async (tx) => {
         const current = await tx.rental.findUnique({ where: { id: rentalId }, select: { id: true } });
         if (!current) throw new Error("Reserva nao encontrada.");
+        await assertRentalWithoutActiveLink(tx, rentalId);
         await assertRentalAvailable(tx, resource.trim(), startTime, endTime, [rentalId]);
         await tx.rental.update({
             where: { id: rentalId },
@@ -600,9 +614,12 @@ export async function deleteRental(rentalId: string) {
 
     if (!rentalId) throw new Error("ID inválido");
 
-    const rental = await prisma.rental.findUnique({ where: { id: rentalId } });
-    await prisma.rental.delete({
-        where: { id: rentalId }
+    const rental = await prisma.$transaction(async (tx) => {
+        const current = await tx.rental.findUnique({ where: { id: rentalId } });
+        if (!current) throw new Error("Reserva não encontrada.");
+        await assertRentalWithoutActiveLink(tx, rentalId);
+        await tx.rental.delete({ where: { id: rentalId } });
+        return current;
     });
 
     revalidatePath("/clientes");
@@ -620,17 +637,27 @@ export async function deleteCustomer(id: string) {
             where: { id },
             include: {
                 orders: true,
-                services: true
+                services: true,
+                rentals: {
+                    include: {
+                        orderItems: {
+                            where: { status: 'ACTIVE' },
+                            select: { id: true }
+                        }
+                    }
+                }
             }
         });
 
         if (!customer) return { success: false, error: "Cliente não encontrado." };
 
-        // Integridade: Não excluir se houver pedidos ou serviços
-        if (customer.orders.length > 0 || customer.services.length > 0) {
+        const hasLinkedRental = customer.rentals.some((rental) => rental.orderItems.length > 0);
+
+        // Integridade: Não excluir se houver pedidos, serviços ou reservas vinculadas.
+        if (customer.orders.length > 0 || customer.services.length > 0 || hasLinkedRental) {
             return {
                 success: false,
-                error: "Não é possível excluir este cliente pois ele possui histórico de pedidos ou serviços vinculados. Recomendamos apenas desativar o registro para manter a integridade financeira."
+                error: "Não é possível excluir este cliente pois ele possui histórico de pedidos, serviços ou reservas vinculadas. Recomendamos apenas desativar o registro para manter a integridade financeira."
             };
         }
 
