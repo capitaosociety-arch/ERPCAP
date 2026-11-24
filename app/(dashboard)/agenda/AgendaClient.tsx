@@ -110,8 +110,11 @@ function ReservationBlock({
 }) {
   const height = Math.max(18, (endMinute - startMinute) * MINUTE_HEIGHT);
   const continuation = startMinute === 0 && reservation.startDateKey !== dayKey;
-  const showCustomer = height >= (compact ? 34 : 38);
-  const showFinancial = height >= (compact ? 52 : 58);
+  const showCustomer = height >= 30;
+  const showFinancial = height >= (compact ? 42 : 44);
+  const financialLine = reservation.operationalStatus === 'NO_SHOW'
+    ? `No-show • ${reservation.financialLabel}`
+    : reservation.financialLabel;
   return (
     <button
       type="button"
@@ -126,7 +129,7 @@ function ReservationBlock({
         <span className={`ml-auto rounded px-1 text-[8px] uppercase ${reservation.isSubscriber ? 'bg-white/30' : 'bg-black/10'}`}>{reservation.isSubscriber ? 'M' : 'A'}</span>
       </div>
       {showCustomer && <p className="mt-0.5 truncate text-[10px] font-bold leading-tight">{reservation.customerName}</p>}
-      {showFinancial && <p className="mt-0.5 truncate text-[9px] font-medium leading-tight opacity-90">{reservation.financialLabel}</p>}
+      {showFinancial && <p className="mt-0.5 truncate text-[9px] font-medium leading-tight opacity-90">{financialLine}</p>}
     </button>
   );
 }
@@ -273,7 +276,7 @@ function MonthGrid({ data, onOpenDay }: { data: AgendaData; onOpenDay: (dayKey: 
   const monthPrefix = data.range.anchor.slice(0, 7);
 
   const statsByDay = useMemo(() => {
-    const map = new Map<string, { fut5: number; fut7: number; hours: number; tones: AgendaTone[]; names: string[] }>();
+    const map = new Map<string, { fut5: number; fut7: number; hours: number; tones: AgendaTone[]; hasInconsistency: boolean; names: string[] }>();
     for (const dayKey of days) {
       const entries = data.reservations
         .map((reservation) => ({ reservation, segments: reservationSegmentsForDay(reservation, dayKey) }))
@@ -287,6 +290,7 @@ function MonthGrid({ data, onOpenDay }: { data: AgendaData; onOpenDay: (dayKey: 
         fut7,
         hours: Math.round(minutes / 6) / 10,
         tones: Array.from(new Set(entries.map((entry) => entry.reservation.financialTone))),
+        hasInconsistency: entries.some((entry) => entry.reservation.hasInconsistency),
         names: entries.map((entry) => `${entry.reservation.startTimeLabel} ${entry.reservation.customerName} (${entry.reservation.resource})`),
       });
     }
@@ -326,6 +330,7 @@ function MonthGrid({ data, onOpenDay }: { data: AgendaData; onOpenDay: (dayKey: 
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {stats.tones.map((tone) => <span key={tone} className={`h-2 w-2 rounded-full border ${toneChip[tone]}`} />)}
+                      {stats.hasInconsistency && <span className="h-2 w-2 rounded-full border-2 border-purple-500 bg-white" title="Inconsistência" />}
                     </div>
                     <p className="line-clamp-2 text-[9px] font-medium text-slate-500">{stats.names[0]}</p>
                   </div>
