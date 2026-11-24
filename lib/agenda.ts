@@ -651,7 +651,7 @@ function addInconsistency(
   });
 }
 
-type FinancialComputation = {
+export type FinancialComputation = {
   financialStatus: AgendaFinancialStatus;
   receivedAmount: number | null;
   balanceAmount: number | null;
@@ -673,7 +673,7 @@ type FinancialComputation = {
   inconsistencies: AgendaInconsistency[];
 };
 
-function computeFinancial(rental: AgendaRentalInput): FinancialComputation {
+export function computeFinancial(rental: AgendaRentalInput): FinancialComputation {
   const historical = new Date(rental.createdAt) < AGENDA_LINK_FEATURE_START;
   const inconsistencies: AgendaInconsistency[] = [];
   const activeLinks = (rental.orderItems || []).filter(item => item.status === 'ACTIVE');

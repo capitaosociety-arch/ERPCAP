@@ -6,7 +6,7 @@ import {
   Lightbulb, Target, Activity, ArrowRight, X,
   DollarSign, Wallet, Percent, Landmark, ClipboardList, Users, LoaderCircle,
   TrendingUp, TrendingDown, Minus, OctagonAlert, BrainCircuit,
-  ChevronLeft, ChevronRight, Database, CalendarDays
+  ChevronLeft, ChevronRight, Database, CalendarDays, ShieldCheck
 } from 'lucide-react';
 import { getIntelligenceReport, type Analise, type IntelligenceReport, type Secao } from '../../actions/inteligencia';
 import CopilotClient, { type CopilotAccess } from './CopilotClient';
@@ -14,6 +14,7 @@ import HistoricoClient from './HistoricoClient';
 import StrategyClient from './StrategyClient';
 import PricingClient from './PricingClient';
 import CostsClient from './CostsClient';
+import RentalAuditClient from './RentalAuditClient';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 type Regime = 'cash' | 'competence';
@@ -90,6 +91,7 @@ export default function InteligenciaClient({
   initialPeriod,
   initialRegime,
   canManageCosts,
+  canManageAudit,
   copilot
 }: {
   initialReport: IntelligenceReport | null;
@@ -97,9 +99,10 @@ export default function InteligenciaClient({
   initialPeriod: string;
   initialRegime: Regime;
   canManageCosts: boolean;
+  canManageAudit: boolean;
   copilot: CopilotAccess;
 }) {
-  const [tab, setTab] = useState<'analises' | 'copiloto' | 'historico' | 'estrategia' | 'precificacao' | 'custos'>('analises');
+  const [tab, setTab] = useState<'analises' | 'copiloto' | 'historico' | 'estrategia' | 'precificacao' | 'custos' | 'auditoria'>('analises');
   const [period, setPeriod] = useState(initialPeriod);
   const [regime, setRegime] = useState<Regime>(initialRegime);
   const [report, setReport] = useState<IntelligenceReport | null>(initialReport);
@@ -219,7 +222,7 @@ export default function InteligenciaClient({
       </div>
 
       {/* Abas */}
-      <div className="flex items-center gap-2 mb-6 bg-white rounded-2xl border border-gray-100 p-1.5 shadow-sm w-fit">
+      <div className="flex flex-wrap items-center gap-2 mb-6 bg-white rounded-2xl border border-gray-100 p-1.5 shadow-sm w-fit max-w-full">
         <button
           onClick={() => setTab('analises')}
           className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${tab === 'analises' ? 'bg-slate-900 text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}
@@ -256,8 +259,15 @@ export default function InteligenciaClient({
         >
           <Landmark size={15} /> Custos por centro
         </button>
+        <button
+          onClick={() => setTab('auditoria')}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${tab === 'auditoria' ? 'bg-slate-900 text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}
+        >
+          <ShieldCheck size={15} /> Auditoria de Reservas
+        </button>
       </div>
 
+      {tab === 'auditoria' && <RentalAuditClient canManage={canManageAudit} />}
       {tab === 'copiloto' && <CopilotClient access={copilot} />}
       {tab === 'historico' && <HistoricoClient period={period} regime={regime} />}
       {tab === 'estrategia' && <StrategyClient period={period} regime={regime} />}

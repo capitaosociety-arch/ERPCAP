@@ -32,6 +32,7 @@ export default async function InteligenciaPage() {
             initialPeriod={initialPeriod}
             initialRegime={initialRegime}
             canManageCosts={dbUser.role === 'ADMIN' || dbUser.permFinance}
+            canManageAudit={dbUser.role === 'ADMIN'}
             copilot={{
                 enabled: copilotEnabled,
                 hasAI: isAIEnabled(),

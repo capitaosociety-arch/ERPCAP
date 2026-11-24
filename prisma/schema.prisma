@@ -39,7 +39,10 @@ model User {
   payments      Payment[]
   requestedTransfers  TransferRequest[] @relation("RequestedTransfers")
   authorizedTransfers TransferRequest[] @relation("AuthorizedTransfers")
-  rentalChanges   RentalChangeLog[] @relation("RentalChangesBy")
+  auditResolutions     RentalAuditOccurrence[] @relation("AuditResolvedBy")
+  auditAcknowledgements RentalAuditOccurrence[] @relation("AuditAcknowledgedBy")
+  auditEvents          RentalAuditEvent[] @relation("AuditEventBy")
+  rentalChanges        RentalChangeLog[] @relation("RentalChangesBy")
 
   @@index([name])
   @@index([role])
@@ -657,5 +660,90 @@ model ScoreConfig {
   pesos     Json     // { frequencia, gastoAluguel, consumoBar, pontualidade, cancelamentos, faltas, recencia, recorrencia, inadimplencia }
   limiares  Json     // { reservasRef, aluguelRef, barRef, prazoCancelamentoHoras, diasInatividade, mesesAnalise, graceDiasMensalidade, capInadimplente }
   updatedAt DateTime @updatedAt
+}
+
+model RentalAuditRun {
+  id                 String    @id @default(cuid())
+  startedAt          DateTime  @default(now())
+  finishedAt         DateTime?
+  status             String    @default("RUNNING") // RUNNING, SUCCESS, ERROR
+  trigger            String    @default("MANUAL")  // MANUAL, CRON
+  windowFrom         DateTime?
+  windowTo           DateTime?
+  totalRentals       Int       @default(0)
+  totalLinkedItems   Int       @default(0)
+  checksRun          Int       @default(0)
+  occurrencesFound   Int       @default(0)
+  occurrencesCleared Int       @default(0)
+  error              String?
+  summary            String?
+
+  @@index([startedAt])
+  @@index([status])
+}
+
+model RentalAuditOccurrence {
+  id                   String    @id @default(cuid())
+  fingerprint          String    @unique
+  type                 String
+  severity             String    // CRITICAL, HIGH, MEDIUM, LOW, INFO
+  entityType           String
+  entityId             String
+  orderId              String?
+  rentalId             String?
+  customerId           String?
+  customerName         String?
+  resource             String?
+  rentalStartTime      DateTime?
+  rentalEndTime        DateTime?
+  title                String
+  details              String
+  evidence             Json?
+  status               String    @default("OPEN") // OPEN, ACKNOWLEDGED, RESOLVED, IGNORED
+  technicalStatus      String    @default("ACTIVE") // ACTIVE, CLEARED
+  firstSeenAt          DateTime  @default(now())
+  lastSeenAt           DateTime  @default(now())
+  occurrenceCount      Int       @default(1)
+  clearedAt            DateTime?
+  clearedRunId         String?
+  acknowledgedAt       DateTime?
+  acknowledgedByUserId String?
+  acknowledgedByName   String?
+  resolvedAt           DateTime?
+  resolvedByUserId     String?
+  resolvedByName       String?
+  resolutionNote       String?
+  lastRunId            String?
+
+  acknowledgedBy User? @relation("AuditAcknowledgedBy", fields: [acknowledgedByUserId], references: [id], onDelete: SetNull)
+  resolvedBy     User? @relation("AuditResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  events         RentalAuditEvent[]
+
+  @@index([technicalStatus, status, severity])
+  @@index([status, severity])
+  @@index([lastSeenAt])
+  @@index([rentalId])
+  @@index([orderId])
+  @@index([customerId])
+  @@index([resource])
+  @@index([rentalStartTime])
+  @@index([type])
+}
+
+model RentalAuditEvent {
+  id           String   @id @default(cuid())
+  occurrenceId String
+  runId        String?
+  action       String   // DETECTED, CLEARED, REOPENED, ACKNOWLEDGED, RESOLVED, IGNORED, NOTE
+  note         String?
+  userId       String?
+  userName     String?
+  createdAt    DateTime @default(now())
+
+  occurrence RentalAuditOccurrence @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  user       User?                 @relation("AuditEventBy", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([occurrenceId, createdAt])
+  @@index([runId])
 }
 
