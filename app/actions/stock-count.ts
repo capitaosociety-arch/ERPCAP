@@ -39,27 +39,30 @@ export async function saveStockCounts(
 
         const saveCounts = () => prisma.$transaction(async (tx) => {
             for (const item of cleanItems) {
-                let systemQuantity: number | null = null;
+                let systemQuantity = 0;
                 if (location === 'DEPOT') {
                     const depot = await tx.depotStock.findUnique({
                         where: { productId: item.productId },
                         select: { quantity: true }
                     });
                     systemQuantity = Number(depot?.quantity) || 0;
+                } else {
+                    const stock = await tx.stock.findUnique({
+                        where: { productId: item.productId },
+                        select: { quantity: true }
+                    });
+                    systemQuantity = Number(stock?.quantity) || 0;
                 }
 
                 await tx.stockCount.upsert({
                     where: { productId_date_location: { productId: item.productId, date: dateStr, location } },
-                    update: {
-                        quantity: item.quantity,
-                        ...(location === 'DEPOT' ? { systemQuantity } : {})
-                    },
+                    update: { quantity: item.quantity, systemQuantity },
                     create: {
                         productId: item.productId,
                         location,
                         date: dateStr,
                         quantity: item.quantity,
-                        ...(location === 'DEPOT' ? { systemQuantity } : {})
+                        systemQuantity
                     }
                 });
             }
