@@ -22,15 +22,15 @@ const CLASS_META: Record<string, { label: string; color: string; bg: string }> =
 };
 
 const FATOR_LABEL: Record<string, string> = {
-    frequencia: 'FrequÃªncia',
-    gastoAluguel: 'Gasto em AluguÃ©is',
+    frequencia: 'Frequência',
+    gastoAluguel: 'Gasto em Aluguéis',
     consumoBar: 'Consumo no Bar',
     pontualidade: 'Pontualidade',
     cancelamentos: 'Cancelamentos',
     faltas: 'Faltas',
-    recencia: 'RecÃªncia',
-    recorrencia: 'RecorrÃªncia',
-    inadimplencia: 'InadimplÃªncia',
+    recencia: 'Recência',
+    recorrencia: 'Recorrência',
+    inadimplencia: 'Inadimplência',
 };
 
 function toDateStr(d: Date): string {
@@ -112,8 +112,8 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       const start = displayDraftDate(draft.startDate);
       const end = displayDraftDate(draft.endDate);
       return draft.startDate === draft.endDate
-          ? `${start} das ${draft.start} as ${draft.end}`
-          : `${start} ${draft.start} ate ${end} ${draft.end}`;
+          ? `${start} das ${draft.start} às ${draft.end}`
+          : `${start} ${draft.start} até ${end} ${draft.end}`;
   };
 
   // Formata contagens que podem ser fracionadas por pagamento parcial (ex.: meio jogo)
@@ -142,7 +142,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
               phone: customer.phone || "",
               notes: customer.notes || "",
               hasSubscription: !!customer.subscription,
-              planName: customer.subscription?.planName || "Mensalidade PadrÇœo",
+              planName: customer.subscription?.planName || "Mensalidade Padrão",
               amount: customer.subscription?.amount || 100,
               dueDate: customer.subscription?.dueDate || 5,
               nextDueDate: customer.subscription ? formatDateOnlyInput(customer.subscription.nextDueDate) : '',
@@ -150,7 +150,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           });
       } else {
           setFormData({
-              id: undefined, name: "", phone: "", notes: "", hasSubscription: false, planName: "Mensalidade PadrÇœo", amount: 100, dueDate: 5
+              id: undefined, name: "", phone: "", notes: "", hasSubscription: false, planName: "Mensalidade Padrão", amount: 100, dueDate: 5
           });
       }
       setRentalResource("");
@@ -172,15 +172,15 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           const amount = parseFloat(String(formData.amount).replace(',', '.'));
           const dueDate = parseInt(String(formData.dueDate), 10);
           if (!formData.planName?.trim()) return alert("Informe o nome do plano.");
-          if (!Number.isFinite(amount) || amount < 0) return alert("Valor da mensalidade invalido.");
-          if (!Number.isInteger(dueDate) || dueDate < 1 || dueDate > 31) return alert("Dia de vencimento invalido.");
+          if (!Number.isFinite(amount) || amount < 0) return alert("Valor da mensalidade inválido.");
+          if (!Number.isInteger(dueDate) || dueDate < 1 || dueDate > 31) return alert("Dia de vencimento inválido.");
       }
 
       for (const rental of rentalDrafts) {
           try {
               buildRentalWindow(rental.startDate, rental.start, rental.end);
           } catch (error: any) {
-              return alert(error?.message || "Horario da reserva invalido.");
+              return alert(error?.message || "Horário da reserva inválido.");
           }
       }
 
@@ -234,13 +234,13 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
               paymentDeleteIds: Array.from(originalPaymentIds).filter((id: any) => !draftPaymentIds.has(id)).map(String),
               subscriptionPaymentAmount: pendingSubscriptionPayment,
           });
-          if (!result.success) throw new Error((result as any).error || "Nao foi possivel salvar o dossie.");
+          if (!result.success) throw new Error((result as any).error || "Não foi possível salvar o dossiê.");
           setIsDirty(false);
           setCustomerModalOpen(false);
           window.location.reload();
       } catch (error: any) {
           setIsSavingDossier(false);
-          alert(error?.message || "Erro ao salvar o dossie. Nenhuma alteracao foi confirmada.");
+          alert(error?.message || "Erro ao salvar o dossiê. Nenhuma alteração foi confirmada.");
       } finally {
           setIsSavingDossier(false);
       }
@@ -248,7 +248,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
 
   const handleCloseDossier = () => {
       if (isSavingDossier) return;
-      if (isDirty && !confirm("Existem alteracoes nao salvas. Descartar e fechar o dossie?")) return;
+      if (isDirty && !confirm("Existem alterações não salvas. Descartar e fechar o dossiê?")) return;
       setCustomerModalOpen(false);
   };
 
@@ -277,27 +277,27 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   const handleConfirmRenewal = () => {
       if (!selectedCustomer || pendingSubscriptionPayment != null || !renewalPatternForm) return;
       const resource = String(renewalPatternForm.resource || '').trim();
-      if (!resource) return alert("Informe o espaco/mesa do padrao.");
+      if (!resource) return alert("Informe o espaço/mesa do padrão.");
       const amount = Number(renewalPatternForm.amount);
       const games = Number(renewalPatternForm.games);
-      if (!Number.isFinite(amount) || amount <= 0) return alert("Valor por jogo invalido.");
+      if (!Number.isFinite(amount) || amount <= 0) return alert("Valor por jogo inválido.");
       if (!Number.isInteger(games) || games < 4 || games > 15) return alert("A quantidade deve ser entre 4 e 15 jogos.");
       const negotiatedRaw = String(renewalPatternForm.negotiatedTotal ?? '').trim();
       const negotiated = negotiatedRaw ? Number(negotiatedRaw.replace(',', '.')) : null;
       if (negotiated != null && (!Number.isFinite(negotiated) || negotiated <= 0)) {
-          return alert("Valor total negociado invalido.");
+          return alert("Valor total negociado inválido.");
       }
       const calculatedTotal = calculateRenewalTotal(amount, games);
       const effectiveTotal = resolveRenewalTotal(amount, games, negotiated);
       if (effectiveTotal <= 0) return alert("O valor total da mensalidade deve ser maior que zero.");
       if (negotiated != null && Math.abs(negotiated - calculatedTotal) > 0.005) {
-          if (!confirm(`O valor negociado (R$ ${negotiated.toFixed(2)}) difere do calculado (R$ ${calculatedTotal.toFixed(2)}). Confirmar a cobranca do valor negociado?`)) return;
+          if (!confirm(`O valor negociado (R$ ${negotiated.toFixed(2)}) difere do calculado (R$ ${calculatedTotal.toFixed(2)}). Confirmar a cobrança do valor negociado?`)) return;
       }
       try {
           buildRentalWindow(defaultRentalDateInput(), renewalPatternForm.start, renewalPatternForm.end);
           parseDateOnlyInput(renewalPatternForm.nextDueDate);
       } catch (error: any) {
-          return alert(error?.message || "Horario ou vencimento invalido.");
+          return alert(error?.message || "Horário ou vencimento inválido.");
       }
       const pattern = {
           resource,
@@ -332,7 +332,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           );
       });
       if (conflicting) {
-          alert("Existe conflito entre o padrao configurado e uma reserva existente. Ajuste os horarios antes de renovar.");
+          alert("Existe conflito entre o padrão configurado e uma reserva existente. Ajuste os horários antes de renovar.");
           return;
       }
       const keepDueDay = renewalPatternForm.keepDueDay !== false;
@@ -348,9 +348,9 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       setIsDirty(true);
       setIsRenewalModalOpen(false);
       if (generated.length === 0) {
-          alert(`As ${games} reservas do padrao ja existem no historico; o pagamento sera agendado sem duplicar reservas.`);
+          alert(`As ${games} reservas do padrão já existem no histórico; o pagamento será agendado sem duplicar reservas.`);
       } else {
-          alert(`${generated.length} de ${games} reserva(s) foram adicionadas ao dossie. Total a cobrar: R$ ${effectiveTotal.toFixed(2).replace('.', ',')}. Confirme em Salvar e Fechar.`);
+          alert(`${generated.length} de ${games} reserva(s) foram adicionadas ao dossiê. Total a cobrar: R$ ${effectiveTotal.toFixed(2).replace('.', ',')}. Confirme em Salvar e Fechar.`);
       }
   };
 
@@ -369,7 +369,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   const handleSavePaymentEdit = () => {
       if (!editingPayment) return;
       const amount = parseFloat(String(paymentForm.amount).replace(',', '.'));
-      if (isNaN(amount) || amount <= 0) { alert("Valor invalido."); return; }
+      if (isNaN(amount) || amount <= 0) { alert("Valor inválido."); return; }
       setPaymentDrafts(prev => prev.map(payment => payment.id === editingPayment.id
           ? { ...payment, amount, paymentDate: paymentForm.paymentDate }
           : payment));
@@ -378,12 +378,12 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   };
 
   const handleDeletePayment = (payment: any) => {
-      if (!confirm("Remover este lancamento do dossie? A exclusao sera confirmada somente ao salvar.")) return;
+      if (!confirm("Remover este lançamento do dossiê? A exclusão será confirmada somente ao salvar.")) return;
       setPaymentDrafts(prev => prev.filter(item => item.id !== payment.id));
       setIsDirty(true);
   };
 
-  // Editing Rental (locaÃ§Ã£o)
+  // Editing Rental (locação)
   const [editingRental, setEditingRental] = useState<any>(null);
 
   const openEditRental = (rent: any) => {
@@ -396,7 +396,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   };
 
   const handleSaveRentalEdit = () => {
-      if (!editingRental || !rentalResource.trim()) return alert("Informe o espaco/mesa da reserva.");
+      if (!editingRental || !rentalResource.trim()) return alert("Informe o espaço/mesa da reserva.");
       try {
           const { startTime, endTime } = buildRentalWindow(rentalDate, rentalStart, rentalEnd);
           const updated = {
@@ -412,12 +412,12 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           setEditingRental(null);
           setIsDirty(true);
       } catch (error: any) {
-          alert(error?.message || "Horario da reserva invalido.");
+          alert(error?.message || "Horário da reserva inválido.");
       }
   };
 
   const handleDeleteRental = (rent: any) => {
-      if (!confirm("Remover esta reserva do dossie? A exclusao sera confirmada somente ao salvar.")) return;
+      if (!confirm("Remover esta reserva do dossiê? A exclusão será confirmada somente ao salvar.")) return;
       setRentalDrafts(prev => prev.filter(item => item.id !== rent.id));
       setIsDirty(true);
   };
@@ -430,7 +430,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   const [rentalAmount, setRentalAmount] = useState(0);
 
   const handleCreateRental = () => {
-      if (!selectedCustomer || !rentalResource.trim()) return alert("Informe o espaco/mesa da reserva.");
+      if (!selectedCustomer || !rentalResource.trim()) return alert("Informe o espaço/mesa da reserva.");
       try {
           const { startTime, endTime } = buildRentalWindow(rentalDate, rentalStart, rentalEnd);
           const draft = {
@@ -449,18 +449,18 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           setRentalAmount(0);
           setIsDirty(true);
       } catch (error: any) {
-          alert(error?.message || "Horario da reserva invalido.");
+          alert(error?.message || "Horário da reserva inválido.");
       }
   };
 
   const handleDeleteCustomer = () => {
       if (!selectedCustomer) return;
-      if (!confirm("CUIDADO: Tem certeza que deseja excluir permanentemente este cliente? Esta aÃ§Ã£o nÃ£o pode ser desfeita e removerÃ¡ tambÃ©m assinaturas e agendamentos vinculados.")) return;
+      if (!confirm("CUIDADO: Tem certeza que deseja excluir permanentemente este cliente? Esta ação não pode ser desfeita e removerá também assinaturas e agendamentos vinculados.")) return;
 
       startTransition(async () => {
           const res = await deleteCustomer(selectedCustomer.id);
           if (res.success) {
-              alert("Cliente excluÃ­do com sucesso.");
+              alert("Cliente excluído com sucesso.");
               setCustomerModalOpen(false);
               window.location.reload();
           } else {
@@ -502,10 +502,10 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           setShowScoreConfig(false);
           window.location.reload();
         } else {
-          alert(res?.error || "Erro ao salvar configuraÃ§Ã£o.");
+          alert(res?.error || "Erro ao salvar configuração.");
         }
       } catch (e: any) {
-        alert(e?.message || "Erro ao salvar configuraÃ§Ã£o.");
+        alert(e?.message || "Erro ao salvar configuração.");
       } finally {
         setPesosSaving(false);
       }
@@ -532,7 +532,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       setScoreHistory(res?.history || []);
       setShowHistory(true);
     } catch (e) {
-      alert("Erro ao carregar histÃ³rico.");
+      alert("Erro ao carregar histórico.");
     }
   };
 
@@ -560,11 +560,11 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       const isFut5 = (name: string) => /fut5|fut\s*5|futebol\s*5/i.test(name);
       const isFut7 = (name: string) => /fut7|fut\s*7|futebol\s*7/i.test(name);
 
-      // Jogos lanÃ§ados nas sessÃµes de caixa (PDV/comandas), fonte da verdade
+      // Jogos lançados nas sessões de caixa (PDV/comandas), fonte da verdade
       const lancamentos: any[] = fieldRentalLancamentos || [];
       const filtered = lancamentos.filter((l: any) => l.day >= from && l.day <= to);
 
-      // Inicializar todos os dias do perÃ­odo
+      // Inicializar todos os dias do período
       const dailySeries: Record<string, { day: string; fut5Count: number; fut7Count: number; totalCount: number; fut5Amount: number; fut7Amount: number; totalAmount: number }> = {};
       const cursor = new Date(from + 'T00:00:00');
       const last = new Date(to + 'T00:00:00');
@@ -633,7 +633,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
       <div className="flex justify-between items-end mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Clientes & Assinaturas</h1>
-          <p className="text-gray-500 text-sm mt-1">CRM, Mensalidades e locaÃ§Ã£o de horÃ¡rios (Mesas).</p>
+          <p className="text-gray-500 text-sm mt-1">CRM, Mensalidades e locação de horários (Mesas).</p>
         </div>
         <div className="flex gap-4">
             <div className="flex bg-white rounded-xl shadow-sm border border-gray-200 p-1">
@@ -653,7 +653,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
         </div>
       </div>
 
-      {/* FILTRO POR CLASSIFICAÃ‡ÃƒO DO SCORE */}
+      {/* FILTRO POR CLASSIFICAÇÃO DO SCORE */}
       <div className="mb-6 flex flex-wrap items-center gap-2">
           <span className="text-xs font-black uppercase tracking-widest text-slate-500 flex items-center gap-1.5 mr-1">
               <Gauge size={15} className="text-mrts-blue" /> Score
@@ -669,13 +669,13 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                   </button>
               );
           })}
-          {scoresLoading && <span className="text-[10px] text-gray-400 font-bold uppercase">Calculandoâ€¦</span>}
+          {scoresLoading && <span className="text-[10px] text-gray-400 font-bold uppercase">Calculando…</span>}
       </div>
 
-      {/* CARDS E GRÃFICOS DE JOGOS */}
+      {/* CARDS E GRÁFICOS DE JOGOS */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
-              <Trophy size={16} className="text-emerald-500" /> Jogos & LocaÃ§Ãµes
+              <Trophy size={16} className="text-emerald-500" /> Jogos & Locações
           </h2>
           <div className="flex flex-wrap items-center gap-2">
               <div className="relative">
@@ -688,7 +688,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                       className="bg-white border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500 outline-none w-40"
                   />
               </div>
-              <span className="text-[10px] font-black text-gray-400 uppercase">atÃ©</span>
+              <span className="text-[10px] font-black text-gray-400 uppercase">até</span>
               <div className="relative">
                   <Calendar size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
@@ -702,9 +702,9 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
               <button
                   onClick={() => { setDateFrom(monthStartStr()); setDateTo(todayStr()); }}
                   className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 px-2 py-2 rounded-lg hover:bg-emerald-50 transition"
-                  title="Voltar para o mÃªs atual"
+                  title="Voltar para o mês atual"
               >
-                  Este mÃªs
+                  Este mês
               </button>
           </div>
       </div>
@@ -724,7 +724,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                   <span className="text-[10px] font-black text-sky-400 bg-sky-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">FUT7: {fmtCount(gamesStats.fut7Count)}</span>
                   <span className="text-[10px] font-black text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg uppercase tracking-wider">Total: {fmtCount(gamesStats.totalGames)}</span>
               </div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Jogos no PerÃ­odo</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Jogos no Período</p>
               <h3 className="text-3xl font-black text-white tracking-tight">{fmtCount(gamesStats.totalGames)}</h3>
               <div className="w-full h-56 mt-4">
                   <ResponsiveContainer width="100%" height="100%">
@@ -830,9 +830,9 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                         <td className="p-4">
                             {sc ? (
                                 <span className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2 py-1 rounded-lg border ${CLASS_META[sc.classificacao]?.bg || 'bg-gray-100 border-gray-200'} ${CLASS_META[sc.classificacao]?.color || 'text-gray-600'}`}>
-                                    {sc.score} Â· {CLASS_META[sc.classificacao]?.label || sc.classificacao}
+                                    {sc.score} · {CLASS_META[sc.classificacao]?.label || sc.classificacao}
                                 </span>
-                            ) : <span className="text-xs text-gray-300">â€”</span>}
+                            ) : <span className="text-xs text-gray-300">—</span>}
                         </td>
                         <td className="p-4 text-right">
                             <button onClick={() => openCustomerModal(customer)} className="w-9 h-9 inline-flex items-center justify-center text-gray-400 bg-white border border-gray-200 hover:text-mrts-blue hover:border-mrts-blue rounded-xl shadow-sm transition hover:-translate-y-0.5 ml-auto">
@@ -859,7 +859,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                 <div className="flex justify-between items-center p-6 border-b border-gray-100 bg-gray-50 z-10 shrink-0">
                     <div>
                         <h2 className="text-xl font-bold flex items-center gap-2 text-slate-800">
-                            <UserIcon size={22} className="text-mrts-blue" /> {selectedCustomer ? 'DossiÃª do Cliente' : 'Novo Cliente'}
+                            <UserIcon size={22} className="text-mrts-blue" /> {selectedCustomer ? 'Dossiê do Cliente' : 'Novo Cliente'}
                         </h2>
                         {selectedCustomer && <p className="text-sm text-gray-500 mt-1 font-medium">{selectedCustomer.name}</p>}
                     </div>
@@ -923,14 +923,11 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                 </div>
                                
                                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl mb-4 text-center">
-                                    <p className="text-xs text-gray-500 font-medium">PrÃ³ximo Vencimento</p>
-                                    <p className={`text-xl font-black mt-1 ${checkIsOverdue(selectedCustomer.subscription) ? 'text-red-500' : 'text-slate-800'}`}>
-                                        {formatDateDisplay(selectedCustomer.subscription.nextDueDate)}
-                                    </p>
-                                    <button disabled={isSavingDossier || pendingSubscriptionPayment != null} onClick={() => handlePaySubscription(formData.hasSubscription ? Number(formData.amount) : selectedCustomer.subscription.amount)} className="mt-3 w-full bg-green-500 hover:bg-green-600 text-white text-sm font-bold py-2 rounded-lg shadow-sm transition disabled:opacity-50">
+                                    <p className="text-xs text-gray-500 font-medium">Próximo Vencimento</p>
+                                    <button disabled={isSavingDossier || pendingSubscriptionPayment != null} onClick={() => handlePaySubscription(formData.hasSubscription ? Number(formData.amount) : selectedCustomer.subscription.amount)} className="mt-2 w-full bg-green-500 hover:bg-green-600 text-white text-sm font-bold py-2 rounded-lg shadow-sm transition disabled:opacity-50">
                                         {pendingSubscriptionPayment != null ? 'Pagamento agendado' : 'Agendar pagamento'}
                                     </button>
-                                    {pendingSubscriptionPayment != null && <p className="text-[10px] text-green-700 font-bold mt-2">Sera registrado ao clicar em Salvar e Fechar.</p>}
+                                    {pendingSubscriptionPayment != null && <p className="text-[10px] text-green-700 font-bold mt-2">Será registrado ao clicar em Salvar e Fechar.</p>}
                                 </div>
 
                                 <div className="flex flex-col gap-2 max-h-40 overflow-y-auto pr-2">
@@ -957,10 +954,10 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                                 <span className="text-gray-500 font-medium">{new Date(payment.paymentDate).toLocaleDateString('pt-BR')}</span>
                                                 <span className="flex items-center gap-2">
                                                     <span className="font-bold text-slate-700">R$ {payment.amount.toFixed(2).replace('.',',')}</span>
-                                                    <button onClick={() => openEditPayment(payment)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar lanÃ§amento">
+                                                    <button onClick={() => openEditPayment(payment)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar lançamento">
                                                         <Edit3 size={12} />
                                                     </button>
-                                                    <button onClick={() => handleDeletePayment(payment)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg transition" title="Excluir lanÃ§amento">
+                                                    <button onClick={() => handleDeletePayment(payment)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg transition" title="Excluir lançamento">
                                                         <Trash2 size={12} />
                                                     </button>
                                                 </span>
@@ -978,7 +975,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                        {!selectedCustomer ? (
                            <div className="h-full flex items-center justify-center text-center px-8 flex-col text-gray-400">
                                <Calendar size={40} className="mb-4 opacity-50"/>
-                               <p className="font-medium text-sm">Salve o cliente primeiro para liberar a ferramenta de AluguÃ©is e Agendamentos.</p>
+                               <p className="font-medium text-sm">Salve o cliente primeiro para liberar a ferramenta de Aluguéis e Agendamentos.</p>
                            </div>
                        ) : (
                            <div className="flex flex-col gap-6">
@@ -990,7 +987,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                            {(() => { const sc = scores[selectedCustomer.id]; const meta = CLASS_META[sc?.classificacao]; return (
                                                <>
                                                    <div className="flex items-end gap-3 mt-3">
-                                                       <span className="text-5xl font-black text-white tracking-tight">{sc ? sc.score : 'â€”'}</span>
+                                                       <span className="text-5xl font-black text-white tracking-tight">{sc ? sc.score : '—'}</span>
                                                        {meta && <span className={`mb-1.5 inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-1 rounded-lg border ${meta.bg} ${meta.color}`}>{meta.label}</span>}
                                                    </div>
                                                    {sc?.recomendacao && <p className="text-xs text-slate-400 mt-2 leading-relaxed">{sc.recomendacao}</p>}
@@ -1001,19 +998,19 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                            <button disabled={isPending} onClick={() => handleRecalcScore(selectedCustomer.id)} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-300 bg-slate-800 border border-slate-700 px-2.5 py-1.5 rounded-lg hover:bg-slate-700 transition disabled:opacity-50" title="Recalcular score agora">
                                                <RefreshCw size={12}/> Recalcular
                                            </button>
-                                           <button onClick={() => handleShowHistory(selectedCustomer.id)} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-300 bg-slate-800 border border-slate-700 px-2.5 py-1.5 rounded-lg hover:bg-slate-700 transition" title="HistÃ³rico de scores">
-                                               <TrendingUp size={12}/> HistÃ³rico
+                                           <button onClick={() => handleShowHistory(selectedCustomer.id)} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-300 bg-slate-800 border border-slate-700 px-2.5 py-1.5 rounded-lg hover:bg-slate-700 transition" title="Histórico de scores">
+                                               <TrendingUp size={12}/> Histórico
                                            </button>
                                        </div>
                                    </div>
 
                                    {(() => { const sc = scores[selectedCustomer.id]; if (!sc) return (
-                                       <div className="text-xs text-slate-500 font-medium py-2">Calculando score deste clienteâ€¦</div>
+                                       <div className="text-xs text-slate-500 font-medium py-2">Calculando score deste cliente…</div>
                                    ); return (
                                        <>
                                            <div className="grid grid-cols-3 gap-2">
                                                <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
-                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">FrequÃªncia</p>
+                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Frequência</p>
                                                    <p className="text-sm font-black text-white mt-0.5">{sc.frequencia}</p>
                                                </div>
                                                <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
@@ -1025,8 +1022,8 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                                    <p className="text-sm font-black text-white mt-0.5">R$ {Number(sc.gastoAcumulado || 0).toFixed(2).replace('.', ',')}</p>
                                                </div>
                                                <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
-                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Ãšltima Reserva</p>
-                                                   <p className="text-[10px] font-bold text-white mt-0.5">{sc.ultimaReserva ? new Date(sc.ultimaReserva).toLocaleDateString('pt-BR') : 'â€”'}</p>
+                                                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Última Reserva</p>
+                                                   <p className="text-[10px] font-bold text-white mt-0.5">{sc.ultimaReserva ? new Date(sc.ultimaReserva).toLocaleDateString('pt-BR') : '—'}</p>
                                                </div>
                                                <div className="bg-slate-800/70 rounded-xl p-2.5 text-center">
                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Cancel. praz.</p>
@@ -1053,10 +1050,10 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                </div>
 
                                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col gap-4">
-                                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5"><Clock size={16}/> Agendar EspaÃ§o / Mesa</h3>
+                                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5"><Clock size={16}/> Agendar Espaço / Mesa</h3>
                                     
                                     <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">O que estÃ¡ alugando? (Ex: Mesa 5)</label>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">O que está alugando? (Ex: Mesa 5)</label>
                                         <input type="text" value={rentalResource} onChange={e => { setRentalResource(e.target.value); setIsDirty(true); }} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:border-mrts-blue text-sm font-medium text-slate-700"/>
                                     </div>
 
@@ -1066,7 +1063,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                             <input type="date" value={rentalDate} onChange={e => { setRentalDate(e.target.value); setIsDirty(true); }} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-mrts-blue text-sm font-medium text-slate-700"/>
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Hora InÃ­cio</label>
+                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5">Hora Início</label>
                                             <input type="time" value={rentalStart} onChange={e => { setRentalStart(e.target.value); setIsDirty(true); }} className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-mrts-blue text-sm font-bold text-slate-700"/>
                                         </div>
                                         <div>
@@ -1079,17 +1076,17 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                         </div>
                                     </div>
                                      <button disabled={isSavingDossier} onClick={() => editingRental ? handleSaveRentalEdit() : handleCreateRental()} className="w-full bg-mrts-blue text-white text-sm font-bold py-2.5 rounded-lg shadow-sm hover:bg-mrts-hover transition disabled:opacity-50 mt-1">
-                                        {editingRental ? 'Aplicar Alteracoes' : 'Adicionar Reserva'}
+                                        {editingRental ? 'Aplicar Alterações' : 'Adicionar Reserva'}
                                      </button>
                                      {editingRental && (
                                         <button disabled={isSavingDossier} onClick={() => { setEditingRental(null); setRentalResource(""); setRentalAmount(0); setRentalDate(defaultRentalDateInput()); }} className="w-full text-[11px] font-bold text-gray-500 bg-white border border-gray-200 py-2 rounded-lg hover:bg-gray-100 transition disabled:opacity-50">
-                                            Cancelar EdiÃ§Ã£o
+                                            Cancelar Edição
                                         </button>
                                      )}
                                </div>
 
                                <div>
-                                   <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5 py-2"><Calendar size={14}/> HistÃ³rico de LocaÃ§Ãµes</h3>
+                                   <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5 py-2"><Calendar size={14}/> Histórico de Locações</h3>
                                    <div className="flex flex-col gap-2">
                                         {sortedRentalDrafts.map((rent: any) => (
                                             <div key={rent.id} className="bg-white border text-left border-gray-200 rounded-xl p-3 flex flex-col gap-2 shadow-sm">
@@ -1102,10 +1099,10 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-xs font-black text-slate-600">R$ {Number(rent.amount || 0).toFixed(2).replace('.',',')}</span>
-                                                        <button onClick={() => openEditRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar locaÃ§Ã£o">
+                                                        <button onClick={() => openEditRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar locação">
                                                             <Edit3 size={13} />
                                                         </button>
-                                                        <button onClick={() => handleDeleteRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg transition" title="Excluir locaÃ§Ã£o">
+                                                        <button onClick={() => handleDeleteRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg transition" title="Excluir locação">
                                                             <Trash2 size={13} />
                                                         </button>
                                                     </div>
@@ -1147,7 +1144,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                  </div>
                  <div className="shrink-0 border-t border-gray-100 bg-white p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
                      <p className="text-xs font-medium text-gray-500">
-                         {isDirty ? 'Alteracoes pendentes. Nada foi gravado ainda.' : 'Nenhuma alteracao pendente.'}
+                         {isDirty ? 'Alterações pendentes. Nada foi gravado ainda.' : 'Nenhuma alteração pendente.'}
                      </p>
                      <button
                          disabled={isSavingDossier}
@@ -1166,8 +1163,8 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           <div className="bg-white rounded-3xl w-full max-w-2xl shadow-2xl border border-gray-100 max-h-[calc(100dvh-1rem)] sm:max-h-[90vh] flex flex-col overflow-hidden">
             <div className="flex items-start justify-between gap-3 p-4 border-b border-gray-100 bg-gray-50 shrink-0">
               <div>
-                <h2 className="text-lg sm:text-xl font-black text-slate-800">Renovacao da mensalidade</h2>
-                <p className="text-xs text-gray-500 font-medium mt-1">Confirme ou ajuste o padrao da renovacao.</p>
+                <h2 className="text-lg sm:text-xl font-black text-slate-800">Renovação da mensalidade</h2>
+                <p className="text-xs text-gray-500 font-medium mt-1">Confirme ou ajuste o padrão da renovação.</p>
               </div>
               <button onClick={() => setIsRenewalModalOpen(false)} className="w-9 h-9 bg-white border border-gray-200 rounded-full flex items-center justify-center">
                 <X size={18} className="text-gray-500" />
@@ -1178,14 +1175,14 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
             {(!renewalPatternForm.fromHistory || !renewalPatternForm.confident) && (
               <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800">
                 {renewalPatternForm.fromHistory
-                  ? 'O historico nao tem um padrao claramente repetido. Revise os campos antes de gerar.'
-                  : 'Nao ha historico suficiente. Informe manualmente o padrao antes de gerar.'}
+                  ? 'O histórico não tem um padrão claramente repetido. Revise os campos antes de gerar.'
+                  : 'Não há histórico suficiente. Informe manualmente o padrão antes de gerar.'}
               </div>
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
               <div className="col-span-1 sm:col-span-2">
-                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Espaco / Mesa</label>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Espaço / Mesa</label>
                 <input type="text" value={renewalPatternForm.resource} onChange={e => setRenewalPatternForm({ ...renewalPatternForm, resource: e.target.value })} className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue" />
               </div>
               <div>
@@ -1193,11 +1190,11 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                 <select value={renewalPatternForm.weekday} onChange={e => setRenewalPatternForm({ ...renewalPatternForm, weekday: Number(e.target.value) })} className="w-full border-2 border-gray-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-mrts-blue bg-white">
                   <option value={0}>Domingo</option>
                   <option value={1}>Segunda-feira</option>
-                  <option value={2}>Terca-feira</option>
+                  <option value={2}>Terça-feira</option>
                   <option value={3}>Quarta-feira</option>
                   <option value={4}>Quinta-feira</option>
                   <option value={5}>Sexta-feira</option>
-                  <option value={6}>Sabado</option>
+                  <option value={6}>Sábado</option>
                 </select>
               </div>
               <div>
@@ -1225,7 +1222,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
             <div className="mt-4 rounded-xl border border-gray-200 bg-slate-50 p-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Proximo vencimento</label>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Próximo vencimento</label>
                   <input type="date" value={renewalPatternForm.nextDueDate} onChange={e => {
                     const nextDueDate = e.target.value;
                     const keepDueDay = renewalPatternForm.keepDueDay !== false;
@@ -1244,7 +1241,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                     setRenewalPatternForm({ ...renewalPatternForm, keepDueDay });
                     updateForm({ keepDueDay, ...(keepDueDay && renewalPatternForm.nextDueDate ? { dueDate: Number(renewalPatternForm.nextDueDate.slice(8, 10)) } : {}) });
                   }} className="mt-0.5 w-4 h-4 rounded border-gray-300 text-mrts-blue focus:ring-mrts-blue" />
-                  <span>Manter este dia fixo nas proximas mensalidades</span>
+                  <span>Manter este dia fixo nas próximas mensalidades</span>
                 </label>
               </div>
             </div>
@@ -1263,7 +1260,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
             </div>
 
             <div className="mt-3 rounded-xl bg-slate-50 border border-gray-200 p-3 text-xs text-slate-700 space-y-1">
-              <div className="flex justify-between"><span>Valor unitario</span><span className="font-bold">R$ {renewalUnitAmount.toFixed(2).replace('.', ',')}</span></div>
+              <div className="flex justify-between"><span>Valor unitário</span><span className="font-bold">R$ {renewalUnitAmount.toFixed(2).replace('.', ',')}</span></div>
               <div className="flex justify-between"><span>Quantidade</span><span className="font-bold">{renewalGames} jogos</span></div>
               <div className="flex justify-between"><span>Total calculado</span><span className="font-bold">R$ {renewalCalculatedTotal.toFixed(2).replace('.', ',')}</span></div>
               <div className="flex justify-between border-t border-gray-200 pt-1"><span>Total efetivamente cobrado</span><span className="font-black text-mrts-blue">R$ {renewalEffectiveTotal.toFixed(2).replace('.', ',')}</span></div>
@@ -1271,21 +1268,21 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
 
             {renewalPreview.length > 0 && (
               <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3">
-                <p className="text-[10px] font-bold text-mrts-blue uppercase mb-1">Reservas que serao geradas</p>
+                <p className="text-[10px] font-bold text-mrts-blue uppercase mb-1">Reservas que serão geradas</p>
                 <div className="flex flex-col gap-1 max-h-28 overflow-y-auto">
                   {renewalPreview.map((item, index) => (
                     <p key={`${item.startDate}-${item.start}-${index}`} className="text-[11px] font-bold text-slate-700">
-                      {item.startDate.split('-').reverse().join('/')} — {item.start} as {item.end}
+                      {item.startDate.split('-').reverse().join('/')} — {item.start} às {item.end}
                     </p>
                   ))}
                 </div>
                 {renewalPreview.length < renewalGames && (
-                  <p className="text-[10px] text-amber-700 font-bold mt-1">Algumas datas ja existem; somente as faltantes serao geradas.</p>
+                  <p className="text-[10px] text-amber-700 font-bold mt-1">Algumas datas já existem; somente as faltantes serão geradas.</p>
                 )}
               </div>
             )}
 
-            <p className="text-[11px] text-gray-500 font-medium mt-3">O pagamento da mensalidade sera agendado e somente sera gravado ao clicar em Salvar e Fechar.</p>
+            <p className="text-[11px] text-gray-500 font-medium mt-3">O pagamento da mensalidade será agendado e somente será gravado ao clicar em Salvar e Fechar.</p>
             </div>
 
             <div className="p-3 sm:p-4 border-t border-gray-100 bg-white shrink-0 flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
@@ -1296,7 +1293,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
         </div>
       )}
 
-      {/* MODAL: CONFIGURAÃ‡ÃƒO DE PESOS DO SCORE */}
+      {/* MODAL: CONFIGURAÇÃO DE PESOS DO SCORE */}
       {showScoreConfig && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl animate-in zoom-in-95 flex flex-col border border-gray-100 max-h-[85vh] overflow-hidden">
@@ -1305,7 +1302,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                         <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
                             <Settings size={18} className="text-mrts-blue" /> Configurar Score
                         </h2>
-                        <p className="text-xs text-gray-500 mt-0.5 font-medium">Pesos de cada fator â€” a soma deve ser 100.</p>
+                        <p className="text-xs text-gray-500 mt-0.5 font-medium">Pesos de cada fator — a soma deve ser 100.</p>
                     </div>
                     <button onClick={() => setShowScoreConfig(false)} className="w-9 h-9 flex items-center justify-center bg-white border border-gray-200 hover:bg-gray-100 rounded-full transition">
                         <X size={18} className="text-gray-500" />
@@ -1331,27 +1328,27 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                         return (
                             <div className={`mt-2 px-4 py-2.5 rounded-xl border font-bold text-sm flex items-center justify-between ${Math.abs(soma - 100) <= 0.01 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
                                 <span>Soma</span>
-                                <span>{soma.toLocaleString('pt-BR')} / 100 {Math.abs(soma - 100) <= 0.01 ? 'âœ“' : 'âœ—'}</span>
+                                <span>{soma.toLocaleString('pt-BR')} / 100 {Math.abs(soma - 100) <= 0.01 ? '✓' : '✗'}</span>
                             </div>
                         );
                     })()}
                 </div>
                 <div className="p-5 pt-2 border-t border-gray-100 bg-gray-50 shrink-0">
                     <button disabled={pesosSaving} onClick={handleSaveScoreConfig} className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition disabled:opacity-50">
-                        {pesosSaving ? 'Salvando e recalculandoâ€¦' : 'Salvar e recalcular todos'}
+                        {pesosSaving ? 'Salvando e recalculando…' : 'Salvar e recalcular todos'}
                     </button>
                 </div>
             </div>
         </div>
       )}
 
-      {/* MODAL: HISTÃ“RICO DE SCORE */}
+      {/* MODAL: HISTÓRICO DE SCORE */}
       {showHistory && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl animate-in zoom-in-95 flex flex-col border border-gray-100 max-h-[70vh] overflow-hidden">
                 <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50 shrink-0">
                     <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800">
-                        <TrendingUp size={18} className="text-mrts-blue" /> HistÃ³rico de Score
+                        <TrendingUp size={18} className="text-mrts-blue" /> Histórico de Score
                     </h2>
                     <button onClick={() => setShowHistory(false)} className="w-9 h-9 flex items-center justify-center bg-white border border-gray-200 hover:bg-gray-100 rounded-full transition">
                         <X size={18} className="text-gray-500" />
@@ -1365,7 +1362,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                             <div key={i} className="flex items-center justify-between px-3 py-2.5 bg-slate-50 border border-gray-200 rounded-xl">
                                 <span className="text-xs text-gray-500 font-medium">{new Date(h.snapshotAt).toLocaleString('pt-BR')}</span>
                                 <span className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2 py-1 rounded-lg border ${meta?.bg || 'bg-gray-100 border-gray-200'} ${meta?.color || 'text-gray-600'}`}>
-                                    {h.score} Â· {meta?.label || h.classificacao}
+                                    {h.score} · {meta?.label || h.classificacao}
                                 </span>
                             </div>
                         );

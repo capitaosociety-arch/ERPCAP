@@ -6,6 +6,7 @@ import { updateProductPrice, upsertProduct, toggleProductStatus, deleteProduct }
 import { processProductsWithAI, saveBatchProducts } from '../../actions/import-actions';
 import { downloadExcel } from '../../../lib/excel-export';
 import { PRODUCT_SORT_OPTIONS, ProductSortOption, sortProducts } from '../../../lib/product-sort';
+import { calculateMarginPercent, formatMarginPercent } from '../../../lib/product-margin';
 import * as XLSX from 'xlsx';
 import CardapioPrint from './CardapioPrint';
 
@@ -194,6 +195,10 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
         "Preço Custo (R$)": p.cost || 0,
         "Preço Venda (R$)": p.price || 0,
         "Lucro (%)": profitPercent.toFixed(2) + "%",
+        "Margem (%)": (() => {
+          const margin = calculateMarginPercent(p.price, p.cost);
+          return margin == null ? "" : formatMarginPercent(margin);
+        })(),
         "Estoque Atual": p.stock?.quantity || 0,
         "Quantidade Atual (Balcão)": p.stock?.quantity || 0,
         "Contagem": count == null ? "" : count,
@@ -276,6 +281,7 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                 <th className="p-4 font-bold">Custo (Base)</th>
                 <th className="p-4 font-bold">Preço de Venda</th>
                 <th className="p-4 font-bold">Lucro (%)</th>
+                <th className="p-4 font-bold">Margem (%)</th>
                 <th className="p-4 font-bold">Estoque</th>
                 <th className="p-4 font-bold">Contagem</th>
                 <th className="p-4 font-bold">Diferença</th>
@@ -288,8 +294,8 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                   <td className="p-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-white shadow-sm border border-gray-100 rounded-lg flex items-center justify-center text-xl shrink-0">{product.iconUrl}</div>
-                      <div>
-                        <p className="font-bold text-gray-800 text-sm line-clamp-1">{product.name}</p>
+                      <div className="min-w-0">
+                        <p className="font-bold text-gray-800 text-sm truncate max-w-[150px] sm:max-w-[200px] lg:max-w-[240px]" title={product.name}>{product.name}</p>
                         <div className="mt-1">
                         {product.isActive ? (
                           <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold uppercase tracking-wide">Ativo</span>
@@ -317,6 +323,17 @@ export default function ProductsClient({ initialProducts, categories = [] }: any
                     ) : (
                         <span className="text-xs text-gray-300 font-medium">---</span>
                     )}
+                  </td>
+                  <td className="p-4">
+                    {(() => {
+                      const margin = calculateMarginPercent(product.price, product.cost);
+                      if (margin == null) return <span className="text-xs text-gray-300 font-medium">—</span>;
+                      return (
+                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${margin < 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                          {formatMarginPercent(margin)}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="p-4">
                     <span className={`text-xs font-bold px-3 py-1.5 rounded-lg ${product.stock && product.stock.quantity > product.stock.minQuantity ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-red-50 text-red-600 border border-red-100'}`}>
