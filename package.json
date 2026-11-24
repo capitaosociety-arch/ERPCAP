@@ -17,6 +17,7 @@
     "test:quantity": "tsx scripts/tests/quantity-input.test.ts",
     "test:margin": "tsx scripts/tests/product-margin.test.ts",
     "test:stock-count": "tsx scripts/tests/stock-count-diff.test.ts",
+    "test:agenda": "tsx scripts/tests/agenda.test.ts",
     "test:rental-time": "tsx scripts/tests/rental-time.test.ts",
     "test:rental-booking": "tsx scripts/tests/rental-booking.test.ts",
     "test:rental-renewal": "tsx scripts/tests/rental-renewal.test.ts",
