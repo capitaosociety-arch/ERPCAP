@@ -15,6 +15,7 @@
     "test:strategic": "tsx scripts/tests/strategic-analytics.test.ts",
     "test:pricing": "tsx scripts/tests/pricing-intelligence.test.ts",
     "test:quantity": "tsx scripts/tests/quantity-input.test.ts",
+    "test:comanda-input": "tsx scripts/tests/comanda-input.test.ts",
     "test:margin": "tsx scripts/tests/product-margin.test.ts",
     "test:stock-count": "tsx scripts/tests/stock-count-diff.test.ts",
     "test:agenda": "tsx scripts/tests/agenda.test.ts",

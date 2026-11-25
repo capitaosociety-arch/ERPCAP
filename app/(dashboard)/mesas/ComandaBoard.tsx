@@ -1,12 +1,21 @@
 'use client'
 
 import { useMemo, useState } from 'react';
-import { Plus, Search, Coffee, X, ShoppingBag, Eye, Banknote, QrCode, CreditCard, Receipt, Trash2, RotateCcw, Minus } from 'lucide-react';
+import { Plus, Search, Coffee, X, ShoppingBag, Eye, Banknote, QrCode, CreditCard, Receipt, Trash2, RotateCcw, Minus, User as UserIcon } from 'lucide-react';
 import { createComanda, closeComanda, addItemToOrder, processPayment, removeItemFromOrder, deleteComandaAction, voidPaymentAction, updateOrderItemQuantity } from '../../actions/comandas';
 import { createCustomerQuick } from '../../actions/customers';
 import { sortProducts } from '../../../lib/product-sort';
 import EditableQuantity from '../../../components/EditableQuantity';
 import RentalBookingModal, { type RentalBookingDraft } from '../../../components/RentalBookingModal';
+import {
+    adjustComandaProductQuantity,
+    comandaCustomerLink,
+    comandaProductQuantity,
+    normalizeComandaIdentifier,
+    resetComandaProductQuantity,
+    uppercaseComandaIdentifier,
+    type ComandaQuantityState,
+} from '../../../lib/comanda-input';
 
 export default function ComandaBoard({ openOrders, products, openRegister, customers }: { openOrders: any[], products: any[], openRegister?: any, customers?: { id: string; name: string; phone: string | null }[] }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -23,7 +32,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
     const [selectedOrder, setSelectedOrder] = useState<any>(null);
     const [addingItemId, setAddingItemId] = useState<string | null>(null);
     const [productSearch, setProductSearch] = useState("");
-    const [selectedQty, setSelectedQty] = useState(1);
+    const [selectedQuantities, setSelectedQuantities] = useState<ComandaQuantityState>({});
     const [bookingProduct, setBookingProduct] = useState<any>(null);
 
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -38,7 +47,8 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
 
     const handleCreate = async () => {
         if(!openRegister) return alert("Não é possível abrir comandas com o caixa fechado! Acesse o PDV para abrir o turno.");
-        if(!comandaName.trim()) return;
+        const normalizedName = normalizeComandaIdentifier(comandaName);
+        if(!normalizedName) return;
         setLoading(true);
         try {
             let customerId: string | null = null;
@@ -54,7 +64,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
             } else if (selectedCustomerId) {
                 customerId = selectedCustomerId;
             }
-            await createComanda(comandaName.trim(), customerId);
+            await createComanda(normalizedName, customerId);
         } catch (e: any) {
             alert(e?.message || "Erro ao criar comanda.");
         } finally {
@@ -70,7 +80,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
         e.stopPropagation();
         if(!openRegister) return alert("Caixa fechado! Para lançar produtos, inicie o turno no balcão do PDV.");
         setSelectedOrder(order);
-        setSelectedQty(1);
+        setSelectedQuantities({});
         setIsProductModalOpen(true);
     };
 
@@ -78,36 +88,38 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
 
     const handleConfirmAddProduct = async (product: any) => {
         if(!selectedOrder) return;
+        const quantity = comandaProductQuantity(selectedQuantities, product.id);
         if (isFieldRentalProduct(product)) {
             setBookingProduct(product);
             return;
         }
         setAddingItemId(product.id);
         try {
-            await addItemToOrder(selectedOrder.id, product.id, selectedQty, product.price);
+            await addItemToOrder(selectedOrder.id, product.id, quantity, product.price);
         } catch (e: any) {
             alert(e?.message || "Erro ao adicionar produto.");
         } finally {
-            setSelectedQty(1);
+            setSelectedQuantities(prev => resetComandaProductQuantity(prev, product.id));
             setAddingItemId(null);
         }
     };
 
     const handleConfirmBooking = async (draft: RentalBookingDraft | null) => {
         if (!selectedOrder || !bookingProduct) return;
+        const quantity = comandaProductQuantity(selectedQuantities, bookingProduct.id);
         setAddingItemId(bookingProduct.id);
         try {
             await addItemToOrder(
                 selectedOrder.id,
                 bookingProduct.id,
-                selectedQty,
+                quantity,
                 bookingProduct.price,
                 false,
                 undefined,
                 draft ? {
                     ...draft,
                     customerId: selectedOrder.customerId || draft.customerId,
-                    amount: Number(bookingProduct.price) * selectedQty,
+                    amount: Number(bookingProduct.price) * quantity,
                 } : undefined
             );
             setIsProductModalOpen(false);
@@ -115,7 +127,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
         } catch (e: any) {
             alert(e?.message || "Erro ao adicionar aluguel.");
         } finally {
-            setSelectedQty(1);
+            setSelectedQuantities(prev => resetComandaProductQuantity(prev, bookingProduct.id));
             setAddingItemId(null);
         }
     };
@@ -221,6 +233,9 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
         [availableProducts, productSearch]
     );
     const activeViewOrder = viewOrder ? openOrders.find(o => o.id === viewOrder.id) : null;
+    const activeViewCustomerLink = activeViewOrder
+        ? comandaCustomerLink(activeViewOrder.customerId, activeViewOrder.customer?.name)
+        : null;
     const activePaymentOrder = paymentOrder ? openOrders.find(o => o.id === paymentOrder.id) : null; // Se ele ainda estiver em aberto, se fechou sumiu
 
     return (
@@ -304,7 +319,8 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                             placeholder="Identificador (Ex: Mesa Externa 04)" 
                             value={comandaName}
                             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-                            onChange={(e) => setComandaName(e.target.value)}
+                            onChange={(e) => setComandaName(uppercaseComandaIdentifier(e.target.value))}
+                            onBlur={() => setComandaName(value => normalizeComandaIdentifier(value))}
                             className="w-full border-2 border-gray-200 rounded-xl p-3 outline-none focus:border-mrts-blue mt-4 mb-2 font-medium text-slate-700"
                         />
                         <div className="mb-6">
@@ -351,6 +367,12 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                 <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                                     <Coffee size={22} className="text-mrts-blue" /> Comanda: {activeViewOrder.notes}
                                 </h2>
+                                {activeViewCustomerLink && (
+                                    <p className={`mt-1 flex items-center gap-1.5 text-xs font-medium ${activeViewCustomerLink.linked ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                        <UserIcon size={14} />
+                                        {activeViewCustomerLink.label}
+                                    </p>
+                                )}
                             </div>
                             <button onClick={() => setIsViewModalOpen(false)} className="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-full">
                                 <X size={20} className="text-gray-500" />
@@ -486,7 +508,10 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                 <div className="text-center py-10 font-medium text-gray-400">Nenhum produto encontrado.</div>
                             ) : (
                                 <div className="flex flex-col gap-3">
-                                    {filteredModalProducts.map(prod => (
+                                    {filteredModalProducts.map(prod => {
+                                        const quantity = comandaProductQuantity(selectedQuantities, prod.id);
+                                        const isFractional = !!prod.allowFractional || isFieldRentalProduct(prod);
+                                        return (
                                         <div key={prod.id} className="bg-white p-4 rounded-2xl border flex items-center justify-between hover:border-mrts-blue">
                                             <div className="flex gap-4 items-center">
                                                 <ShoppingBag className="text-gray-400" />
@@ -497,18 +522,18 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                             </div>
                                             <div className="flex items-center gap-4">
                                                 <p className="font-bold text-lg text-slate-800">R$ {prod.price.toFixed(2).replace('.',',')}</p>
-                                                {prod.allowFractional ? (
+                                                {isFractional ? (
                                                     <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-1.5 py-1">
                                                         <button
-                                                            onClick={() => setSelectedQty(q => Math.round(Math.max(0.5, q - 0.5) * 100) / 100)}
+                                                            onClick={() => setSelectedQuantities(prev => adjustComandaProductQuantity(prev, prod.id, -1, 0.5, 0.5))}
                                                             className="w-8 h-8 flex items-center justify-center bg-white text-gray-600 rounded-lg hover:bg-red-500 hover:text-white transition shadow-sm"
                                                             title="Diminuir (0,5)"
                                                         >
                                                             <Minus size={15} strokeWidth={3} />
                                                         </button>
-                                                        <span className="w-10 text-center font-black text-slate-800 text-sm">{selectedQty}</span>
+                                                        <span className="w-10 text-center font-black text-slate-800 text-sm">{quantity}</span>
                                                         <button
-                                                            onClick={() => setSelectedQty(q => Math.round((q + 0.5) * 100) / 100)}
+                                                            onClick={() => setSelectedQuantities(prev => adjustComandaProductQuantity(prev, prod.id, 1, 0.5, 0.5))}
                                                             className="w-8 h-8 flex items-center justify-center bg-white text-gray-600 rounded-lg hover:bg-green-500 hover:text-white transition shadow-sm"
                                                             title="Aumentar (0,5)"
                                                         >
@@ -518,26 +543,27 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                                 ) : (
                                                     <button
                                                         disabled={addingItemId === prod.id}
-                                                        onClick={() => { setSelectedQty(1); handleConfirmAddProduct(prod); }}
+                                                        onClick={() => handleConfirmAddProduct(prod)}
                                                         className="w-11 h-11 rounded-xl bg-mrts-blue text-white flex items-center justify-center hover:scale-105 transition"
                                                         title="Adicionar 1"
                                                     >
                                                         {addingItemId === prod.id ? <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin"></div> : <Plus size={22} strokeWidth={3} />}
                                                     </button>
                                                 )}
-                                                {prod.allowFractional && (
+                                                {isFractional && (
                                                     <button
                                                         disabled={addingItemId === prod.id}
                                                         onClick={() => handleConfirmAddProduct(prod)}
                                                         className="w-11 h-11 rounded-xl bg-mrts-blue text-white flex items-center justify-center hover:scale-105 transition disabled:opacity-50"
-                                                        title={`Adicionar ${selectedQty}`}
+                                                        title={`Adicionar ${quantity}`}
                                                     >
                                                         {addingItemId === prod.id ? <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin"></div> : <Plus size={22} strokeWidth={3} />}
                                                     </button>
                                                 )}
                                             </div>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -690,7 +716,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                 <RentalBookingModal
                     productName={bookingProduct.name}
                     suggestedResource={/fut7/i.test(bookingProduct.name) ? 'FUT7' : 'FUT5'}
-                    amount={Number(bookingProduct.price) || 0}
+                    amount={(Number(bookingProduct.price) || 0) * comandaProductQuantity(selectedQuantities, bookingProduct.id)}
                     customerId={selectedOrder.customerId || undefined}
                     customerName={selectedOrder.customer?.name || undefined}
                     customers={customers || []}

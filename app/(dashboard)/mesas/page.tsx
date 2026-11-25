@@ -15,6 +15,9 @@ export default async function MesasRoute() {
         },
         payments: {
             orderBy: { date: 'desc' }
+        },
+        customer: {
+          select: { id: true, name: true }
         }
       }
     }),

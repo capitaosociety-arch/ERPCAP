@@ -10,13 +10,15 @@ import { effectiveAverageCost, recordInventoryCost, weightedAverageCost } from "
 import { formatQuantityInput, maxQuantityForExistingItem } from "../../lib/quantity-input";
 import { lockOrderItemRow, lockStockRow } from "../../lib/stock-lock";
 import { resolveLinkedRental, type RentalBookingInput } from "../../lib/rental-booking";
+import { normalizeComandaIdentifier } from "../../lib/comanda-input";
 import { assertFinancialPeriodOpen } from "./financial-periods";
 
 const COMANDAS_ACCESS = ["permPDV", "permComandas"] as const;
 const PAYMENT_ACCESS = ["permPDV", "permComandas", "permFinance"] as const;
 
 export async function createComanda(name: string, customerId?: string | null) {
-    if(!name) throw new Error("Name required");
+    const normalizedName = normalizeComandaIdentifier(name);
+    if (!normalizedName) throw new Error("Identificador obrigatório.");
 
     const user = await requirePermission([...COMANDAS_ACCESS]);
     const userId = user.id;
@@ -26,7 +28,7 @@ export async function createComanda(name: string, customerId?: string | null) {
 
     await prisma.order.create({
         data: {
-            notes: name,
+            notes: normalizedName,
             userId: userId,
             status: "OPEN",
             total: 0,
