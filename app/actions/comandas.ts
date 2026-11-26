@@ -4,7 +4,7 @@ import { prisma } from "../../lib/prisma";
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../api/auth/[...nextauth]/route";
-import { requirePermission, requireUser } from "../../lib/auth-guard";
+import { requirePermission } from "../../lib/auth-guard";
 import { createAuditLog } from "./audit";
 import { effectiveAverageCost, recordInventoryCost, weightedAverageCost } from "../../lib/inventory-cost";
 import { formatQuantityInput, maxQuantityForExistingItem } from "../../lib/quantity-input";
@@ -12,8 +12,16 @@ import { lockOrderItemRow, lockStockRow } from "../../lib/stock-lock";
 import { resolveLinkedRental, type RentalBookingInput } from "../../lib/rental-booking";
 import { normalizeComandaIdentifier } from "../../lib/comanda-input";
 import { assertFinancialPeriodOpen } from "./financial-periods";
+import {
+    COMANDAS_ACCESS,
+    comandaActionErrorMessage,
+    COMANDA_DELETE_FALLBACK_MESSAGE,
+    COMANDA_ITEM_DELETE_FALLBACK_MESSAGE,
+    COMANDA_NOT_FOUND_MESSAGE,
+    evaluateComandaDeletion,
+    evaluateComandaItemDeletion,
+} from "../../lib/comanda-deletion";
 
-const COMANDAS_ACCESS = ["permPDV", "permComandas"] as const;
 const PAYMENT_ACCESS = ["permPDV", "permComandas", "permFinance"] as const;
 
 export async function createComanda(name: string, customerId?: string | null) {
@@ -325,128 +333,43 @@ export async function processPayment(orderId: string, amount: number, method: st
     revalidatePath("/pdv");
 }
 
-export async function removeItemFromOrder(orderItemId: string) {
-    await requirePermission([...COMANDAS_ACCESS]);
+export async function removeItemFromOrder(
+    orderItemId: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+    try {
+        const actor = await requirePermission([...COMANDAS_ACCESS]);
 
-    await prisma.$transaction(async (tx) => {
-        const item = await tx.orderItem.findUnique({
-            where: { id: orderItemId },
-            include: { order: true }
-        });
-
-        if (!item) throw new Error("Item não encontrado");
-        if (item.order.status !== "OPEN") throw new Error("Apenas itens de comandas em aberto podem ser removidos");
-        const received = (await tx.payment.findMany({ where: { orderId: item.orderId }, select: { amount: true } }))
-            .reduce((sum, payment) => sum + payment.amount, 0);
-        if (received > 0.01) throw new Error("Comanda possui pagamento parcial. Estorne o valor recebido antes de remover itens.");
-
-        // 1. Estorna estoque se for produto, usando o custo original da venda
-        const product = item.productId
-            ? await tx.product.findUnique({ where: { id: item.productId }, select: { isService: true, stockControlled: true } })
-            : null;
-        const trackStock = !!item.productId && !!product && product.isService !== true && product.stockControlled !== false;
-
-        if (trackStock) {
-            const stock = await tx.stock.findUnique({ where: { productId: item.productId! } });
-            if (stock) {
-                const saleMovements = await tx.stockMovement.findMany({
-                    where: { orderItemId: item.id, productId: item.productId!, type: 'OUT_SALE' },
-                    select: { quantity: true, unitCost: true }
-                });
-                const saleQty = saleMovements.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
-                const saleValue = saleMovements.reduce((acc, m) => acc + ((Number(m.quantity) || 0) * (Number(m.unitCost) || 0)), 0);
-                const currentQty = Number(stock.quantity) || 0;
-                const currentAvg = effectiveAverageCost(stock.averageCost, 0, currentQty);
-                const unitCost = saleQty > 0 ? Number((saleValue / saleQty).toFixed(6)) : currentAvg;
-                const newQty = currentQty + item.quantity;
-                const newAvg = weightedAverageCost(currentQty, currentAvg, item.quantity, unitCost);
-
-                await tx.stock.update({
-                    where: { id: stock.id },
-                    data: { quantity: newQty, averageCost: newAvg }
-                });
-
-                const movement = await tx.stockMovement.create({
-                    data: {
-                        productId: item.productId!,
-                        type: "IN",
-                        movementKind: "RETURN",
-                        orderId: item.orderId,
-                        orderItemId: item.id,
-                        quantity: item.quantity,
-                        unitCost,
-                        notes: `Estorno: Item removido da comanda (Cod ${item.orderId})`
-                    }
-                });
-
-                await recordInventoryCost(tx, {
-                    productId: item.productId!,
-                    location: 'BALCAO',
-                    movementType: 'RETURN',
-                    quantity: item.quantity,
-                    unitCost,
-                    balanceQty: newQty,
-                    balanceAvgCost: newAvg,
-                    referenceId: movement.id,
-                    notes: `Remoção item comanda ${item.orderId}`,
-                });
-            }
-        }
-
-        // 2. Atualiza o total da ordem
-        await tx.order.update({
-            where: { id: item.orderId },
-            data: { total: { decrement: item.subtotal } }
-        });
-
-        if (item.rentalId) {
-            await tx.rental.updateMany({
-                where: { id: item.rentalId, status: { not: 'CANCELED' } },
-                data: { status: 'CANCELED', cancelledAt: new Date() },
+        const result = await prisma.$transaction(async (tx) => {
+            await lockOrderItemRow(tx, orderItemId);
+            const item = await tx.orderItem.findUnique({
+                where: { id: orderItemId },
+                include: { order: true }
             });
-        }
 
-        // 3. Deleta o item
-        await tx.orderItem.delete({
-            where: { id: orderItemId }
-        });
-    });
+            if (!item) {
+                return evaluateComandaItemDeletion({ found: false });
+            }
 
-    revalidatePath("/mesas");
-    revalidatePath("/dashboard");
-}
+            const received = (await tx.payment.findMany({ where: { orderId: item.orderId }, select: { amount: true } }))
+                .reduce((sum, payment) => sum + payment.amount, 0);
+            const decision = evaluateComandaItemDeletion({
+                found: true,
+                orderStatus: item.order.status,
+                receivedAmount: received,
+            });
+            if (!decision.allowed) return decision;
 
-export async function deleteComandaAction(orderId: string) {
-    const actor = await requireUser();
-    if (actor.role !== 'ADMIN' && actor.role !== 'MANAGER') {
-        throw new Error("Apenas administradores ou gerentes podem cancelar uma comanda inteira.");
-    }
+            // 1. Estorna estoque se for produto, usando o custo original da venda
+            const product = item.productId
+                ? await tx.product.findUnique({ where: { id: item.productId }, select: { isService: true, stockControlled: true } })
+                : null;
+            const trackStock = !!item.productId && !!product && product.isService !== true && product.stockControlled !== false;
 
-    await prisma.$transaction(async (tx) => {
-        const order = await tx.order.findUnique({
-            where: { id: orderId },
-            include: { items: true, payments: true }
-        });
-
-        if (!order) throw new Error("Comanda não encontrada");
-        if (order.status !== "OPEN") throw new Error("Apenas comandas abertas podem ser canceladas");
-        const received = order.payments.reduce((sum, payment) => sum + payment.amount, 0);
-        if (received > 0.01) {
-            throw new Error("Comanda possui pagamento parcial. Estorne o valor recebido antes de cancelar; os registros financeiros serao preservados.");
-        }
-
-        // 1. Estorna estoque de todos os itens usando o custo original da venda
-        for (const item of order.items) {
-        const product = item.productId
-            ? await tx.product.findUnique({ where: { id: item.productId }, select: { cost: true, isService: true, stockControlled: true } })
-            : null;
-        const trackStock = !!item.productId && !!product && product.isService !== true && product.stockControlled !== false;
-
-        if (trackStock) {
-            const stock = await tx.stock.findUnique({ where: { productId: item.productId! } });
-            if (stock) {
+            if (trackStock) {
+                const stock = await tx.stock.findUnique({ where: { productId: item.productId! } });
+                if (stock) {
                     const saleMovements = await tx.stockMovement.findMany({
-                        where: { orderId, productId: item.productId!, type: 'OUT_SALE' },
+                        where: { orderItemId: item.id, productId: item.productId!, type: 'OUT_SALE' },
                         select: { quantity: true, unitCost: true }
                     });
                     const saleQty = saleMovements.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
@@ -467,11 +390,11 @@ export async function deleteComandaAction(orderId: string) {
                             productId: item.productId!,
                             type: "IN",
                             movementKind: "RETURN",
-                            orderId,
+                            orderId: item.orderId,
                             orderItemId: item.id,
                             quantity: item.quantity,
                             unitCost,
-                            notes: `Estorno: Comanda Inteira Cancelada (Cod ${orderId})`
+                            notes: `Estorno: Item removido da comanda (Cod ${item.orderId})`
                         }
                     });
 
@@ -484,32 +407,184 @@ export async function deleteComandaAction(orderId: string) {
                         balanceQty: newQty,
                         balanceAvgCost: newAvg,
                         referenceId: movement.id,
-                        notes: `Cancelamento comanda ${orderId}`,
+                        notes: `Remoção item comanda ${item.orderId}`,
                     });
                 }
             }
-        }
 
-        // 2. Remove pagamentos vinculados (se houver parciais) para não sujar o caixa
-        // Pagamentos existentes sao preservados para auditoria.
-
-        const linkedRentalIds = Array.from(new Set(order.items.map(item => item.rentalId).filter((id): id is string => !!id)));
-        if (linkedRentalIds.length > 0) {
-            await tx.rental.updateMany({
-                where: { id: { in: linkedRentalIds }, status: { not: 'CANCELED' } },
-                data: { status: 'CANCELED', cancelledAt: new Date() },
+            // 2. Atualiza o total da ordem
+            await tx.order.update({
+                where: { id: item.orderId },
+                data: { total: { decrement: item.subtotal } }
             });
+
+            if (item.rentalId) {
+                await tx.rental.updateMany({
+                    where: { id: item.rentalId, status: { not: 'CANCELED' } },
+                    data: { status: 'CANCELED', cancelledAt: new Date() },
+                });
+            }
+
+            // 3. Deleta o item
+            await tx.orderItem.delete({
+                where: { id: orderItemId }
+            });
+
+            await tx.auditLog.create({
+                data: {
+                    userId: actor.id,
+                    action: 'Exclusão de Item de Comanda',
+                    details: `Item [${item.id.slice(-6)}] removido da comanda [${item.orderId.slice(-6)}]. Estoque estornado quando aplicável.`,
+                },
+            });
+
+            return { allowed: true as const };
+        });
+
+        if (!result.allowed) {
+            return { success: false, error: result.message };
         }
 
-        // 3. Marca como cancelado
-        await tx.order.update({
-            where: { id: orderId },
-            data: { status: "CANCELED", notes: (order.notes || "") + " [CANCELADO]" }
-        });
-    });
+        try {
+            revalidatePath("/mesas");
+            revalidatePath("/dashboard");
+        } catch (error) {
+            console.error("ERRO_REVALIDATE_REMOCAO_ITEM:", error);
+        }
 
-    revalidatePath("/mesas");
-    revalidatePath("/dashboard");
+        return { success: true };
+    } catch (error) {
+        console.error("ERRO_REMOCAO_ITEM_COMANDA:", error);
+        return { success: false, error: comandaActionErrorMessage(error, COMANDA_ITEM_DELETE_FALLBACK_MESSAGE) };
+    }
+}
+
+export async function deleteComandaAction(
+    orderId: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+    try {
+        const actor = await requirePermission([...COMANDAS_ACCESS]);
+        const normalizedOrderId = String(orderId || '').trim();
+        if (!normalizedOrderId) {
+            return { success: false, error: COMANDA_NOT_FOUND_MESSAGE };
+        }
+
+        const result = await prisma.$transaction(async (tx) => {
+            // Serializa exclusões concorrentes da mesma comanda para evitar devolução duplicada de estoque.
+            await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${normalizedOrderId} FOR UPDATE`;
+
+            const order = await tx.order.findUnique({
+                where: { id: normalizedOrderId },
+                include: { items: true, payments: true }
+            });
+
+            if (!order) return evaluateComandaDeletion({ found: false });
+            const received = order.payments.reduce((sum, payment) => sum + payment.amount, 0);
+            const decision = evaluateComandaDeletion({
+                found: true,
+                status: order.status,
+                receivedAmount: received,
+            });
+            if (!decision.allowed) return decision;
+
+            // 1. Estorna estoque de todos os itens usando o custo original da venda
+            for (const item of order.items) {
+                const product = item.productId
+                    ? await tx.product.findUnique({ where: { id: item.productId }, select: { cost: true, isService: true, stockControlled: true } })
+                    : null;
+                const trackStock = !!item.productId && !!product && product.isService !== true && product.stockControlled !== false;
+
+                if (trackStock) {
+                    const stock = await tx.stock.findUnique({ where: { productId: item.productId! } });
+                    if (stock) {
+                        const saleMovements = await tx.stockMovement.findMany({
+                            where: { orderId: normalizedOrderId, productId: item.productId!, type: 'OUT_SALE' },
+                            select: { quantity: true, unitCost: true }
+                        });
+                        const saleQty = saleMovements.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
+                        const saleValue = saleMovements.reduce((acc, m) => acc + ((Number(m.quantity) || 0) * (Number(m.unitCost) || 0)), 0);
+                        const currentQty = Number(stock.quantity) || 0;
+                        const currentAvg = effectiveAverageCost(stock.averageCost, 0, currentQty);
+                        const unitCost = saleQty > 0 ? Number((saleValue / saleQty).toFixed(6)) : currentAvg;
+                        const newQty = currentQty + item.quantity;
+                        const newAvg = weightedAverageCost(currentQty, currentAvg, item.quantity, unitCost);
+
+                        await tx.stock.update({
+                            where: { id: stock.id },
+                            data: { quantity: newQty, averageCost: newAvg }
+                        });
+
+                        const movement = await tx.stockMovement.create({
+                            data: {
+                                productId: item.productId!,
+                                type: "IN",
+                                movementKind: "RETURN",
+                                orderId: normalizedOrderId,
+                                orderItemId: item.id,
+                                quantity: item.quantity,
+                                unitCost,
+                                notes: `Estorno: Comanda Inteira Cancelada (Cod ${normalizedOrderId})`
+                            }
+                        });
+
+                        await recordInventoryCost(tx, {
+                            productId: item.productId!,
+                            location: 'BALCAO',
+                            movementType: 'RETURN',
+                            quantity: item.quantity,
+                            unitCost,
+                            balanceQty: newQty,
+                            balanceAvgCost: newAvg,
+                            referenceId: movement.id,
+                            notes: `Cancelamento comanda ${normalizedOrderId}`,
+                        });
+                    }
+                }
+            }
+
+            // 2. Pagamentos existentes sao preservados para auditoria; a exclusao e bloqueada se houver qualquer valor recebido.
+
+            const linkedRentalIds = Array.from(new Set(order.items.map(item => item.rentalId).filter((id): id is string => !!id)));
+            if (linkedRentalIds.length > 0) {
+                await tx.rental.updateMany({
+                    where: { id: { in: linkedRentalIds }, status: { not: 'CANCELED' } },
+                    data: { status: 'CANCELED', cancelledAt: new Date() },
+                });
+            }
+
+            // 3. Marca como cancelado, preservando cliente, pagamentos e histórico.
+            await tx.order.update({
+                where: { id: normalizedOrderId },
+                data: { status: "CANCELED", notes: (order.notes || "") + " [CANCELADO]" }
+            });
+
+            await tx.auditLog.create({
+                data: {
+                    userId: actor.id,
+                    action: 'Exclusão de Comanda',
+                    details: `Comanda "${order.notes || 'Sem Nome'}" [${normalizedOrderId.slice(-6)}] cancelada por usuário autorizado. Cliente, pagamentos e histórico preservados.`,
+                },
+            });
+
+            return { allowed: true as const };
+        });
+
+        if (!result.allowed) {
+            return { success: false, error: result.message };
+        }
+
+        try {
+            revalidatePath("/mesas");
+            revalidatePath("/dashboard");
+        } catch (error) {
+            console.error("ERRO_REVALIDATE_EXCLUSAO_COMANDA:", error);
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error("ERRO_EXCLUSAO_COMANDA:", error);
+        return { success: false, error: comandaActionErrorMessage(error, COMANDA_DELETE_FALLBACK_MESSAGE) };
+    }
 }
 
 export async function voidPaymentAction(paymentId: string) {

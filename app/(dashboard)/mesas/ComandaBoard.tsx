@@ -165,9 +165,12 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
         if (!confirm("Deseja realmente remover este item da comanda? Isso retornará o produto ao estoque.")) return;
         setLoading(true);
         try {
-            await removeItemFromOrder(itemId);
+            const result = await removeItemFromOrder(itemId);
+            if (!result.success) {
+                alert(result.error);
+            }
         } catch (e: any) {
-            alert(e.message);
+            alert(e?.message || "Não foi possível excluir o item. Tente novamente.");
         } finally {
             setLoading(false);
         }
@@ -197,13 +200,18 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
     };
 
     const handleDeleteComanda = async (orderId: string) => {
-        if (!confirm("ATENÇÃO: Deseja realmente CANCELAR toda esta comanda? Todos os itens lançados voltarão ao estoque e pagamentos parciais serão removidos. Esta ação não pode ser desfeita.")) return;
+        if (!confirm("ATENÇÃO: Deseja realmente EXCLUIR toda esta comanda? Todos os itens lançados voltarão ao estoque. Comandas com pagamentos registrados não podem ser excluídas. Esta ação não pode ser desfeita.")) return;
         setLoading(true);
         try {
-            await deleteComandaAction(orderId);
+            const result = await deleteComandaAction(orderId);
+            if (!result.success) {
+                alert(result.error);
+                return;
+            }
             setIsViewModalOpen(false);
+            alert("Comanda excluída com sucesso.");
         } catch (e: any) {
-            alert(e.message);
+            alert(e?.message || "Não foi possível excluir a comanda. Tente novamente.");
         } finally {
             setLoading(false);
         }
