@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Plus, Search, Coffee, X, ShoppingBag, Eye, Banknote, QrCode, CreditCard, Receipt, Trash2, RotateCcw, Minus, User as UserIcon } from 'lucide-react';
 import { createComanda, closeComanda, addItemToOrder, processPayment, removeItemFromOrder, deleteComandaAction, voidPaymentAction, updateOrderItemQuantity } from '../../actions/comandas';
 import { createCustomerQuick } from '../../actions/customers';
@@ -45,33 +45,83 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
     const [paymentAmount, setPaymentAmount] = useState("");
     const [discountValue, setDiscountValue] = useState("");
 
+    const creationKeyRef = useRef("");
+    const submittingRef = useRef(false);
+
+    const newComandaCreationKey = () => {
+        if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+            return crypto.randomUUID();
+        }
+        return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    };
+
+    const openCreateModal = () => {
+        if (!openRegister) {
+            return alert("Caixa fechado! Para abrir comandas, inicie o turno no caixa do PDV.");
+        }
+        creationKeyRef.current = newComandaCreationKey();
+        setIsModalOpen(true);
+    };
+
+    const closeCreateModal = () => {
+        setIsModalOpen(false);
+        creationKeyRef.current = "";
+        setComandaName("");
+        setSelectedCustomerId("");
+        setNewCustomerName("");
+    };
+
     const handleCreate = async () => {
-        if(!openRegister) return alert("Não é possível abrir comandas com o caixa fechado! Acesse o PDV para abrir o turno.");
+        if (!openRegister) {
+            return alert("Não é possível abrir comandas com o caixa fechado! Acesse o PDV para abrir o turno.");
+        }
+        if (submittingRef.current || loading) return;
+
         const normalizedName = normalizeComandaIdentifier(comandaName);
-        if(!normalizedName) return;
+        if (!normalizedName) {
+            return alert("Identificador obrigatório.");
+        }
+
+        submittingRef.current = true;
         setLoading(true);
         try {
             let customerId: string | null = null;
             if (selectedCustomerId === "__new__") {
-                if (!newCustomerName.trim()) return alert("Digite o nome do novo cliente.");
+                if (!newCustomerName.trim()) {
+                    return alert("Digite o nome do novo cliente.");
+                }
                 setCreatingCustomer(true);
-                const res = await createCustomerQuick(newCustomerName.trim());
-                if (res?.customer?.id) {
+                try {
+                    const res = await createCustomerQuick(newCustomerName.trim());
+                    if (!res?.customer?.id) {
+                        return alert("Não foi possível cadastrar o novo cliente. Tente novamente.");
+                    }
                     customerId = res.customer.id;
                     setCustomersList((prev) => [...prev, { id: res.customer.id, name: res.customer.name, phone: "" }]);
+                    setSelectedCustomerId(res.customer.id);
+                    setNewCustomerName("");
+                } catch (error) {
+                    console.error("ERRO_CRIACAO_CLIENTE_RAPIDO:", error);
+                    return alert("Não foi possível cadastrar o novo cliente. Tente novamente.");
+                } finally {
+                    setCreatingCustomer(false);
                 }
-                setCreatingCustomer(false);
             } else if (selectedCustomerId) {
                 customerId = selectedCustomerId;
             }
-            await createComanda(normalizedName, customerId);
-        } catch (e: any) {
-            alert(e?.message || "Erro ao criar comanda.");
+
+            const creationKey = creationKeyRef.current || (creationKeyRef.current = newComandaCreationKey());
+            const result = await createComanda(normalizedName, customerId, creationKey);
+            if (!result.success) {
+                return alert(result.error);
+            }
+
+            closeCreateModal();
+        } catch (error) {
+            console.error("ERRO_CRIACAO_COMANDA_UI:", error);
+            alert("Não foi possível criar a comanda. Tente novamente.");
         } finally {
-            setComandaName("");
-            setSelectedCustomerId("");
-            setNewCustomerName("");
-            setIsModalOpen(false);
+            submittingRef.current = false;
             setLoading(false);
         }
     };
@@ -266,10 +316,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                         />
                     </div>
                     <button 
-                    onClick={() => {
-                        if(!openRegister) return alert("Caixa fechado! Para abrir turmas/comandas, inicie seu turno no caixa do PDV.");
-                        setIsModalOpen(true);
-                    }}
+                    onClick={openCreateModal}
                     className={`flex shrink-0 w-11 h-11 md:w-auto items-center justify-center gap-2 text-white md:px-5 py-2.5 rounded-xl font-bold transition shadow-sm ${!openRegister ? 'bg-gray-400 cursor-not-allowed' : 'bg-mrts-blue hover:bg-mrts-hover'}`}
                     >
                         <Plus size={20} /> <span className="hidden md:inline">Nova Comanda</span>
@@ -281,7 +328,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                 {openOrders.length === 0 ? (
                     <div className="col-span-full border-2 border-dashed border-gray-200 bg-white text-center py-16 rounded-2xl text-gray-400 font-medium">
                         Nenhuma comanda aberta. <br/><br/>
-                        <button onClick={() => setIsModalOpen(true)} className="text-mrts-blue font-bold hover:underline">Abrir Primeira</button>
+                        <button onClick={openCreateModal} className="text-mrts-blue font-bold hover:underline">Abrir Primeira</button>
                     </div>
                 ) : filtered.length === 0 ? (
                     <div className="col-span-full text-center py-10 text-gray-400 font-medium">
@@ -359,7 +406,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                             )}
                         </div>
                         <div className="flex gap-3">
-                            <button disabled={loading} onClick={() => setIsModalOpen(false)} className="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl">Cancelar</button>
+                            <button disabled={loading} onClick={closeCreateModal} className="flex-1 bg-gray-100 text-gray-600 font-bold py-3 rounded-xl">Cancelar</button>
                             <button disabled={loading} onClick={handleCreate} className="flex-1 bg-mrts-blue text-white font-bold py-3 rounded-xl">{loading ? '...' : 'Criar'}</button>
                         </div>
                     </div>

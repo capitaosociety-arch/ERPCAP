@@ -10,7 +10,6 @@ import { effectiveAverageCost, recordInventoryCost, weightedAverageCost } from "
 import { formatQuantityInput, maxQuantityForExistingItem } from "../../lib/quantity-input";
 import { lockOrderItemRow, lockStockRow } from "../../lib/stock-lock";
 import { resolveLinkedRental, type RentalBookingInput } from "../../lib/rental-booking";
-import { normalizeComandaIdentifier } from "../../lib/comanda-input";
 import { assertFinancialPeriodOpen } from "./financial-periods";
 import {
     COMANDAS_ACCESS,
@@ -21,36 +20,134 @@ import {
     evaluateComandaDeletion,
     evaluateComandaItemDeletion,
 } from "../../lib/comanda-deletion";
+import {
+    buildComandaCreationDetails,
+    buildComandaCreationMarker,
+    COMANDA_CASH_REGISTER_CLOSED_MESSAGE,
+    COMANDA_CREATE_FALLBACK_MESSAGE,
+    COMANDA_CREATION_ACTION,
+    COMANDA_CUSTOMER_NOT_FOUND_MESSAGE,
+    comandaCreationErrorMessage,
+    isValidComandaCreationKey,
+    orderIdFromCreationDetails,
+    validateComandaCreation,
+} from "../../lib/comanda-creation";
 
 const PAYMENT_ACCESS = ["permPDV", "permComandas", "permFinance"] as const;
 
-export async function createComanda(name: string, customerId?: string | null) {
-    const normalizedName = normalizeComandaIdentifier(name);
-    if (!normalizedName) throw new Error("Identificador obrigatório.");
+type CreateComandaResult =
+    | { success: true; orderId: string | null; idempotent: boolean }
+    | { success: false; error: string };
 
-    const user = await requirePermission([...COMANDAS_ACCESS]);
-    const userId = user.id;
+export async function createComanda(
+    name: string,
+    customerId?: string | null,
+    idempotencyKey?: string,
+): Promise<CreateComandaResult> {
+    try {
+        const user = await requirePermission([...COMANDAS_ACCESS]);
+        const userId = user.id;
+        const canRecalcScore = user.role === 'ADMIN' || user.permCustomers === true;
 
-    const register = await prisma.cashRegister.findFirst({ where: { status: "OPEN" } });
-    if (!register) throw new Error("Nenhum caixa aberto! Abra o caixa antes de criar novas comandas.");
-
-    await prisma.order.create({
-        data: {
-            notes: normalizedName,
-            userId: userId,
-            status: "OPEN",
-            total: 0,
-            customerId: customerId || null
+        const validation = validateComandaCreation({ name });
+        if (!validation.valid) {
+            return { success: false, error: validation.error };
         }
-    });
 
-    if (customerId) {
-        const { recalcScore } = await import('./score');
-        await recalcScore(customerId);
+        const normalizedCustomerId = customerId ? String(customerId).trim() : null;
+        const hasIdempotencyKey = typeof idempotencyKey === 'string' && idempotencyKey.trim().length > 0;
+        if (hasIdempotencyKey && !isValidComandaCreationKey(idempotencyKey)) {
+            return { success: false, error: COMANDA_CREATE_FALLBACK_MESSAGE };
+        }
+        const marker = hasIdempotencyKey
+            ? buildComandaCreationMarker(idempotencyKey as string)
+            : null;
+
+        const register = await prisma.cashRegister.findFirst({ where: { status: "OPEN" } });
+        if (!register) {
+            return { success: false, error: COMANDA_CASH_REGISTER_CLOSED_MESSAGE };
+        }
+
+        const result = await prisma.$transaction(async (tx): Promise<CreateComandaResult> => {
+            if (marker) {
+                await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${marker}))::text`;
+                const prior = await tx.auditLog.findFirst({
+                    where: {
+                        userId,
+                        action: COMANDA_CREATION_ACTION,
+                        details: { startsWith: `${marker}#order:` },
+                    },
+                    select: { details: true },
+                    orderBy: { timestamp: 'desc' },
+                });
+                if (prior) {
+                    return {
+                        success: true,
+                        orderId: orderIdFromCreationDetails(prior.details),
+                        idempotent: true,
+                    };
+                }
+            }
+
+            if (normalizedCustomerId) {
+                const customer = await tx.customer.findUnique({
+                    where: { id: normalizedCustomerId },
+                    select: { id: true },
+                });
+                if (!customer) {
+                    return { success: false, error: COMANDA_CUSTOMER_NOT_FOUND_MESSAGE };
+                }
+            }
+
+            const order = await tx.order.create({
+                data: {
+                    notes: validation.name,
+                    userId,
+                    status: "OPEN",
+                    total: 0,
+                    customerId: normalizedCustomerId || null,
+                },
+            });
+
+            if (marker) {
+                await tx.auditLog.create({
+                    data: {
+                        userId,
+                        action: COMANDA_CREATION_ACTION,
+                        details: buildComandaCreationDetails(marker, order.id),
+                    },
+                });
+            }
+
+            return { success: true, orderId: order.id, idempotent: false };
+        }, { maxWait: 10000, timeout: 20000 });
+
+        if (!result.success) {
+            return result;
+        }
+
+        if (!result.idempotent && normalizedCustomerId && canRecalcScore) {
+            try {
+                const { recalcScore } = await import('./score');
+                await recalcScore(normalizedCustomerId);
+            } catch (error) {
+                // O score é um dado derivado e não pode impedir a abertura da comanda.
+                console.error("ERRO_RECALC_SCORE_COMANDA:", error);
+            }
+        }
+
+        try {
+            revalidatePath("/mesas");
+            revalidatePath("/dashboard");
+        } catch (error) {
+            console.error("ERRO_REVALIDATE_CRIACAO_COMANDA:", error);
+        }
+
+        return result;
+    } catch (error) {
+        console.error("ERRO_CRIACAO_COMANDA:", error);
+        return { success: false, error: comandaCreationErrorMessage(error) };
     }
-
-    revalidatePath("/mesas");
-    revalidatePath("/dashboard");
 }
 
 export async function closeComanda(orderId: string) {
@@ -155,7 +252,7 @@ export async function addItemToOrder(orderId: string, itemId: string, quantity: 
                });
             }
         }
-    });
+    }, { maxWait: 10000, timeout: 20000 });
 
     revalidatePath("/mesas");
     revalidatePath("/dashboard");
@@ -222,7 +319,7 @@ export async function processPayment(orderId: string, amount: number, method: st
                 }
             }
         }
-    });
+    }, { maxWait: 10000, timeout: 20000 });
 
     revalidatePath("/mesas");
     revalidatePath("/dashboard");
@@ -326,7 +423,7 @@ export async function processPayment(orderId: string, amount: number, method: st
             where: { id: item.orderId },
             data: { total: { increment: newSubtotal - item.subtotal } }
         });
-    });
+    }, { maxWait: 10000, timeout: 20000 });
 
     revalidatePath("/mesas");
     revalidatePath("/dashboard");
@@ -439,7 +536,7 @@ export async function removeItemFromOrder(
             });
 
             return { allowed: true as const };
-        });
+        }, { maxWait: 10000, timeout: 30000 });
 
         if (!result.allowed) {
             return { success: false, error: result.message };
@@ -567,7 +664,7 @@ export async function deleteComandaAction(
             });
 
             return { allowed: true as const };
-        });
+        }, { maxWait: 10000, timeout: 30000 });
 
         if (!result.allowed) {
             return { success: false, error: result.message };
