@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useMemo, useRef, useState, useTransition } from 'react';
 import { processCheckoutAction, getOrderWithPayments, cancelOrderAction } from '../../actions/checkout';
 import { processPayment, addItemToOrder, updateOrderItemQuantity } from '../../actions/comandas';
 import { openGlobalCashRegister, closeGlobalCashRegister, getRegisterSummary } from '../../actions/caixa';
@@ -41,6 +41,18 @@ export default function PDVClient({ products, services = [], categories, custome
   const [itemSearch, setItemSearch] = useState('');
   const [bookingProduct, setBookingProduct] = useState<any>(null);
   const [bookingContext, setBookingContext] = useState<'cart' | 'payment'>('cart');
+
+  const checkoutKeyRef = useRef("");
+  const checkoutSubmittingRef = useRef(false);
+  const paymentKeyRef = useRef("");
+  const paymentSubmittingRef = useRef(false);
+
+  const newOperationKey = () => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  };
 
   const virtualCategories = [...categories, { id: 'SERVICES', name: 'Serviços' }];
   const allItems = useMemo(() => sortProducts([
@@ -150,7 +162,7 @@ export default function PDVClient({ products, services = [], categories, custome
       if (!paymentOrder) return;
       setAddingItemId(bookingProduct.id);
       try {
-        await addItemToOrder(
+        const result = await addItemToOrder(
           paymentOrder.id,
           bookingProduct.id,
           1,
@@ -159,13 +171,17 @@ export default function PDVClient({ products, services = [], categories, custome
           undefined,
           draft ? { ...draft, amount: unitPrice } : undefined
         );
+        if (!result.success) {
+          alert(result.error);
+          return;
+        }
         await refreshPaymentOrder(paymentOrder.id);
         setIsProductModalOpen(false);
         setItemSearch('');
         setBookingProduct(null);
         setBookingContext('cart');
       } catch (e: any) {
-        alert(e?.message || 'Erro ao adicionar aluguel.');
+        alert(e?.message || 'Não foi possível adicionar o aluguel. Tente novamente.');
       } finally {
         setAddingItemId(null);
       }
@@ -182,61 +198,101 @@ export default function PDVClient({ products, services = [], categories, custome
 
   const finalize = () => {
     if (cart.length === 0) return alert("Carrinho vazio!");
-    
+    if (checkoutSubmittingRef.current || isPending) return;
+
+    const checkoutKey = checkoutKeyRef.current || (checkoutKeyRef.current = newOperationKey());
+    checkoutSubmittingRef.current = true;
     startTransition(async () => {
       try {
-        const res = await processCheckoutAction(cart);
+        const res = await processCheckoutAction(cart, checkoutKey);
         if(res.success) {
+            checkoutKeyRef.current = "";
+            paymentKeyRef.current = "";
+            if (res.order?.status && res.order.status !== "OPEN") {
+                setCart([]);
+                alert("Esta venda já foi encerrada.");
+                return;
+            }
             setCart([]);
             setPaymentOrder(res.order);
             setPaymentAmount(res.order.total.toFixed(2));
             setDiscountValue("");
             setPaymentMethod("PIX");
             setIsPaymentModalOpen(true);
+        } else {
+            alert(res.error);
         }
       } catch (e: any) {
-        alert(e?.message || "Erro ao tramitar pedido inicial de caixa.");
+        alert(e?.message || "Não foi possível gerar o pedido. Tente novamente.");
+      } finally {
+        checkoutSubmittingRef.current = false;
       }
     });
   };
 
   const handleConfirmPayment = async () => {
        if (!paymentOrder || !paymentAmount) return;
+       if (paymentSubmittingRef.current || payLoading) return;
+       paymentSubmittingRef.current = true;
        setPayLoading(true);
-       
-       await processPayment(paymentOrder.id, Number(paymentAmount), paymentMethod, Number(discountValue) || 0);
-       const updatedOrder = await getOrderWithPayments(paymentOrder.id);
-       
-       setPayLoading(false);
+       try {
+           const paymentKey = paymentKeyRef.current || (paymentKeyRef.current = newOperationKey());
+           const result = await processPayment(
+               paymentOrder.id,
+               Number(paymentAmount),
+               paymentMethod,
+               Number(discountValue) || 0,
+               paymentKey,
+           );
+           if (!result.success) {
+               alert(result.error);
+               return;
+           }
+           paymentKeyRef.current = "";
+           const updatedOrder = await getOrderWithPayments(paymentOrder.id);
 
-       if(updatedOrder?.status === "CLOSED") {
-           setIsPaymentModalOpen(false);
-           setSuccess(true);
-           setTimeout(() => setSuccess(false), 3000);
-       } else if (updatedOrder) {
-           setPaymentOrder(updatedOrder);
-           setDiscountValue("");
-           
-           const totalPaid = updatedOrder.payments?.reduce((acc: any, p: any) => acc + p.amount, 0) || 0;
-           const balance = updatedOrder.total - updatedOrder.discount - totalPaid;
-           setPaymentAmount(Math.max(0, balance).toFixed(2));
+           if(updatedOrder?.status === "CLOSED") {
+               setIsPaymentModalOpen(false);
+               setSuccess(true);
+               setTimeout(() => setSuccess(false), 3000);
+           } else if (updatedOrder) {
+               setPaymentOrder(updatedOrder);
+               setDiscountValue("");
+               
+               const totalPaid = updatedOrder.payments?.reduce((acc: any, p: any) => acc + p.amount, 0) || 0;
+               const balance = updatedOrder.total - updatedOrder.discount - totalPaid;
+               setPaymentAmount(Math.max(0, balance).toFixed(2));
+           }
+       } catch (e: any) {
+           alert(e?.message || "Não foi possível processar o pagamento. Tente novamente.");
+       } finally {
+           paymentSubmittingRef.current = false;
+           setPayLoading(false);
        }
   };
 
   const handleCancelPaymentOperation = async () => {
       if (!paymentOrder) return;
       if (!window.confirm("Deseja cancelar esta operação? Os itens serão devolvidos ao estoque e a venda de balcão será encerrada.")) return;
+      if (paymentSubmittingRef.current) return;
       
+      paymentSubmittingRef.current = true;
       setPayLoading(true);
       try {
-          await cancelOrderAction(paymentOrder.id);
+          const result = await cancelOrderAction(paymentOrder.id);
+          if (!result.success) {
+              alert(result.error);
+              return;
+          }
+          paymentKeyRef.current = "";
           setIsPaymentModalOpen(false);
           setPaymentOrder(null);
-          // Opcional: recarregar ou avisar
       } catch (e: any) {
-          alert("Erro ao cancelar: " + e.message);
+          alert(e?.message || "Não foi possível cancelar a venda. Tente novamente.");
+      } finally {
+          paymentSubmittingRef.current = false;
+          setPayLoading(false);
       }
-      setPayLoading(false);
   };
 
   // Altera a quantidade de um item já lançado no pedido (durante o pagamento)
@@ -244,7 +300,10 @@ export default function PDVClient({ products, services = [], categories, custome
       if(!paymentOrder) return;
       setPayLoading(true);
       try {
-          await updateOrderItemQuantity(item.id, newQty);
+          const result = await updateOrderItemQuantity(item.id, newQty);
+          if (!result.success) {
+              throw new Error(result.error);
+          }
           const updatedOrder = await getOrderWithPayments(paymentOrder.id);
           if(updatedOrder) {
               setPaymentOrder(updatedOrder);
@@ -253,7 +312,7 @@ export default function PDVClient({ products, services = [], categories, custome
               setPaymentAmount(Math.max(0, balance).toFixed(2));
           }
       } catch (e: any) {
-          alert("Erro ao alterar quantidade: " + (e.message || "Tente novamente."));
+          alert(e?.message || "Não foi possível alterar a quantidade. Tente novamente.");
           throw e;
       } finally {
           setPayLoading(false);
@@ -282,10 +341,14 @@ export default function PDVClient({ products, services = [], categories, custome
       }
       setAddingItemId(product.id);
       try {
-          await addItemToOrder(paymentOrder.id, product.id, 1, product.price, product.catalogType === 'service');
+          const result = await addItemToOrder(paymentOrder.id, product.id, 1, product.price, product.catalogType === 'service');
+          if (!result.success) {
+              alert(result.error);
+              return;
+          }
           await refreshPaymentOrder(paymentOrder.id);
       } catch (e: any) {
-          alert(e?.message || "Erro ao adicionar produto.");
+          alert(e?.message || "Não foi possível adicionar o produto. Tente novamente.");
       } finally {
           setAddingItemId(null);
       }

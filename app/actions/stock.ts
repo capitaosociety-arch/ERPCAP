@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "../../lib/auth-guard";
 import { createAuditLog } from "./audit";
 import { effectiveAverageCost, recordInventoryCost, weightedAverageCost } from "../../lib/inventory-cost";
+import { lockStockRow } from "../../lib/stock-lock";
 
 export async function updateMinStock(productId: string, minQuantity: number) {
     await requirePermission("permStock");
@@ -50,11 +51,13 @@ export async function registerStockMovement(
         if (!product || product.isService === true || product.stockControlled === false) {
             throw new Error("Este item nao controla estoque.");
         }
-        const stock = await tx.stock.upsert({
+        await tx.stock.upsert({
             where: { productId },
             update: {},
             create: { productId, quantity: 0, minQuantity: 5, unit: "UN" }
         });
+        const stock = await lockStockRow(tx, productId);
+        if (!stock) throw new Error("Estoque não encontrado.");
 
         const currentQty = Number(stock.quantity) || 0;
         const fallbackCost = Number(product?.cost) || 0;
@@ -75,6 +78,9 @@ export async function registerStockMovement(
             snapshotCost = incomingCost;
             movementKind = "PURCHASE";
         } else {
+            if (quantity > currentQty + 1e-9) {
+                throw new Error(`Estoque insuficiente! Saldo atual: ${currentQty}.`);
+            }
             newQuantity = currentQty - quantity;
             snapshotCost = currentAvg;
         }
@@ -150,7 +156,7 @@ export async function registerStockMovement(
                 }
             }
         }
-    });
+    }, { maxWait: 10000, timeout: 30000 });
 
     await createAuditLog("Movimentação de Estoque", `${type === 'IN' ? 'Entrada' : 'Saída'} manual de ${quantity} unidades.`);
 
@@ -180,8 +186,9 @@ export async function registerBatchStockMovement(
             totalCost += (Number(mov.quantity) || 0) * (Number(mov.price) || 0);
         }
 
+        const orderedMovements = [...movements].sort((a, b) => String(a.productId).localeCompare(String(b.productId)));
         const result = await prisma.$transaction(async (tx) => {
-            for (const mov of movements) {
+            for (const mov of orderedMovements) {
                 const qty = Number(mov.quantity) || 0;
                 const costPrice = Number(mov.price) || 0;
 
@@ -189,11 +196,13 @@ export async function registerBatchStockMovement(
 
                 const product = await tx.product.findUnique({ where: { id: mov.productId } });
                 if (!product || product.isService === true || product.stockControlled === false) continue;
-                const stock = await tx.stock.upsert({
+                await tx.stock.upsert({
                     where: { productId: mov.productId },
                     update: {},
                     create: { productId: mov.productId, quantity: 0, minQuantity: 5, unit: "UN" }
                 });
+                const stock = await lockStockRow(tx, mov.productId);
+                if (!stock) throw new Error("Estoque não encontrado.");
 
                 const currentQty = Number(stock.quantity) || 0;
                 const fallbackCost = Number(product?.cost) || 0;
@@ -274,6 +283,7 @@ export async function registerBatchStockMovement(
 
             return { success: true };
         }, {
+            maxWait: 10000,
             timeout: 30000
         });
 

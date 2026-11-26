@@ -47,6 +47,8 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
 
     const creationKeyRef = useRef("");
     const submittingRef = useRef(false);
+    const paymentKeyRef = useRef("");
+    const paymentSubmittingRef = useRef(false);
 
     const newComandaCreationKey = () => {
         if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -145,9 +147,12 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
         }
         setAddingItemId(product.id);
         try {
-            await addItemToOrder(selectedOrder.id, product.id, quantity, product.price);
+            const result = await addItemToOrder(selectedOrder.id, product.id, quantity, product.price);
+            if (!result.success) {
+                alert(result.error);
+            }
         } catch (e: any) {
-            alert(e?.message || "Erro ao adicionar produto.");
+            alert(e?.message || "Não foi possível adicionar o produto. Tente novamente.");
         } finally {
             setSelectedQuantities(prev => resetComandaProductQuantity(prev, product.id));
             setAddingItemId(null);
@@ -159,7 +164,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
         const quantity = comandaProductQuantity(selectedQuantities, bookingProduct.id);
         setAddingItemId(bookingProduct.id);
         try {
-            await addItemToOrder(
+            const result = await addItemToOrder(
                 selectedOrder.id,
                 bookingProduct.id,
                 quantity,
@@ -172,10 +177,14 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                     amount: Number(bookingProduct.price) * quantity,
                 } : undefined
             );
+            if (!result.success) {
+                alert(result.error);
+                return;
+            }
             setIsProductModalOpen(false);
             setBookingProduct(null);
         } catch (e: any) {
-            alert(e?.message || "Erro ao adicionar aluguel.");
+            alert(e?.message || "Não foi possível adicionar o aluguel. Tente novamente.");
         } finally {
             setSelectedQuantities(prev => resetComandaProductQuantity(prev, bookingProduct.id));
             setAddingItemId(null);
@@ -190,6 +199,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
 
     const handleGoToPayment = (order: any) => {
         if(!openRegister) return alert("Caixa fechado! Para receber pagamentos, inicie o turno no balcão do PDV.");
+        paymentKeyRef.current = newComandaCreationKey();
         setPaymentOrder(order);
         setIsViewModalOpen(false);
         
@@ -205,10 +215,31 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
 
     const handleConfirmPayment = async () => {
         if (!paymentOrder || !paymentAmount) return;
+        if (paymentSubmittingRef.current || loading) return;
+        paymentSubmittingRef.current = true;
         setLoading(true);
-        await processPayment(paymentOrder.id, Number(paymentAmount), paymentMethod, Number(discountValue) || 0);
-        setLoading(false);
-        setIsPaymentModalOpen(false);
+        try {
+            const key = paymentKeyRef.current || (paymentKeyRef.current = newComandaCreationKey());
+            const result = await processPayment(
+                paymentOrder.id,
+                Number(paymentAmount),
+                paymentMethod,
+                Number(discountValue) || 0,
+                key,
+            );
+            if (!result.success) {
+                alert(result.error);
+                return;
+            }
+            paymentKeyRef.current = "";
+            setIsPaymentModalOpen(false);
+        } catch (error) {
+            console.error("ERRO_PAGAMENTO_UI:", error);
+            alert("Não foi possível processar o pagamento. Tente novamente.");
+        } finally {
+            paymentSubmittingRef.current = false;
+            setLoading(false);
+        }
     };
 
     const handleRemoveItem = async (itemId: string) => {
@@ -229,9 +260,12 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
     const handleSetItemQuantity = async (item: any, newQty: number) => {
         setLoading(true);
         try {
-            await updateOrderItemQuantity(item.id, newQty);
+            const result = await updateOrderItemQuantity(item.id, newQty);
+            if (!result.success) {
+                throw new Error(result.error);
+            }
         } catch (e: any) {
-            alert(e.message || "Erro ao alterar quantidade.");
+            alert(e?.message || "Não foi possível alterar a quantidade. Tente novamente.");
             throw e;
         } finally {
             setLoading(false);

@@ -10,6 +10,7 @@ export default async function DashboardPage() {
 
   // Buscar o último caixa aberto/fechado
   const lastRegister = await prisma.cashRegister.findFirst({
+    where: { status: { not: 'CANCELED' } },
     orderBy: { openedAt: 'desc' },
     select: { id: true }
   });

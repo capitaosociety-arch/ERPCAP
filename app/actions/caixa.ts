@@ -6,23 +6,43 @@ import { authOptions } from '../api/auth/[...nextauth]/route';
 import { revalidatePath } from 'next/cache';
 import { requirePermission } from '../../lib/auth-guard';
 import { createAuditLog } from './audit';
+import { lockCashRegisterRow } from '../../lib/stock-lock';
+import {
+    CASH_SESSION_CANCEL_FALLBACK,
+    evaluateCashSessionCancellation,
+} from '../../lib/cash-session';
+import { publicActionErrorMessage } from '../../lib/action-errors';
+import { formatCuiabaDateTime } from '../../lib/time-zone';
 
 export async function openGlobalCashRegister(openingBal: number) {
     const user = await requirePermission(['permFinance', 'permPDV']);
-    const userId = user.id;
+    if (!Number.isFinite(openingBal) || openingBal < 0) {
+        throw new Error('Fundo de troco inválido.');
+    }
 
-    const openRegister = await prisma.cashRegister.findFirst({ where: { status: 'OPEN' }, include: { user: true } });
-    if (openRegister) throw new Error(`Já existe um caixa aberto no sistema por ${openRegister.user?.name || 'outro usuário'}. Feche-o e faça a conferência antes de abrir um novo para os próximos dias.`);
-
-    await prisma.cashRegister.create({
-        data: {
-            userId,
-            status: 'OPEN',
-            openingBal
+    await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('cash-register-open'))::text`;
+        const openRegister = await tx.cashRegister.findFirst({ where: { status: 'OPEN' }, include: { user: true } });
+        if (openRegister) {
+            throw new Error(`Já existe um caixa aberto no sistema por ${openRegister.user?.name || 'outro usuário'}. Feche-o e faça a conferência antes de abrir um novo para os próximos dias.`);
         }
-    });
 
-    await createAuditLog("Abertura de Caixa", `Abriu o caixa do dia com saldo inicial de R$ ${openingBal}.`);
+        const created = await tx.cashRegister.create({
+            data: {
+                userId: user.id,
+                status: 'OPEN',
+                openingBal
+            }
+        });
+
+        await tx.auditLog.create({
+            data: {
+                userId: user.id,
+                action: 'Abertura de Caixa',
+                details: `Abriu o caixa [${created.id.slice(-6)}] com saldo inicial de R$ ${openingBal}.`,
+            },
+        });
+    }, { maxWait: 10000, timeout: 15000 });
 
     revalidatePath('/financeiro');
     revalidatePath('/pdv');
@@ -32,41 +52,52 @@ export async function openGlobalCashRegister(openingBal: number) {
 export async function closeGlobalCashRegister(registerId: string, closingBal: number, notes?: string) {
     const user = await requirePermission(['permFinance', 'permPDV']);
     const userId = user.id;
-
-    const registerToClose = await prisma.cashRegister.findUnique({
-        where: { id: registerId },
-        include: { user: true }
-    });
-
-    if (!registerToClose) throw new Error('Caixa não encontrado.');
-
-    const currentUser = await prisma.user.findUnique({ where: { id: userId } });
-
-    if (registerToClose.userId !== userId && currentUser?.role !== 'ADMIN') {
-        throw new Error(`Acesso negado: Apenas o operador que abriu este caixa (${registerToClose.user?.name || 'Usuário'}) ou um Administrador pode realizar o seu fechamento e conferência.`);
+    if (!Number.isFinite(closingBal) || closingBal < 0) {
+        throw new Error('Valor de conferência inválido.');
     }
 
-    const cashPayments = await prisma.payment.aggregate({
-        _sum: { amount: true },
-        where: {
-            cashRegisterId: registerId,
-            method: 'CASH'
+    await prisma.$transaction(async (tx) => {
+        await lockCashRegisterRow(tx, registerId);
+        const registerToClose = await tx.cashRegister.findUnique({
+            where: { id: registerId },
+            include: { user: true }
+        });
+
+        if (!registerToClose) throw new Error('Caixa não encontrado.');
+        if (registerToClose.status === 'CANCELED') {
+            throw new Error('Sessão de caixa cancelada não pode ser fechada.');
         }
-    });
+        // Repetição do mesmo fechamento não altera novamente o registro.
+        if (registerToClose.status === 'CLOSED') return;
 
-    const expectedCashInDrawer = (registerToClose.openingBal || 0) + (cashPayments._sum.amount || 0);
-
-    await prisma.cashRegister.update({
-        where: { id: registerId },
-        data: {
-            status: 'CLOSED',
-            closingBal,
-            notes,
-            closedAt: new Date()
+        const currentUser = await tx.user.findUnique({ where: { id: userId } });
+        if (registerToClose.userId !== userId && currentUser?.role !== 'ADMIN') {
+            throw new Error(`Acesso negado: Apenas o operador que abriu este caixa (${registerToClose.user?.name || 'Usuário'}) ou um Administrador pode realizar o seu fechamento e conferência.`);
         }
-    });
 
-    await createAuditLog("Fechamento de Caixa", `Fechou o caixa id [${registerId.slice(-6)}] com saldo final de R$ ${closingBal}.`);
+        const openOrdersCount = await tx.order.count({ where: { status: 'OPEN' } });
+        if (openOrdersCount > 0) {
+            throw new Error(`Existem ${openOrdersCount} comanda(s) ou venda(s) abertas. Feche-as antes de encerrar o caixa.`);
+        }
+
+        await tx.cashRegister.update({
+            where: { id: registerId },
+            data: {
+                status: 'CLOSED',
+                closingBal,
+                notes,
+                closedAt: new Date()
+            }
+        });
+
+        await tx.auditLog.create({
+            data: {
+                userId,
+                action: 'Fechamento de Caixa',
+                details: `Fechou o caixa [${registerId.slice(-6)}] com saldo final de R$ ${closingBal}.`,
+            },
+        });
+    }, { maxWait: 10000, timeout: 20000 });
 
     revalidatePath('/financeiro');
     revalidatePath('/pdv');
@@ -247,45 +278,82 @@ export async function getRegisterSummary(registerId: string) {
     }));
 }
 
-export async function deleteCashSessionAction(sessionId: string) {
+export async function deleteCashSessionAction(
+    sessionId: string,
+    reason?: string,
+): Promise<{ success: true; alreadyCanceled?: boolean } | { success: false; error: string }> {
     try {
         const session = await getServerSession(authOptions) as any;
         if (!session || session.user?.role !== 'ADMIN') {
-            throw new Error("Acesso negado. Apenas administradores podem excluir sessões de caixa.");
+            return { success: false, error: "Acesso negado. Apenas administradores podem cancelar sessões de caixa." };
+        }
+        const actorId = session.user?.id;
+        if (!actorId) {
+            return { success: false, error: "Usuário responsável não identificado." };
+        }
+        const normalizedSessionId = String(sessionId || '').trim();
+        if (!normalizedSessionId) {
+            return { success: false, error: "Sessão de caixa não encontrada." };
         }
 
-        await prisma.$transaction(async (tx) => {
-            const payments = await tx.payment.findMany({
-                where: { cashRegisterId: sessionId },
-                select: { id: true, orderId: true }
+        const result = await prisma.$transaction(async (tx) => {
+            await lockCashRegisterRow(tx, normalizedSessionId);
+            const register = await tx.cashRegister.findUnique({
+                where: { id: normalizedSessionId },
+                include: {
+                    user: { select: { name: true } },
+                    _count: { select: { payments: true, deposits: true } },
+                },
             });
-
-            const orderIds = Array.from(new Set(payments.map(p => p.orderId)));
-
-            await tx.payment.deleteMany({
-                where: { cashRegisterId: sessionId }
-            });
-
-            if (orderIds.length > 0) {
-                await tx.order.deleteMany({
-                    where: { id: { in: orderIds } }
-                });
+            if (!register) {
+                return { success: false as const, error: "Sessão de caixa não encontrada." };
             }
 
-            await tx.cashRegister.delete({
-                where: { id: sessionId }
+            const decision = evaluateCashSessionCancellation({
+                status: register.status,
+                paymentsCount: register._count.payments,
+                depositsCount: register._count.deposits,
+                reason,
+            });
+            if (!decision.allowed) {
+                return { success: false as const, error: decision.error };
+            }
+            if (decision.alreadyCanceled) {
+                return { success: true as const, alreadyCanceled: true };
+            }
+
+            const stamp = formatCuiabaDateTime(new Date());
+            const note = `${register.notes || ''} [CANCELADA EM ${stamp} POR ${session.user?.name || 'Administrador'} - MOTIVO: ${String(reason).trim()}]`.trim();
+            await tx.cashRegister.update({
+                where: { id: normalizedSessionId },
+                data: {
+                    status: 'CANCELED',
+                    notes: note,
+                },
             });
 
-            await createAuditLog(`Exclusão de Sessão de Caixa ID: ${sessionId}`, `Toda a sessão e ordens liquidadas foram removidas.`);
-        });
+            await tx.auditLog.create({
+                data: {
+                    userId: actorId,
+                    action: 'Cancelamento de Sessão de Caixa',
+                    details: `Sessão [${normalizedSessionId.slice(-6)}] cancelada logicamente. Motivo: ${String(reason).trim()}. Operador original: ${register.user?.name || 'N/A'}. Pagamentos vinculados: ${register._count.payments}; depósitos: ${register._count.deposits}.`,
+                },
+            });
+
+            return { success: true as const, alreadyCanceled: false };
+        }, { maxWait: 10000, timeout: 15000 });
+
+        if (!result.success) {
+            return result;
+        }
 
         revalidatePath("/financeiro");
         revalidatePath("/dashboard");
 
-        return { success: true };
+        return result;
     } catch (error: any) {
-        console.error("ERRO_DELETE_SESSION:", error);
-        return { success: false, error: error.message };
+        console.error("ERRO_CANCEL_SESSION:", error);
+        return { success: false, error: publicActionErrorMessage(error, CASH_SESSION_CANCEL_FALLBACK) };
     }
 }
 

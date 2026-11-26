@@ -1313,7 +1313,10 @@ const sessoesTool: CopilotTool = {
     const P = parsePeriodo(args);
 
     const sessions = await prisma.cashRegister.findMany({
-      where: { openedAt: { gte: P.from, lte: P.to } },
+      where: {
+        openedAt: { gte: P.from, lte: P.to },
+        status: { not: 'CANCELED' },
+      },
       orderBy: { openedAt: 'desc' },
       include: {
         user: { select: { name: true } },

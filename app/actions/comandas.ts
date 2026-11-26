@@ -8,7 +8,7 @@ import { requirePermission } from "../../lib/auth-guard";
 import { createAuditLog } from "./audit";
 import { effectiveAverageCost, recordInventoryCost, weightedAverageCost } from "../../lib/inventory-cost";
 import { formatQuantityInput, maxQuantityForExistingItem } from "../../lib/quantity-input";
-import { lockOrderItemRow, lockStockRow } from "../../lib/stock-lock";
+import { lockCashRegisterRow, lockOrderItemRow, lockOrderRow, lockStockRow, lockStockRows } from "../../lib/stock-lock";
 import { resolveLinkedRental, type RentalBookingInput } from "../../lib/rental-booking";
 import { assertFinancialPeriodOpen } from "./financial-periods";
 import {
@@ -32,8 +32,20 @@ import {
     orderIdFromCreationDetails,
     validateComandaCreation,
 } from "../../lib/comanda-creation";
+import {
+    buildOperationDetail,
+    buildOperationMarker,
+    isValidOperationKey,
+    readOperationResourceId,
+} from "../../lib/operation-idempotency";
+import { publicActionErrorMessage } from "../../lib/action-errors";
 
 const PAYMENT_ACCESS = ["permPDV", "permComandas", "permFinance"] as const;
+const PAYMENT_IDEMPOTENCY_ACTION = 'PaymentIdempotency';
+const ADD_ITEM_FALLBACK_MESSAGE = 'Não foi possível adicionar o item. Tente novamente.';
+const UPDATE_QUANTITY_FALLBACK_MESSAGE = 'Não foi possível alterar a quantidade. Tente novamente.';
+const PAYMENT_FALLBACK_MESSAGE = 'Não foi possível processar o pagamento. Tente novamente.';
+const VOID_PAYMENT_FALLBACK_MESSAGE = 'Não foi possível estornar o pagamento. Tente novamente.';
 
 type CreateComandaResult =
     | { success: true; orderId: string | null; idempotent: boolean }
@@ -87,6 +99,15 @@ export async function createComanda(
                         idempotent: true,
                     };
                 }
+            }
+
+            await lockCashRegisterRow(tx, register.id);
+            const currentRegister = await tx.cashRegister.findUnique({
+                where: { id: register.id },
+                select: { status: true },
+            });
+            if (!currentRegister || currentRegister.status !== "OPEN") {
+                return { success: false, error: COMANDA_CASH_REGISTER_CLOSED_MESSAGE };
             }
 
             if (normalizedCustomerId) {
@@ -150,165 +171,298 @@ export async function createComanda(
     }
 }
 
-export async function closeComanda(orderId: string) {
-    await requirePermission([...COMANDAS_ACCESS]);
+export async function closeComanda(
+    orderId: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+    try {
+        await requirePermission([...COMANDAS_ACCESS]);
+        const normalizedOrderId = String(orderId || '').trim();
+        if (!normalizedOrderId) {
+            return { success: false, error: COMANDA_NOT_FOUND_MESSAGE };
+        }
 
-    await prisma.order.update({
-        where: { id: orderId },
-        data: { status: "CLOSED", closedAt: new Date() }
-    });
-    revalidatePath("/mesas");
-    revalidatePath("/dashboard");
-}
-
-export async function addItemToOrder(orderId: string, itemId: string, quantity: number, price: number, isService: boolean = false, rentalId?: string, rentalBooking?: RentalBookingInput) {
-    await requirePermission([...COMANDAS_ACCESS]);
-
-    await prisma.$transaction(async (tx) => {
-        const order = await tx.order.findUnique({ where: { id: orderId }, select: { status: true } });
-        if (!order) throw new Error("Comanda nao encontrada.");
-        if (order.status !== "OPEN") throw new Error("Comanda fechada. Abra uma nova comanda para lancar o aluguel.");
-        const linkedRental = rentalBooking
-            ? await resolveLinkedRental(tx, { ...rentalBooking, amount: rentalBooking.amount ?? price * quantity })
-            : null;
-        const finalRentalId = rentalId || linkedRental?.id || null;
-        if (finalRentalId) {
-            const duplicateLink = await tx.orderItem.findFirst({
-                where: { rentalId: finalRentalId, status: "ACTIVE" },
-                select: { id: true },
+        const result = await prisma.$transaction(async (tx) => {
+            await lockOrderRow(tx, normalizedOrderId);
+            const order = await tx.order.findUnique({
+                where: { id: normalizedOrderId },
+                include: { payments: { select: { amount: true } } },
             });
-            if (duplicateLink) throw new Error("Esta reserva ja esta vinculada a um item ativo.");
-        }
-        const product = !isService
-            ? await tx.product.findUnique({ where: { id: itemId }, select: { cost: true, isService: true, stockControlled: true, allowFractional: true } })
-            : null;
-        const trackStock = !isService && !!product && product.isService !== true && product.stockControlled !== false;
-        const allowFractional = !!product?.allowFractional;
-        if (!Number.isFinite(quantity) || quantity <= 0 || (!allowFractional && !Number.isInteger(quantity))) {
-            throw new Error("Quantidade invalida.");
-        }
-        if (trackStock) {
-            const stock = await lockStockRow(tx, itemId);
-            if (!stock) throw new Error("Estoque nao cadastrado para este produto.");
-            const currentQty = Number(stock.quantity) || 0;
-            if (quantity > currentQty) {
-                throw new Error(`Estoque insuficiente! Quantidade maxima permitida: ${formatQuantityInput(currentQty, allowFractional)}.`);
+            if (!order) return { success: false as const, error: COMANDA_NOT_FOUND_MESSAGE };
+            if (order.status !== "OPEN") {
+                return { success: false as const, error: "Apenas comandas abertas podem ser fechadas." };
             }
+            const paid = order.payments.reduce((sum, payment) => sum + payment.amount, 0);
+            const balance = order.total - order.discount - paid;
+            if (balance > 0.01) {
+                return { success: false as const, error: "Comanda possui saldo pendente. Use o pagamento para fechar." };
+            }
+            await tx.order.update({
+                where: { id: normalizedOrderId },
+                data: { status: "CLOSED", closedAt: new Date() },
+            });
+            return { success: true as const };
+        }, { maxWait: 10000, timeout: 20000 });
+
+        if (!result.success) {
+            return result;
         }
 
-        const orderItem = await tx.orderItem.create({
-            data: {
-                orderId,
-                productId: isService ? undefined : itemId,
-                serviceId: isService ? itemId : undefined,
-                quantity,
-                unitPrice: price,
-                subtotal: quantity * price,
-                status: "ACTIVE",
-                rentalId: finalRentalId || undefined
-            }
-        });
-
-        await tx.order.update({
-            where: { id: orderId },
-            data: { total: { increment: quantity * price } }
-        });
-
-        if (trackStock) {
-            const hasStock = await tx.stock.findUnique({ where: { productId: itemId }});
-            if(hasStock) {
-               const currentQty = Number(hasStock.quantity) || 0;
-               const unitCost = effectiveAverageCost(hasStock.averageCost, product?.cost, currentQty);
-               const newQty = currentQty - quantity;
-
-               await tx.stock.update({
-                   where: { productId: itemId },
-                   data: { quantity: newQty, averageCost: unitCost }
-               });
-               
-               const movement = await tx.stockMovement.create({
-                   data: {
-                       productId: itemId,
-                       type: "OUT_SALE",
-                       movementKind: "SALE",
-                       orderId,
-                       orderItemId: orderItem.id,
-                       quantity,
-                       unitCost,
-                       notes: `Adicionado à comanda`
-                   }
-               });
-
-               await recordInventoryCost(tx, {
-                   productId: itemId,
-                   location: 'BALCAO',
-                   movementType: 'SALE',
-                   quantity,
-                   unitCost,
-                   balanceQty: newQty,
-                   balanceAvgCost: effectiveAverageCost(hasStock.averageCost, product?.cost, newQty),
-                   referenceId: movement.id,
-                   notes: `Venda comanda ${orderId}`,
-               });
-            }
+        try {
+            revalidatePath("/mesas");
+            revalidatePath("/dashboard");
+        } catch (error) {
+            console.error("ERRO_REVALIDATE_FECHAMENTO_COMANDA:", error);
         }
-    }, { maxWait: 10000, timeout: 20000 });
 
-    revalidatePath("/mesas");
-    revalidatePath("/dashboard");
+        return result;
+    } catch (error) {
+        console.error("ERRO_FECHAMENTO_COMANDA:", error);
+        return { success: false, error: publicActionErrorMessage(error, "Não foi possível fechar a comanda. Tente novamente.") };
+    }
 }
 
-export async function processPayment(orderId: string, amount: number, method: string, discount: number = 0) {
-    const user = await requirePermission([...PAYMENT_ACCESS]);
-    const userId = user.id;
+type AddItemResult =
+    | { success: true; orderItemId: string }
+    | { success: false; error: string };
 
-    if (!userId) throw new Error("Usuário não logado");
+export async function addItemToOrder(
+    orderId: string,
+    itemId: string,
+    quantity: number,
+    price: number,
+    isService: boolean = false,
+    rentalId?: string,
+    rentalBooking?: RentalBookingInput,
+): Promise<AddItemResult> {
+    try {
+        await requirePermission([...COMANDAS_ACCESS]);
 
-    // Garante que existe um Caixa ("CashRegister") aberto onde esse pagamento vai cair
-    const register = await prisma.cashRegister.findFirst({
-        where: { status: "OPEN" }
-    });
-
-    if (!register) {
-        throw new Error("Nenhum caixa aberto! Abra o caixa no menu Financeiro antes de processar pagamentos.");
-    }
-
-
-    await prisma.$transaction(async (tx) => {
-        // 1. Cria o Pagamento (Pode ser parcial)
-        await tx.payment.create({
-            data: {
-                orderId,
-                cashRegisterId: register!.id,
-                userId,
-                method,
-                amount
+        const result = await prisma.$transaction(async (tx): Promise<AddItemResult> => {
+            await lockOrderRow(tx, orderId);
+            const order = await tx.order.findUnique({ where: { id: orderId }, select: { status: true } });
+            if (!order) return { success: false, error: "Comanda não encontrada." };
+            if (order.status !== "OPEN") {
+                return { success: false, error: "Comanda fechada. Abra uma nova comanda para lançar o aluguel." };
             }
-        });
 
-        // 2. Registra o Desconto, se um desconto real foi inserido agora
-        if (discount > 0) {
+            const linkedRental = rentalBooking
+                ? await resolveLinkedRental(tx, { ...rentalBooking, amount: rentalBooking.amount ?? price * quantity })
+                : null;
+            const finalRentalId = rentalId || linkedRental?.id || null;
+            if (finalRentalId) {
+                const duplicateLink = await tx.orderItem.findFirst({
+                    where: { rentalId: finalRentalId, status: "ACTIVE" },
+                    select: { id: true },
+                });
+                if (duplicateLink) {
+                    return { success: false, error: "Esta reserva já está vinculada a um item ativo." };
+                }
+            }
+
+            const product = !isService
+                ? await tx.product.findUnique({ where: { id: itemId }, select: { cost: true, isService: true, stockControlled: true, allowFractional: true } })
+                : null;
+            if (!isService && !product) {
+                return { success: false, error: "Produto não encontrado." };
+            }
+            const trackStock = !isService && !!product && product.isService !== true && product.stockControlled !== false;
+            const allowFractional = !!product?.allowFractional;
+            if (!Number.isFinite(quantity) || quantity <= 0 || (!allowFractional && !Number.isInteger(quantity))) {
+                return { success: false, error: "Quantidade inválida." };
+            }
+
+            const lockedStock = trackStock ? await lockStockRow(tx, itemId) : null;
+            if (trackStock && !lockedStock) {
+                return { success: false, error: "Estoque não cadastrado para este produto." };
+            }
+            if (lockedStock) {
+                const currentQty = Number(lockedStock.quantity) || 0;
+                if (quantity > currentQty) {
+                    return {
+                        success: false,
+                        error: `Estoque insuficiente! Quantidade máxima permitida: ${formatQuantityInput(currentQty, allowFractional)}.`,
+                    };
+                }
+            }
+
+            const orderItem = await tx.orderItem.create({
+                data: {
+                    orderId,
+                    productId: isService ? undefined : itemId,
+                    serviceId: isService ? itemId : undefined,
+                    quantity,
+                    unitPrice: price,
+                    subtotal: quantity * price,
+                    status: "ACTIVE",
+                    rentalId: finalRentalId || undefined
+                }
+            });
+
             await tx.order.update({
                 where: { id: orderId },
-                data: { discount: { increment: discount } }
+                data: { total: { increment: quantity * price } }
             });
+
+            if (lockedStock) {
+                const currentQty = Number(lockedStock.quantity) || 0;
+                const unitCost = effectiveAverageCost(lockedStock.averageCost, product?.cost, currentQty);
+                const newQty = currentQty - quantity;
+
+                await tx.stock.update({
+                    where: { productId: itemId },
+                    data: { quantity: newQty, averageCost: unitCost }
+                });
+
+                const movement = await tx.stockMovement.create({
+                    data: {
+                        productId: itemId,
+                        type: "OUT_SALE",
+                        movementKind: "SALE",
+                        orderId,
+                        orderItemId: orderItem.id,
+                        quantity,
+                        unitCost,
+                        notes: `Adicionado à comanda`
+                    }
+                });
+
+                await recordInventoryCost(tx, {
+                    productId: itemId,
+                    location: 'BALCAO',
+                    movementType: 'SALE',
+                    quantity,
+                    unitCost,
+                    balanceQty: newQty,
+                    balanceAvgCost: effectiveAverageCost(lockedStock.averageCost, product?.cost, newQty),
+                    referenceId: movement.id,
+                    notes: `Venda comanda ${orderId}`,
+                });
+            }
+
+            return { success: true, orderItemId: orderItem.id };
+        }, { maxWait: 10000, timeout: 20000 });
+
+        if (!result.success) {
+            return result;
         }
 
-        // 3. Avalia o Fechamento
-        const order = await tx.order.findUnique({
-            where: { id: orderId },
-            include: { payments: true, items: { select: { rentalId: true } } }
-        });
+        try {
+            revalidatePath("/mesas");
+            revalidatePath("/dashboard");
+        } catch (error) {
+            console.error("ERRO_REVALIDATE_ADICIONAR_ITEM:", error);
+        }
 
-        if (order) {
-            const totalPaid = order.payments.reduce((acc, p) => acc + p.amount, 0);
-            const balance = order.total - order.discount - totalPaid;
+        return result;
+    } catch (error) {
+        console.error("ERRO_ADICIONAR_ITEM_COMANDA:", error);
+        return { success: false, error: publicActionErrorMessage(error, ADD_ITEM_FALLBACK_MESSAGE) };
+    }
+}
 
-            // Se o saldo ficar zerado, fecha e encerra a conta de vez (Margem flutuante para double)
+type ProcessPaymentResult =
+    | { success: true; orderId: string; paymentId: string | null; idempotent: boolean }
+    | { success: false; error: string };
+
+export async function processPayment(
+    orderId: string,
+    amount: number,
+    method: string,
+    discount: number = 0,
+    idempotencyKey?: string,
+): Promise<ProcessPaymentResult> {
+    try {
+        const user = await requirePermission([...PAYMENT_ACCESS]);
+        const userId = user.id;
+        const normalizedOrderId = String(orderId || '').trim();
+        if (!normalizedOrderId) {
+            return { success: false, error: "Comanda não encontrada." };
+        }
+        if (!Number.isFinite(amount) || amount < 0) {
+            return { success: false, error: "Valor de pagamento inválido." };
+        }
+
+        const hasIdempotencyKey = typeof idempotencyKey === 'string' && idempotencyKey.trim().length > 0;
+        if (hasIdempotencyKey && !isValidOperationKey(idempotencyKey)) {
+            return { success: false, error: PAYMENT_FALLBACK_MESSAGE };
+        }
+        const marker = hasIdempotencyKey
+            ? buildOperationMarker('payment', idempotencyKey as string)
+            : null;
+
+        const result = await prisma.$transaction(async (tx): Promise<ProcessPaymentResult> => {
+            if (marker) {
+                await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${marker}))::text`;
+                const prior = await tx.auditLog.findFirst({
+                    where: {
+                        userId,
+                        action: PAYMENT_IDEMPOTENCY_ACTION,
+                        details: { startsWith: `${marker}#payment:` },
+                    },
+                    select: { details: true },
+                    orderBy: { timestamp: 'desc' },
+                });
+                if (prior) {
+                    return {
+                        success: true,
+                        orderId: normalizedOrderId,
+                        paymentId: readOperationResourceId(prior.details, 'payment'),
+                        idempotent: true,
+                    };
+                }
+            }
+
+            await lockOrderRow(tx, normalizedOrderId);
+            const order = await tx.order.findUnique({
+                where: { id: normalizedOrderId },
+                include: { payments: true, items: { select: { rentalId: true } } },
+            });
+            if (!order) {
+                return { success: false, error: "Comanda não encontrada." };
+            }
+            if (order.status === "CANCELED") {
+                return { success: false, error: "Comanda cancelada não pode receber pagamento." };
+            }
+            if (order.status !== "OPEN") {
+                return { success: false, error: "Comanda já está fechada. Pagamento não pode ser repetido." };
+            }
+
+            const appliedDiscount = Number(discount) > 0 ? Number(discount) : 0;
+            const effectiveDiscount = Number(order.discount || 0) + appliedDiscount;
+            const existingPaid = order.payments.reduce((acc, item) => acc + item.amount, 0);
+            const projectedBalance = order.total - effectiveDiscount - existingPaid - amount;
+            if (amount === 0 && projectedBalance > 0.01) {
+                return { success: false, error: "Valor de pagamento inválido." };
+            }
+
+            const register = await tx.cashRegister.findFirst({ where: { status: "OPEN" } });
+            if (!register) {
+                return { success: false, error: "Nenhum caixa aberto! Abra o caixa no menu Financeiro antes de processar pagamentos." };
+            }
+
+            const payment = await tx.payment.create({
+                data: {
+                    orderId: normalizedOrderId,
+                    cashRegisterId: register.id,
+                    userId,
+                    method,
+                    amount,
+                },
+            });
+
+            if (appliedDiscount > 0) {
+                await tx.order.update({
+                    where: { id: normalizedOrderId },
+                    data: { discount: { increment: appliedDiscount } },
+                });
+            }
+
+            const totalPaid = existingPaid + amount;
+            const balance = order.total - effectiveDiscount - totalPaid;
             if (balance <= 0.01) {
                 await tx.order.update({
-                    where: { id: orderId },
-                    data: { status: "CLOSED", closedAt: new Date() }
+                    where: { id: normalizedOrderId },
+                    data: { status: "CLOSED", closedAt: new Date() },
                 });
                 const rentalIds = Array.from(new Set(order.items.map(item => item.rentalId).filter((id): id is string => !!id)));
                 if (rentalIds.length > 0) {
@@ -318,51 +472,113 @@ export async function processPayment(orderId: string, amount: number, method: st
                     });
                 }
             }
-        }
-    }, { maxWait: 10000, timeout: 20000 });
 
-    revalidatePath("/mesas");
-    revalidatePath("/dashboard");
+            if (marker) {
+                await tx.auditLog.create({
+                    data: {
+                        userId,
+                        action: PAYMENT_IDEMPOTENCY_ACTION,
+                        details: buildOperationDetail(marker, 'payment', payment.id),
+                    },
+                });
+            }
+
+            return {
+                success: true,
+                orderId: normalizedOrderId,
+                paymentId: payment.id,
+                idempotent: false,
+            };
+        }, { maxWait: 10000, timeout: 20000 });
+
+        if (!result.success) {
+            return result;
+        }
+
+        try {
+            revalidatePath("/mesas");
+            revalidatePath("/dashboard");
+            revalidatePath("/financeiro");
+        } catch (error) {
+            console.error("ERRO_REVALIDATE_PAGAMENTO:", error);
+        }
+
+        return result;
+    } catch (error) {
+        console.error("ERRO_PAGAMENTO_COMANDA:", error);
+        return { success: false, error: publicActionErrorMessage(error, PAYMENT_FALLBACK_MESSAGE) };
+    }
 }
-export async function updateOrderItemQuantity(orderItemId: string, newQuantity: number) {
-    await requirePermission([...COMANDAS_ACCESS]);
+type UpdateQuantityResult = { success: true } | { success: false; error: string };
 
-    if (newQuantity <= 0) throw new Error("A quantidade deve ser maior que zero.");
+export async function updateOrderItemQuantity(
+    orderItemId: string,
+    newQuantity: number,
+): Promise<UpdateQuantityResult> {
+    try {
+        await requirePermission([...COMANDAS_ACCESS]);
 
-    await prisma.$transaction(async (tx) => {
-        await lockOrderItemRow(tx, orderItemId);
-        const item = await tx.orderItem.findUnique({
-            where: { id: orderItemId },
-            include: { order: true }
-        });
-
-        if (!item) throw new Error("Item não encontrado");
-        if (item.order.status !== "OPEN") throw new Error("Apenas itens de comandas em aberto podem ser alterados");
-        const received = (await tx.payment.findMany({ where: { orderId: item.orderId }, select: { amount: true } }))
-            .reduce((sum, payment) => sum + payment.amount, 0);
-        if (received > 0.01) throw new Error("Comanda possui pagamento parcial. Estorne o valor recebido antes de alterar itens.");
-
-        const delta = newQuantity - item.quantity;
-        if (delta === 0) return;
-
-        // Verifica e ajusta o estoque caso seja produto (não serviço)
-        const product = item.productId
-            ? await tx.product.findUnique({ where: { id: item.productId }, select: { cost: true, isService: true, stockControlled: true, allowFractional: true } })
-            : null;
-        const allowFractional = !!product?.allowFractional;
-        if (!allowFractional && !Number.isInteger(newQuantity)) {
-            throw new Error("A quantidade deve ser um numero inteiro positivo.");
+        if (!Number.isFinite(newQuantity) || newQuantity <= 0) {
+            return { success: false, error: "A quantidade deve ser maior que zero." };
         }
-        const trackStock = !!item.productId && !!product && product.isService !== true && product.stockControlled !== false;
 
-        if (trackStock) {
-            const stock = await lockStockRow(tx, item.productId!);
-            if (!stock) throw new Error("Estoque nao cadastrado para este produto.");
-            {
+        const result = await prisma.$transaction(async (tx): Promise<UpdateQuantityResult> => {
+            const initial = await tx.orderItem.findUnique({
+                where: { id: orderItemId },
+                select: { orderId: true },
+            });
+            if (!initial) {
+                return { success: false, error: "Item não encontrado." };
+            }
+
+            // Ordem consistente de bloqueios: Order -> OrderItem -> Stock.
+            await lockOrderRow(tx, initial.orderId);
+            await lockOrderItemRow(tx, orderItemId);
+
+            const item = await tx.orderItem.findUnique({
+                where: { id: orderItemId },
+                include: { order: true }
+            });
+            if (!item || item.orderId !== initial.orderId) {
+                return { success: false, error: "Item não encontrado." };
+            }
+            if (item.status !== "ACTIVE") {
+                return { success: false, error: "Apenas itens ativos podem ser alterados." };
+            }
+            if (item.order.status !== "OPEN") {
+                return { success: false, error: "Apenas itens de comandas em aberto podem ser alterados." };
+            }
+
+            const received = (await tx.payment.findMany({ where: { orderId: item.orderId }, select: { amount: true } }))
+                .reduce((sum, payment) => sum + payment.amount, 0);
+            if (received > 0.01) {
+                return { success: false, error: "Comanda possui pagamento parcial. Estorne o valor recebido antes de alterar itens." };
+            }
+
+            const delta = newQuantity - item.quantity;
+            if (delta === 0) return { success: true };
+
+            const product = item.productId
+                ? await tx.product.findUnique({ where: { id: item.productId }, select: { cost: true, isService: true, stockControlled: true, allowFractional: true } })
+                : null;
+            const allowFractional = !!product?.allowFractional;
+            if (!allowFractional && !Number.isInteger(newQuantity)) {
+                return { success: false, error: "A quantidade deve ser um número inteiro positivo." };
+            }
+            const trackStock = !!item.productId && !!product && product.isService !== true && product.stockControlled !== false;
+
+            if (trackStock) {
+                const stock = await lockStockRow(tx, item.productId!);
+                if (!stock) {
+                    return { success: false, error: "Estoque não cadastrado para este produto." };
+                }
                 const currentQty = Number(stock.quantity) || 0;
                 const maxQuantity = maxQuantityForExistingItem(item.quantity, currentQty);
                 if (delta > 0 && newQuantity > maxQuantity + 1e-9) {
-                    throw new Error(`Estoque insuficiente! Quantidade maxima permitida: ${formatQuantityInput(maxQuantity, allowFractional)}.`);
+                    return {
+                        success: false,
+                        error: `Estoque insuficiente! Quantidade máxima permitida: ${formatQuantityInput(maxQuantity, allowFractional)}.`,
+                    };
                 }
                 const currentAvg = effectiveAverageCost(stock.averageCost, product?.cost, currentQty);
                 let unitCost = currentAvg;
@@ -410,24 +626,38 @@ export async function processPayment(orderId: string, amount: number, method: st
                     notes: `Ajuste comanda ${item.orderId}`,
                 });
             }
+
+            const newSubtotal = newQuantity * item.unitPrice;
+            await tx.orderItem.update({
+                where: { id: orderItemId },
+                data: { quantity: newQuantity, subtotal: newSubtotal }
+            });
+
+            await tx.order.update({
+                where: { id: item.orderId },
+                data: { total: { increment: newSubtotal - item.subtotal } }
+            });
+
+            return { success: true };
+        }, { maxWait: 10000, timeout: 20000 });
+
+        if (!result.success) {
+            return result;
         }
 
-        // Atualiza o item e o total da ordem
-        const newSubtotal = newQuantity * item.unitPrice;
-        await tx.orderItem.update({
-            where: { id: orderItemId },
-            data: { quantity: newQuantity, subtotal: newSubtotal }
-        });
+        try {
+            revalidatePath("/mesas");
+            revalidatePath("/dashboard");
+            revalidatePath("/pdv");
+        } catch (error) {
+            console.error("ERRO_REVALIDATE_QUANTIDADE:", error);
+        }
 
-        await tx.order.update({
-            where: { id: item.orderId },
-            data: { total: { increment: newSubtotal - item.subtotal } }
-        });
-    }, { maxWait: 10000, timeout: 20000 });
-
-    revalidatePath("/mesas");
-    revalidatePath("/dashboard");
-    revalidatePath("/pdv");
+        return result;
+    } catch (error) {
+        console.error("ERRO_ALTERAR_QUANTIDADE_COMANDA:", error);
+        return { success: false, error: publicActionErrorMessage(error, UPDATE_QUANTITY_FALLBACK_MESSAGE) };
+    }
 }
 
 export async function removeItemFromOrder(
@@ -437,13 +667,23 @@ export async function removeItemFromOrder(
         const actor = await requirePermission([...COMANDAS_ACCESS]);
 
         const result = await prisma.$transaction(async (tx) => {
+            const initial = await tx.orderItem.findUnique({
+                where: { id: orderItemId },
+                select: { orderId: true },
+            });
+            if (!initial) {
+                return evaluateComandaItemDeletion({ found: false });
+            }
+
+            // Ordem consistente de bloqueios: Order -> OrderItem -> Stock.
+            await lockOrderRow(tx, initial.orderId);
             await lockOrderItemRow(tx, orderItemId);
             const item = await tx.orderItem.findUnique({
                 where: { id: orderItemId },
                 include: { order: true }
             });
 
-            if (!item) {
+            if (!item || item.orderId !== initial.orderId) {
                 return evaluateComandaItemDeletion({ found: false });
             }
 
@@ -463,7 +703,7 @@ export async function removeItemFromOrder(
             const trackStock = !!item.productId && !!product && product.isService !== true && product.stockControlled !== false;
 
             if (trackStock) {
-                const stock = await tx.stock.findUnique({ where: { productId: item.productId! } });
+                const stock = await lockStockRow(tx, item.productId!);
                 if (stock) {
                     const saleMovements = await tx.stockMovement.findMany({
                         where: { orderItemId: item.id, productId: item.productId!, type: 'OUT_SALE' },
@@ -568,7 +808,7 @@ export async function deleteComandaAction(
 
         const result = await prisma.$transaction(async (tx) => {
             // Serializa exclusões concorrentes da mesma comanda para evitar devolução duplicada de estoque.
-            await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${normalizedOrderId} FOR UPDATE`;
+            await lockOrderRow(tx, normalizedOrderId);
 
             const order = await tx.order.findUnique({
                 where: { id: normalizedOrderId },
@@ -584,6 +824,23 @@ export async function deleteComandaAction(
             });
             if (!decision.allowed) return decision;
 
+            // Ordem consistente de bloqueios: Order -> Stock (produtos ordenados).
+            const lockedStocks = await lockStockRows(
+                tx,
+                order.items
+                    .map((item) => item.productId)
+                    .filter((id): id is string => !!id),
+            );
+            const runningStock = new Map<string, { quantity: number; averageCost: number }>();
+            for (const [productId, stock] of lockedStocks) {
+                if (stock) {
+                    runningStock.set(productId, {
+                        quantity: Number(stock.quantity) || 0,
+                        averageCost: Number(stock.averageCost) || 0,
+                    });
+                }
+            }
+
             // 1. Estorna estoque de todos os itens usando o custo original da venda
             for (const item of order.items) {
                 const product = item.productId
@@ -592,24 +849,26 @@ export async function deleteComandaAction(
                 const trackStock = !!item.productId && !!product && product.isService !== true && product.stockControlled !== false;
 
                 if (trackStock) {
-                    const stock = await tx.stock.findUnique({ where: { productId: item.productId! } });
-                    if (stock) {
+                    const stockState = item.productId ? runningStock.get(item.productId) : null;
+                    if (stockState) {
                         const saleMovements = await tx.stockMovement.findMany({
                             where: { orderId: normalizedOrderId, productId: item.productId!, type: 'OUT_SALE' },
                             select: { quantity: true, unitCost: true }
                         });
                         const saleQty = saleMovements.reduce((acc, m) => acc + (Number(m.quantity) || 0), 0);
                         const saleValue = saleMovements.reduce((acc, m) => acc + ((Number(m.quantity) || 0) * (Number(m.unitCost) || 0)), 0);
-                        const currentQty = Number(stock.quantity) || 0;
-                        const currentAvg = effectiveAverageCost(stock.averageCost, 0, currentQty);
+                        const currentQty = stockState.quantity;
+                        const currentAvg = effectiveAverageCost(stockState.averageCost, 0, currentQty);
                         const unitCost = saleQty > 0 ? Number((saleValue / saleQty).toFixed(6)) : currentAvg;
                         const newQty = currentQty + item.quantity;
                         const newAvg = weightedAverageCost(currentQty, currentAvg, item.quantity, unitCost);
 
                         await tx.stock.update({
-                            where: { id: stock.id },
+                            where: { productId: item.productId! },
                             data: { quantity: newQty, averageCost: newAvg }
                         });
+                        stockState.quantity = newQty;
+                        stockState.averageCost = newAvg;
 
                         const movement = await tx.stockMovement.create({
                             data: {
@@ -710,6 +969,16 @@ export async function voidPaymentAction(paymentId: string) {
             if (payment.amount <= 0) throw new Error("Este registro e um estorno e nao pode ser estornado novamente.");
             await assertFinancialPeriodOpen(payment.date);
 
+            await lockOrderRow(tx, payment.orderId);
+            const currentOrder = await tx.order.findUnique({
+                where: { id: payment.orderId },
+                select: { status: true },
+            });
+            if (!currentOrder) throw new Error("Comanda nao encontrada.");
+            if (currentOrder.status === "CANCELED") {
+                throw new Error("Comanda cancelada nao pode ter pagamento estornado por este fluxo.");
+            }
+
             await tx.payment.create({
                 data: {
                     orderId: payment.orderId,
@@ -720,7 +989,7 @@ export async function voidPaymentAction(paymentId: string) {
                 },
             });
 
-            if (payment.order.status === "CLOSED") {
+            if (currentOrder.status === "CLOSED") {
                 await tx.order.update({
                     where: { id: payment.orderId },
                     data: {
@@ -777,7 +1046,7 @@ export async function voidPaymentAction(paymentId: string) {
         return { success: true, idempotent: result.alreadyApplied === true };
     } catch (error: any) {
         console.error("ERRO_ESTORNO:", error);
-        return { success: false, error: error.message };
+        return { success: false, error: publicActionErrorMessage(error, VOID_PAYMENT_FALLBACK_MESSAGE) };
     }
 }
 export async function editPaymentAction(paymentId: string, newMethod: string, newAmount: number) {

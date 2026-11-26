@@ -6,6 +6,7 @@ import { authOptions } from '../api/auth/[...nextauth]/route';
 import { revalidatePath } from 'next/cache';
 import { createAuditLog } from './audit';
 import { effectiveAverageCost, recordInventoryCost, weightedAverageCost } from '../../lib/inventory-cost';
+import { lockDepotStockRow, lockStockRow, lockTransferRequestRow } from '../../lib/stock-lock';
 
 async function verifyAuth(requiredPerm: string = 'permDepot') {
     const session = await getServerSession(authOptions);
@@ -60,11 +61,13 @@ export async function addDepotStock(
         const date = new Date();
         const product = await tx.product.findUnique({ where: { id: productId } });
         assertStockControlled(product);
-        const depot = await tx.depotStock.upsert({
+        await tx.depotStock.upsert({
             where: { productId },
             update: {},
             create: { productId, quantity: 0, minQuantity: 5, unit: "UN" }
         });
+        const depot = await lockDepotStockRow(tx, productId);
+        if (!depot) throw new Error("Estoque de depósito não encontrado.");
 
         const currentQty = Number(depot.quantity) || 0;
         const fallbackCost = Number(product?.cost) || 0;
@@ -146,7 +149,7 @@ export async function addDepotStock(
         }
 
         await createAuditLog("Entrada em Depósito", `Adicionou ${quantity} unidades de ${product?.name} ao depósito geral. Documento/NF: ${document || 'N/A'}`);
-    });
+    }, { maxWait: 10000, timeout: 30000 });
 
     revalidatePath('/deposito');
 }
@@ -202,18 +205,14 @@ export async function authorizeTransfer(requestId: string) {
     }
 
     await prisma.$transaction(async (tx) => {
-        const request = await tx.transferRequest.findUnique({
-            where: { id: requestId },
-            include: { product: true }
-        });
-
+        const request = await lockTransferRequestRow(tx, requestId);
         if (!request || request.status !== 'PENDING') {
             throw new Error('Solicitação não encontrada ou já processada.');
         }
 
         const product = await tx.product.findUnique({ where: { id: request.productId } });
         assertStockControlled(product);
-        const depot = await tx.depotStock.findUnique({ where: { productId: request.productId } });
+        const depot = await lockDepotStockRow(tx, request.productId);
         if (!depot || depot.quantity < request.quantity) {
             throw new Error(`Saldo insuficiente no depósito! Tentativa: ${request.quantity}, Disponível: ${depot?.quantity || 0}`);
         }
@@ -252,11 +251,13 @@ export async function authorizeTransfer(requestId: string) {
         });
 
         // B) Abastecer Estoque "Frente de Loja" pelo custo da origem
-        const stock = await tx.stock.upsert({
+        await tx.stock.upsert({
             where: { productId: request.productId },
             update: {},
             create: { productId: request.productId, quantity: 0, minQuantity: 5, unit: "UN" }
         });
+        const stock = await lockStockRow(tx, request.productId);
+        if (!stock) throw new Error("Estoque de balcão não encontrado.");
         const stockQty = Number(stock.quantity) || 0;
         const stockAvg = effectiveAverageCost(stock.averageCost, fallbackCost, stockQty);
         const newStockQty = stockQty + request.quantity;
@@ -300,8 +301,8 @@ export async function authorizeTransfer(requestId: string) {
             }
         });
 
-        await createAuditLog("Transferência Autorizada", `Autorizou e executou a transferência de ${request.quantity} unidades de ${request.product.name} do Depósito para o Balcão.`);
-    });
+        await createAuditLog("Transferência Autorizada", `Autorizou e executou a transferência de ${request.quantity} unidades de ${product?.name || 'produto'} do Depósito para o Balcão.`);
+    }, { maxWait: 10000, timeout: 30000 });
 
     revalidatePath('/deposito');
     revalidatePath('/estoque');
@@ -314,15 +315,21 @@ export async function rejectTransfer(requestId: string, reason?: string) {
         throw new Error('Sem permissão para rejeitar solicitações.');
     }
 
-    await prisma.transferRequest.update({
-        where: { id: requestId },
-        data: {
-            status: 'REJECTED',
-            authorizedById: user.id,
-            notes: reason ? `REJEITADO: ${reason}` : 'Rejeitado pelo supervisor',
-            updatedAt: new Date()
+    await prisma.$transaction(async (tx) => {
+        const request = await lockTransferRequestRow(tx, requestId);
+        if (!request || request.status !== 'PENDING') {
+            throw new Error('Solicitação não encontrada ou já processada.');
         }
-    });
+        await tx.transferRequest.update({
+            where: { id: requestId },
+            data: {
+                status: 'REJECTED',
+                authorizedById: user.id,
+                notes: reason ? `REJEITADO: ${reason}` : 'Rejeitado pelo supervisor',
+                updatedAt: new Date()
+            }
+        });
+    }, { maxWait: 10000, timeout: 15000 });
 
     revalidatePath('/deposito');
 }
@@ -333,7 +340,12 @@ export async function adjustDepotStockLoss(productId: string, quantityLost: numb
     await verifyAuth();
 
     await prisma.$transaction(async (tx) => {
-        const depot = await tx.depotStock.findUnique({ where: { productId } });
+        await tx.depotStock.upsert({
+            where: { productId },
+            update: {},
+            create: { productId, quantity: 0, minQuantity: 5, unit: "UN" }
+        });
+        const depot = await lockDepotStockRow(tx, productId);
         if (!depot || depot.quantity < quantityLost) {
             throw new Error(`Estoque insuficiente no depósito para declarar perda!`);
         }
@@ -373,7 +385,7 @@ export async function adjustDepotStockLoss(productId: string, quantityLost: numb
         });
 
         await createAuditLog("Baixa em Depósito", `Perda/Quebra de ${quantityLost} unidades de ${product?.name} registrada no Depósito central.`);
-    });
+    }, { maxWait: 10000, timeout: 20000 });
     
     revalidatePath('/deposito');
 }
@@ -383,10 +395,14 @@ export async function directTransfer(productId: string, quantity: number, notes?
     const user = await verifyAuth();
     if (user.role !== 'ADMIN') throw new Error('Apenas administradores podem realizar transferência direta sem autorização prévia.');
 
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new Error('A quantidade deve ser maior que zero.');
+    }
+
     await prisma.$transaction(async (tx) => {
         const product = await tx.product.findUnique({ where: { id: productId } });
         assertStockControlled(product);
-        const depot = await tx.depotStock.findUnique({ where: { productId } });
+        const depot = await lockDepotStockRow(tx, productId);
         if (!depot || depot.quantity < quantity) {
             throw new Error(`Saldo insuficiente no depósito!`);
         }
@@ -416,11 +432,13 @@ export async function directTransfer(productId: string, quantity: number, notes?
             notes: notes || 'Transferência Direta (Admin)',
         });
 
-        const stock = await tx.stock.upsert({
+        await tx.stock.upsert({
             where: { productId },
             update: {},
             create: { productId, quantity: 0, minQuantity: 5, unit: "UN" }
         });
+        const stock = await lockStockRow(tx, productId);
+        if (!stock) throw new Error("Estoque de balcão não encontrado.");
         const stockQty = Number(stock.quantity) || 0;
         const stockAvg = effectiveAverageCost(stock.averageCost, fallbackCost, stockQty);
         const newStockQty = stockQty + quantity;
@@ -446,7 +464,7 @@ export async function directTransfer(productId: string, quantity: number, notes?
             referenceId: stockMovement.id,
             notes: notes || 'Transferência Direta (Admin)',
         });
-    });
+    }, { maxWait: 10000, timeout: 30000 });
 
     revalidatePath('/deposito');
     revalidatePath('/estoque');
@@ -496,8 +514,9 @@ export async function registerBatchDepotStockMovement(
             totalCost += (Number(mov.quantity) || 0) * (Number(mov.price) || 0);
         }
 
+        const orderedMovements = [...movements].sort((a, b) => String(a.productId).localeCompare(String(b.productId)));
         const result = await prisma.$transaction(async (tx) => {
-            for (const mov of movements) {
+            for (const mov of orderedMovements) {
                 const qty = Number(mov.quantity) || 0;
                 const costPrice = Number(mov.price) || 0;
 
@@ -505,11 +524,13 @@ export async function registerBatchDepotStockMovement(
 
                 const product = await tx.product.findUnique({ where: { id: mov.productId } });
                 if (!product || product.isService === true || product.stockControlled === false) continue;
-                const depot = await tx.depotStock.upsert({
+                await tx.depotStock.upsert({
                     where: { productId: mov.productId },
                     update: {},
                     create: { productId: mov.productId, quantity: 0, minQuantity: 5, unit: "UN" }
                 });
+                const depot = await lockDepotStockRow(tx, mov.productId);
+                if (!depot) throw new Error("Estoque de depósito não encontrado.");
 
                 const currentQty = Number(depot.quantity) || 0;
                 const fallbackCost = Number(product?.cost) || 0;
@@ -592,7 +613,8 @@ export async function registerBatchDepotStockMovement(
 
             return { success: true };
         }, {
-            timeout: 30000 
+            maxWait: 10000,
+            timeout: 30000
         });
 
         await createAuditLog("Importação NF Matriz", `Importação de depósito via nota fiscal (${document}).`);

@@ -259,17 +259,23 @@ export default function FinanceiroClient({ payload }: any) {
 
     const confirmDeleteSession = async () => {
         if (!sessionToDelete) return;
+        const reason = window.prompt("Informe o motivo do cancelamento desta sessão de caixa:");
+        if (!reason || reason.trim().length < 5) {
+            alert("Informe um motivo com pelo menos 5 caracteres. A sessão e os registros financeiros serão preservados.");
+            return;
+        }
+        const cleanReason = reason.trim();
         startTransition(async () => {
             try {
-                const res = await deleteCashSessionAction(sessionToDelete.id);
+                const res = await deleteCashSessionAction(sessionToDelete.id, cleanReason);
                 if (res && !res.success) {
-                    alert("Falha ao excluir: " + res.error);
+                    alert("Falha ao cancelar: " + res.error);
                 } else {
-                    alert("Sessão excluída com sucesso!");
+                    alert("Sessão cancelada logicamente com sucesso. Pagamentos e histórico foram preservados.");
                 }
                 setSessionToDelete(null);
             } catch (e: any) {
-                alert("Erro técnico: " + e.message);
+                alert("Não foi possível cancelar a sessão: " + (e?.message || "Tente novamente."));
                 setSessionToDelete(null);
             }
         });
@@ -1627,13 +1633,15 @@ export default function FinanceiroClient({ payload }: any) {
                                                     <button onClick={() => handleViewDetails(cash)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-2 rounded-lg transition" title="Ver Detalhes do Turno">
                                                         <Eye size={16} />
                                                     </button>
-                                                    <button
-                                                        onClick={() => handleDeleteSession(cash)}
-                                                        className="bg-red-50 hover:bg-red-500 text-red-500 hover:text-white p-2 rounded-lg transition"
-                                                        title="Excluir Histórico de Sessão (Admin Only)"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
+                                                    {cash.status === 'CLOSED' && (
+                                                        <button
+                                                            onClick={() => handleDeleteSession(cash)}
+                                                            className="bg-amber-50 hover:bg-amber-500 text-amber-600 hover:text-white p-2 rounded-lg transition"
+                                                            title="Cancelar Sessão de Caixa (Admin Only)"
+                                                        >
+                                                            <AlertCircle size={16} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -2288,13 +2296,13 @@ export default function FinanceiroClient({ payload }: any) {
                 </div>
             )}
 
-            {/* MODAL CONFIRMAR EXCLUSÃO DE SESSÃO DE CAIXA */}
+            {/* MODAL CONFIRMAR CANCELAMENTO DE SESSÃO DE CAIXA */}
             {sessionToDelete && (
                 <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
                     <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl animate-in zoom-in-95 overflow-hidden border border-gray-100">
-                        <div className="p-6 border-b border-gray-100 bg-red-50 flex justify-between items-center">
-                            <h2 className="text-lg font-black text-red-600 flex items-center gap-2">
-                                <AlertCircle className="shrink-0" /> Excluir Sessão de Caixa
+                        <div className="p-6 border-b border-gray-100 bg-amber-50 flex justify-between items-center">
+                            <h2 className="text-lg font-black text-amber-700 flex items-center gap-2">
+                                <AlertCircle className="shrink-0" /> Cancelar Sessão de Caixa
                             </h2>
                             <button onClick={() => setSessionToDelete(null)} className="text-gray-400 hover:text-gray-600 bg-white p-2 rounded-full shadow-sm">
                                 <XCircle size={20} />
@@ -2303,7 +2311,7 @@ export default function FinanceiroClient({ payload }: any) {
 
                         <div className="p-6 space-y-4">
                             <p className="text-sm font-bold text-slate-800 leading-relaxed">
-                                Tem certeza que deseja <span className="text-red-600">EXCLUIR</span> esta sessão de caixa?
+                                Deseja <span className="text-amber-700">CANCELAR LOGICAMENTE</span> esta sessão de caixa?
                             </p>
                             <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 text-sm">
                                 <p className="text-slate-600 font-medium">
@@ -2318,8 +2326,8 @@ export default function FinanceiroClient({ payload }: any) {
                             </div>
                             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
                                 <p className="text-xs font-bold text-amber-800 leading-relaxed">
-                                    ⚠️ Esta ação removerá TODO o histórico de vendas e pagamentos desta sessão permanentemente.
-                                    Recomendada apenas para limpar testes.
+                                    O identificador, o usuário, as datas, os pagamentos e o histórico serão preservados.
+                                    Sessões com pagamentos ou depósitos não podem ser canceladas por esta operação.
                                 </p>
                             </div>
                         </div>
@@ -2330,15 +2338,15 @@ export default function FinanceiroClient({ payload }: any) {
                                 onClick={() => setSessionToDelete(null)}
                                 className="flex-1 bg-white text-gray-500 font-bold py-3 rounded-2xl border border-gray-200 hover:bg-gray-50 transition"
                             >
-                                Cancelar
+                                Voltar
                             </button>
                             <button
                                 type="button"
                                 onClick={confirmDeleteSession}
                                 disabled={isPending}
-                                className="flex-[2] bg-red-500 hover:bg-red-600 text-white font-black py-3 rounded-2xl shadow-xl shadow-red-500/20 hover:scale-[1.02] active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none disabled:transform-none"
+                                className="flex-[2] bg-amber-500 hover:bg-amber-600 text-white font-black py-3 rounded-2xl shadow-xl shadow-amber-500/20 hover:scale-[1.02] active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none disabled:transform-none"
                             >
-                                {isPending ? 'EXCLUINDO...' : <><Trash2 size={18} /> SIM, EXCLUIR</>}
+                                {isPending ? 'CANCELANDO...' : <><AlertCircle size={18} /> SIM, CANCELAR</>}
                             </button>
                         </div>
                     </div>

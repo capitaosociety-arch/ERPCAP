@@ -55,7 +55,10 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       select: { id: true, total: true, discount: true, openedAt: true },
     }),
     prisma.cashRegister.findMany({
-      where: { openedAt: { gte: startDate, lte: endDate } },
+      where: {
+        openedAt: { gte: startDate, lte: endDate },
+        status: { not: 'CANCELED' },
+      },
       orderBy: { openedAt: 'desc' },
       include: { 
         user: { select: { name: true } },
