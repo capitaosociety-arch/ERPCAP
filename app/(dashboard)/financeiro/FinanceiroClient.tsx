@@ -21,6 +21,7 @@ import { getRegisterSummary, deleteCashSessionAction, getSessionsForDepositActio
 import { voidPaymentAction, editPaymentAction } from '../../actions/comandas';
 import { currentCuiabaDateKey, formatCuiabaDate, formatCuiabaDateTime, formatCuiabaTime, isCivilDateBeforeTodayCuiaba } from '../../../lib/time-zone';
 import { formatDateDisplay, formatDateOnlyInput } from '../../../lib/subscription-date';
+import { paymentMethodLabel } from '../../../lib/payment-display';
 
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -99,6 +100,7 @@ export default function FinanceiroClient({ payload }: any) {
 
     const [selectedCashRegister, setSelectedCashRegister] = useState<any>(null);
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+    const [showCanceledAndVoids, setShowCanceledAndVoids] = useState(false);
     const [sessionToDelete, setSessionToDelete] = useState<any>(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [editingPayment, setEditingPayment] = useState<{id: string, method: string, amount: number} | null>(null);
@@ -284,6 +286,7 @@ export default function FinanceiroClient({ payload }: any) {
     const handleViewDetails = async (cash: any) => {
         setLoadingDetails(true);
         setIsDetailsModalOpen(true);
+        setShowCanceledAndVoids(false);
         try {
             const summary = await getRegisterSummary(cash.id);
             setSelectedCashRegister(summary);
@@ -347,6 +350,19 @@ export default function FinanceiroClient({ payload }: any) {
 
     const firstVisible = sortedEntries.length === 0 ? 0 : (safePage - 1) * pageSize + 1;
     const lastVisible = Math.min(safePage * pageSize, sortedEntries.length);
+
+    const visibleSalesHistory = (selectedCashRegister?.salesHistory || []).filter(
+        (sale: any) => showCanceledAndVoids || !sale.isCanceled
+    );
+    const visibleProductsSold = showCanceledAndVoids
+        ? (selectedCashRegister?.productsSold || [])
+        : (selectedCashRegister?.validProductsSold ?? selectedCashRegister?.productsSold ?? []);
+    const visibleSessionDiscounts = showCanceledAndVoids
+        ? (selectedCashRegister?.totalSessionDiscounts || 0)
+        : (selectedCashRegister?.validTotalSessionDiscounts ?? selectedCashRegister?.totalSessionDiscounts ?? 0);
+    const visibleOrdersWithDiscount = (selectedCashRegister?.ordersWithDiscount || []).filter(
+        (ord: any) => showCanceledAndVoids || ord.status !== 'CANCELED'
+    );
 
     const pageItems = useMemo(() => {
         if (totalPages <= 7) {
@@ -2105,14 +2121,37 @@ export default function FinanceiroClient({ payload }: any) {
                                                 </div>
 
                                                 <div className="space-y-3">
-                                                    <p className="text-[10px] font-bold text-gray-500 mb-2 uppercase tracking-wider px-1">Histórico de Pagamentos por Venda</p>
-                                                    {selectedCashRegister.salesHistory && selectedCashRegister.salesHistory.length > 0 ? (
-                                                        selectedCashRegister.salesHistory.map((sale: any) => (
+                                                    <div className="flex items-center justify-between gap-2 px-1 mb-2">
+                                                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Histórico de Pagamentos por Venda</p>
+                                                        <label className="flex items-center gap-1.5 text-[9px] font-bold text-gray-400 cursor-pointer select-none">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={showCanceledAndVoids}
+                                                                onChange={e => setShowCanceledAndVoids(e.target.checked)}
+                                                                className="h-3 w-3 accent-slate-700"
+                                                            />
+                                                            Exibir cancelamentos e estornos
+                                                        </label>
+                                                    </div>
+                                                    {visibleSalesHistory.length > 0 ? (
+                                                        visibleSalesHistory.map((sale: any) => {
+                                                            const salePayments = showCanceledAndVoids
+                                                                ? (sale.rawPayments || sale.payments || [])
+                                                                : (sale.validPayments || []);
+                                                            return (
                                                             <div key={sale.orderId} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden mb-3">
                                                                 <div className="bg-slate-50 border-b border-gray-100 p-3 flex flex-col justify-between">
                                                                     <div className="flex justify-between items-center">
-                                                                        <div>
-                                                                            <p className="text-xs font-bold text-slate-800">{sale.notes}</p>
+                                                                        <div className="min-w-0">
+                                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                                <p className="text-xs font-bold text-slate-800">{sale.notes}</p>
+                                                                                {sale.isCanceled && (
+                                                                                    <span className="text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-black uppercase">Cancelado</span>
+                                                                                )}
+                                                                                {sale.hasCrossSession && (
+                                                                                    <span className="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded font-bold">Há lançamentos em outra sessão</span>
+                                                                                )}
+                                                                            </div>
                                                                             <p className="text-[10px] text-gray-500">Valor Bruto: R$ {Number(sale.totalBruto || 0).toFixed(2).replace('.', ',')}</p>
                                                                         </div>
                                                                         {sale.discount > 0 && (
@@ -2133,9 +2172,15 @@ export default function FinanceiroClient({ payload }: any) {
                                                                     )}
                                                                 </div>
                                                                 <div className="p-2 space-y-1 bg-white">
-                                                                    {sale.payments.map((p: any) => (
+                                                                    {salePayments.length === 0 ? (
+                                                                        <p className="text-center text-[10px] text-gray-400 italic py-2">Nenhum pagamento válido nesta venda.</p>
+                                                                    ) : salePayments.map((p: any) => {
+                                                                        const isNegative = Number(p.amount) < 0 || p.status === 'OVER_REVERSED' || p.status === 'UNLINKED_REVERSAL';
+                                                                        const isPartial = p.status === 'PARTIALLY_REVERSED';
+                                                                        const canEdit = !showCanceledAndVoids && !sale.isCanceled && p.canVoid !== false && !isNegative && !isPartial;
+                                                                        return (
                                                                         <div key={p.id} className="flex justify-between items-center py-1.5 px-3 rounded-lg hover:bg-slate-50 transition group">
-                                                                            {editingPayment?.id === p.id ? (
+                                                                            {editingPayment?.id === p.id && canEdit ? (
                                                                                 <div className="flex-1 flex flex-wrap items-center gap-2 py-1">
                                                                                     <select 
                                                                                         value={editingPayment!.method} 
@@ -2164,39 +2209,56 @@ export default function FinanceiroClient({ payload }: any) {
                                                                             ) : (
                                                                                 <>
                                                                                     <div className="flex-1">
-                                                                                        <div className="flex items-center gap-2">
-                                                                                            <span className="font-bold text-slate-700 text-[11px] uppercase">{p.method === 'CASH' ? 'Dinheiro' : p.method === 'PIX' ? 'Pix' : p.method === 'DEBIT' ? 'Débito' : 'Crédito'}</span>
+                                                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                                                            <span className="font-bold text-slate-700 text-[11px] uppercase">{paymentMethodLabel(p.method)}</span>
+                                                                                            {isNegative && (
+                                                                                                <span className="text-[9px] text-red-500 font-bold">Estornado</span>
+                                                                                            )}
+                                                                                            {isPartial && (
+                                                                                                <span className="text-[9px] text-amber-600 font-bold">Parcialmente estornado</span>
+                                                                                            )}
+                                                                                            {showCanceledAndVoids && p.isCurrentSession === false && p.sessionRef && (
+                                                                                                <span className="text-[9px] text-amber-600 font-bold">Sessão {p.sessionRef}</span>
+                                                                                            )}
                                                                                         </div>
                                                                                         <p className="text-[9px] text-gray-400 font-medium">{formatCuiabaTime(p.date)}</p>
                                                                                     </div>
                                                                                     <div className="flex items-center gap-2">
-                                                                                        <span className="font-black text-green-600 text-xs">Pago: R$ {Number(p.amount || 0).toFixed(2).replace('.', ',')}</span>
-                                                                                        <button
-                                                                                            onClick={() => setEditingPayment({id: p.id, method: p.method, amount: p.amount})}
-                                                                                            className="p-1.5 text-gray-300 hover:text-blue-500 hover:bg-blue-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
-                                                                                            title="Editar Pagamento (Admin)"
-                                                                                        >
-                                                                                            <Edit2 size={12} />
-                                                                                        </button>
-                        <button
-                            disabled={isPending || voidingPaymentId === p.id}
-                            onClick={() => handleVoidPayment(p.id)}
-                            className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
-                            title="Estornar Pagamento"
-                        >
-                                                                                            <RotateCcw size={12} />
-                                                                                        </button>
+                                                                                        <span className={`font-black text-xs ${isNegative ? 'text-red-600' : isPartial ? 'text-amber-600' : 'text-green-600'}`}>
+                                                                                            {isNegative ? 'Estornado' : 'Pago'}: R$ {Number(p.amount || 0).toFixed(2).replace('.', ',')}
+                                                                                        </span>
+                                                                                        {canEdit && (
+                                                                                            <button
+                                                                                                onClick={() => setEditingPayment({id: p.id, method: p.method, amount: p.amount})}
+                                                                                                className="p-1.5 text-gray-300 hover:text-blue-500 hover:bg-blue-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
+                                                                                                title="Editar Pagamento (Admin)"
+                                                                                            >
+                                                                                                <Edit2 size={12} />
+                                                                                            </button>
+                                                                                        )}
+                                                                                        {canEdit && (
+                                                                                            <button
+                                                                                                disabled={isPending || voidingPaymentId === p.id}
+                                                                                                onClick={() => handleVoidPayment(p.id)}
+                                                                                                className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                                                                title="Estornar Pagamento"
+                                                                                            >
+                                                                                                <RotateCcw size={12} />
+                                                                                            </button>
+                                                                                        )}
                                                                                     </div>
                                                                                 </>
                                                                             )}
                                                                         </div>
-                                                                    ))}
+                                                                        );
+                                                                    })}
                                                                 </div>
                                                             </div>
-                                                        ))
+                                                        );
+                                                        })
                                                     ) : (
                                                         <div className="text-center py-6 text-gray-400 italic text-xs font-bold bg-white rounded-xl border border-dashed border-gray-200">
-                                                            Nenhum pagamento registrado nesta sessão.
+                                                            Nenhum pagamento válido nesta visualização.
                                                         </div>
                                                     )}
                                                 </div>
@@ -2231,12 +2293,12 @@ export default function FinanceiroClient({ payload }: any) {
                                                     </p>
                                                 </div>
                                             )}
-                                            {selectedCashRegister.totalSessionDiscounts > 0 && (
+                                            {visibleSessionDiscounts > 0 && (
                                                 <div className="mt-4 bg-red-50 text-red-600 rounded-xl p-4 border border-red-100">
                                                     <p className="text-[10px] font-black uppercase tracking-widest mb-1 flex items-center gap-2">
                                                         <TrendingDown size={14} /> Total de Descontos Concedidos
                                                     </p>
-                                                    <p className="text-xl font-black">R$ {Number(selectedCashRegister.totalSessionDiscounts || 0).toFixed(2).replace('.', ',')}</p>
+                                                    <p className="text-xl font-black">R$ {Number(visibleSessionDiscounts || 0).toFixed(2).replace('.', ',')}</p>
                                                 </div>
                                             )}
                                         </div>
@@ -2245,8 +2307,8 @@ export default function FinanceiroClient({ payload }: any) {
                                         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 flex flex-col">
                                             <h4 className="text-sm uppercase tracking-wider font-bold text-gray-500 mb-6 flex items-center gap-2"><ShoppingBag size={18} /> Inventário Liquidado na Sessão</h4>
                                             <div className="overflow-y-auto flex-1 pr-2 space-y-2 relative h-64 hide-scrollbar">
-                                                {selectedCashRegister.productsSold.length === 0 && <p className="text-sm text-gray-400 italic text-center py-10 font-bold">Nenhum espelho de estoque consumido.</p>}
-                                                {selectedCashRegister.productsSold.map((prod: any, i: number) => (
+                                                {visibleProductsSold.length === 0 && <p className="text-sm text-gray-400 italic text-center py-10 font-bold">Nenhum espelho de estoque consumido.</p>}
+                                                {visibleProductsSold.map((prod: any, i: number) => (
                                                     <div key={i} className="flex justify-between items-center bg-slate-50/80 p-3 rounded-xl border border-gray-100 hover:border-mrts-blue transition">
                                                         <div className="flex-1 min-w-0 pr-3">
                                                             <div className="flex items-center gap-2 mb-0.5">
@@ -2266,13 +2328,13 @@ export default function FinanceiroClient({ payload }: any) {
                                         </div>
                                     </div>
 
-                                    {selectedCashRegister.ordersWithDiscount && selectedCashRegister.ordersWithDiscount.length > 0 && (
+                                    {visibleOrdersWithDiscount.length > 0 && (
                                         <div className="mt-8 border-t border-gray-100 pt-8">
                                             <h4 className="text-sm uppercase tracking-wider font-bold text-gray-500 mb-6 flex items-center gap-2">
                                                 <TrendingDown size={18} className="text-red-500" /> Detalhamento de Vendas com Desconto
                                             </h4>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                {selectedCashRegister.ordersWithDiscount.map((ord: any) => (
+                                                {visibleOrdersWithDiscount.map((ord: any) => (
                                                     <div key={ord.id} className="bg-white border border-red-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition">
                                                         <div className="flex justify-between items-start mb-3">
                                                             <p className="font-bold text-slate-800 text-sm truncate pr-2">Comanda: {ord.notes || 'Sem identificação'}</p>

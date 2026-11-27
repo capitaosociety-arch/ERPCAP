@@ -16,6 +16,7 @@ import {
     uppercaseComandaIdentifier,
     type ComandaQuantityState,
 } from '../../../lib/comanda-input';
+import { paymentMethodLabel, sumDisplayedPayments } from '../../../lib/payment-display';
 
 export default function ComandaBoard({ openOrders, products, openRegister, customers }: { openOrders: any[], products: any[], openRegister?: any, customers?: { id: string; name: string; phone: string | null }[] }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -329,6 +330,13 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
         ? comandaCustomerLink(activeViewOrder.customerId, activeViewOrder.customer?.name)
         : null;
     const activePaymentOrder = paymentOrder ? openOrders.find(o => o.id === paymentOrder.id) : null; // Se ele ainda estiver em aberto, se fechou sumiu
+    const activeViewPayments = activeViewOrder?.displayPayments || [];
+    const activeViewNetTotal = activeViewOrder ? activeViewOrder.total - activeViewOrder.discount : 0;
+    const activeViewPaid = sumDisplayedPayments(activeViewPayments);
+    const activeViewBalance = Math.max(0, activeViewNetTotal - activeViewPaid);
+    const activePaymentPaid = activePaymentOrder
+        ? sumDisplayedPayments(activePaymentOrder.displayPayments || [])
+        : 0;
 
     return (
         <div>
@@ -521,26 +529,39 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                 </div>
                             )}
 
-                            {activeViewOrder.payments && activeViewOrder.payments.length > 0 && (
+                            {activeViewPayments.length > 0 && (
                                 <div className="mt-8 border-t-2 border-dashed border-gray-200 pt-6">
-                                    <h3 className="font-bold text-sm text-gray-400 mb-4 px-2 uppercase tracking-wider">Histórico de Pagamentos (Parciais)</h3>
+                                    <h3 className="font-bold text-sm text-gray-400 mb-4 px-2 uppercase tracking-wider">Histórico de Pagamentos Válidos</h3>
                                     <div className="flex flex-col gap-2">
-                                        {activeViewOrder.payments.map((p: any) => (
-                                            <div key={p.id} className="flex justify-between items-center px-4 py-3 bg-green-50 text-green-700 rounded-xl border border-green-200 group">
-                                                <div className="flex items-center gap-3">
-                                                    <p className="font-bold text-sm">{p.method}</p>
-                                                    <button 
-                                                        disabled={loading}
-                                                        onClick={() => handleVoidPayment(p.id)}
-                                                        className="p-1 text-green-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                                        title="Estornar Pagamento"
-                                                    >
-                                                        <RotateCcw size={14} />
-                                                    </button>
+                                        {activeViewPayments.map((p: any) => {
+                                            const isNegative = Number(p.amount) < 0 || p.status === 'OVER_REVERSED' || p.status === 'UNLINKED_REVERSAL';
+                                            const isPartial = p.status === 'PARTIALLY_REVERSED';
+                                            return (
+                                                <div key={p.id} className={`flex justify-between items-center px-4 py-3 rounded-xl border group ${isNegative ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
+                                                    <div className="flex items-center gap-3">
+                                                        <div>
+                                                            <p className="font-bold text-sm">{paymentMethodLabel(p.method)}</p>
+                                                            {(isPartial || isNegative) && (
+                                                                <p className={`text-[10px] font-bold ${isNegative ? 'text-red-500' : 'text-amber-600'}`}>
+                                                                    {isPartial ? 'Parcialmente estornado' : 'Estornado'}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                        {p.canVoid && (
+                                                            <button 
+                                                                disabled={loading}
+                                                                onClick={() => handleVoidPayment(p.id)}
+                                                                className="p-1 text-green-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                                title="Estornar Pagamento"
+                                                            >
+                                                                <RotateCcw size={14} />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    <p className="font-bold">R$ {Number(p.amount || 0).toFixed(2).replace('.',',')}</p>
                                                 </div>
-                                                <p className="font-bold">R$ {p.amount.toFixed(2).replace('.',',')}</p>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
@@ -549,7 +570,17 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                         <div className="p-5 border-t border-gray-100 bg-white shadow-[0_-10px_20px_rgba(0,0,0,0.02)] relative z-10 space-y-4">
                              <div className="flex justify-between items-center px-2">
                                  <span className="text-slate-500 font-bold text-sm">Total da Mesa:</span>
-                                 <span className="text-3xl font-black text-mrts-blue">R$ {(activeViewOrder.total - activeViewOrder.discount).toFixed(2).replace('.', ',')}</span>
+                                 <span className="text-3xl font-black text-mrts-blue">R$ {activeViewNetTotal.toFixed(2).replace('.', ',')}</span>
+                             </div>
+                             <div className="grid grid-cols-2 gap-2 px-2">
+                                 <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+                                     <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Total pago</p>
+                                     <p className="text-sm font-black text-emerald-700">R$ {activeViewPaid.toFixed(2).replace('.', ',')}</p>
+                                 </div>
+                                 <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                                     <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600">Saldo a pagar</p>
+                                     <p className="text-sm font-black text-amber-700">R$ {activeViewBalance.toFixed(2).replace('.', ',')}</p>
+                                 </div>
                              </div>
                              <div className="flex flex-wrap gap-3">
                                  <button onClick={() => { setIsViewModalOpen(false); handleAddProductClick({stopPropagation:()=>{} }, activeViewOrder); }} className="flex-1 bg-gray-100 text-slate-700 font-bold py-3.5 rounded-xl hover:bg-gray-200 flex justify-center items-center gap-2">
@@ -689,6 +720,9 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                 <p className="text-lg sm:text-xl font-black text-mrts-blue">R$ {balance.toFixed(2)}</p>
                             </div>
                         </div>
+                        <p className="text-xs text-slate-500 font-bold mb-3">
+                            Total pago (válido): <span className="text-emerald-600">R$ {activePaymentPaid.toFixed(2).replace('.', ',')}</span>
+                        </p>
 
                         {/* Itens lançados com edição de quantidade */}
                         {activePaymentOrder.items && activePaymentOrder.items.length > 0 && (

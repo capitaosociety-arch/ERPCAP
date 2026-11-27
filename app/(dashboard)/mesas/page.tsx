@@ -1,5 +1,7 @@
 import { prisma } from "../../../lib/prisma";
 import { requirePagePermission } from "../../../lib/auth-guard";
+import { buildDisplayedPayments } from "../../../lib/payment-display";
+import { loadPaymentDisplayData } from "../../../lib/payment-display-server";
 import ComandaBoard from "./ComandaBoard";
 
 export default async function MesasRoute() {
@@ -33,9 +35,21 @@ export default async function MesasRoute() {
     })
   ]);
 
+  const { payments: displayPaymentRows, links: displayPaymentLinks } = await loadPaymentDisplayData(
+    openOrders.map((order) => order.id),
+  );
+  const openOrdersForClient = openOrders.map((order) => {
+    const orderPayments = displayPaymentRows.filter((payment) => payment.orderId === order.id);
+    const orderLinks = displayPaymentLinks.filter((link) => link.orderId === order.id);
+    return {
+      ...order,
+      displayPayments: buildDisplayedPayments(orderPayments, orderLinks),
+    };
+  });
+
   return (
     <div className="animate-in fade-in duration-500">
-      <ComandaBoard openOrders={openOrders} products={products} openRegister={openRegister} customers={customers} />
+      <ComandaBoard openOrders={openOrdersForClient} products={products} openRegister={openRegister} customers={customers} />
     </div>
   );
 }

@@ -13,6 +13,8 @@ import {
 } from '../../lib/cash-session';
 import { publicActionErrorMessage } from '../../lib/action-errors';
 import { formatCuiabaDateTime } from '../../lib/time-zone';
+import { buildDisplayedPayments, sumDisplayedPayments } from '../../lib/payment-display';
+import { loadPaymentDisplayData } from '../../lib/payment-display-server';
 
 export async function openGlobalCashRegister(openingBal: number) {
     const user = await requirePermission(['permFinance', 'permPDV']);
@@ -171,6 +173,7 @@ export async function getRegisterSummary(registerId: string) {
             order: {
                 select: {
                     id: true,
+                    status: true,
                     discount: true,
                     notes: true,
                     total: true
@@ -180,31 +183,51 @@ export async function getRegisterSummary(registerId: string) {
     });
 
     const productSummary: Record<string, any> = {};
+    const validProductSummary: Record<string, any> = {};
 
-    orderItems.forEach(item => {
+    const addProductToSummary = (summary: Record<string, any>, item: (typeof orderItems)[number]) => {
         const key = item.productId ? `p_${item.productId}` : (item.serviceId ? `s_${item.serviceId}` : item.id);
         const name = item.product?.name || item.service?.name || 'Item Avulso/Desconhecido';
 
-        if (!productSummary[key]) {
-            productSummary[key] = { name, quantity: 0, total: 0, hasDiscount: false, totalDiscount: 0 };
+        if (!summary[key]) {
+            summary[key] = { name, quantity: 0, total: 0, hasDiscount: false, totalDiscount: 0 };
         }
-        productSummary[key].quantity += item.quantity;
-        productSummary[key].total += item.subtotal;
+        summary[key].quantity += item.quantity;
+        summary[key].total += item.subtotal;
 
         if (item.order.discount > 0) {
-            productSummary[key].hasDiscount = true;
-            productSummary[key].totalDiscount += item.order.discount;
+            summary[key].hasDiscount = true;
+            summary[key].totalDiscount += item.order.discount;
+        }
+    };
+
+    orderItems.forEach(item => {
+        addProductToSummary(productSummary, item);
+        if (item.order.status !== 'CANCELED') {
+            addProductToSummary(validProductSummary, item);
         }
     });
 
     const productsSold = Object.values(productSummary).sort((a: any, b: any) => b.quantity - a.quantity);
+    const validProductsSold = Object.values(validProductSummary).sort((a: any, b: any) => b.quantity - a.quantity);
     const sumAllPayments = formattedPayments.reduce((acc: number, p) => acc + (p.amount || 0), 0);
 
     const uniqueOrderIds = Array.from(new Set(orderItems.map(i => i.order.id)));
-    const totalSessionDiscountsRaw = await prisma.order.aggregate({
-        where: { id: { in: uniqueOrderIds } },
-        _sum: { discount: true }
-    });
+    const validOrderIds = Array.from(new Set(
+        orderItems
+            .filter(item => item.order.status !== 'CANCELED')
+            .map(i => i.order.id)
+    ));
+    const [totalSessionDiscountsRaw, validTotalSessionDiscountsRaw] = await Promise.all([
+        prisma.order.aggregate({
+            where: { id: { in: uniqueOrderIds } },
+            _sum: { discount: true }
+        }),
+        prisma.order.aggregate({
+            where: { id: { in: validOrderIds } },
+            _sum: { discount: true }
+        })
+    ]);
 
     const discountedOrders = await prisma.order.findMany({
         where: { id: { in: uniqueOrderIds }, discount: { gt: 0 } },
@@ -216,6 +239,9 @@ export async function getRegisterSummary(registerId: string) {
     });
 
     const totalGrossSold = orderItems.reduce((acc, item) => acc + item.subtotal, 0);
+    const validTotalGrossSold = orderItems
+        .filter(item => item.order.status !== 'CANCELED')
+        .reduce((acc, item) => acc + item.subtotal, 0);
 
     const individualPayments = individualPaymentsRaw.map(p => ({
         id: p.id,
@@ -226,31 +252,52 @@ export async function getRegisterSummary(registerId: string) {
         orderName: p.order?.notes || 'Venda PDV'
     }));
 
-    const salesHistoryMap = new Map();
+    const orderById = new Map<string, any>();
     individualPaymentsRaw.forEach(p => {
-        const orderId = p.orderId || `avulso_${p.id}`;
-        if (!salesHistoryMap.has(orderId)) {
-            salesHistoryMap.set(orderId, {
-                orderId: orderId,
-                notes: p.order?.notes || 'Venda Avulsa / PDV',
-                totalBruto: p.order?.total || p.amount,
-                discount: p.order?.discount || 0,
-                payments: [],
-                items: p.order?.items?.map((i: any) => ({
-                    name: i.product?.name || i.service?.name || 'Item',
-                    quantity: i.quantity,
-                    subtotal: i.subtotal
-                })) || []
-            });
+        if (!p.orderId || !p.order) return;
+        if (!orderById.has(p.orderId)) {
+            orderById.set(p.orderId, p.order);
         }
-        salesHistoryMap.get(orderId).payments.push({
-            id: p.id,
-            method: p.method,
-            amount: p.amount,
-            date: p.date
-        });
     });
-    const salesHistory = Array.from(salesHistoryMap.values());
+
+    const { payments: allDisplayPayments, links: displayLinks } = await loadPaymentDisplayData(
+        Array.from(orderById.keys())
+    );
+
+    const salesHistory = Array.from(orderById.entries()).map(([orderId, order]) => {
+        const orderPayments = allDisplayPayments.filter(payment => payment.orderId === orderId);
+        const orderLinks = displayLinks.filter(link => link.orderId === orderId);
+        const validPayments = buildDisplayedPayments(orderPayments, orderLinks);
+        const rawPayments = orderPayments.map(payment => ({
+            id: payment.id,
+            method: payment.method,
+            amount: payment.amount,
+            date: payment.date,
+            userId: payment.userId,
+            cashRegisterId: payment.cashRegisterId,
+            sessionRef: payment.cashRegisterId ? payment.cashRegisterId.slice(-6) : null,
+            isCurrentSession: payment.cashRegisterId === registerId,
+        }));
+
+        return {
+            orderId,
+            notes: order.notes || 'Venda Avulsa / PDV',
+            totalBruto: order.total,
+            discount: order.discount || 0,
+            orderStatus: order.status,
+            isCanceled: order.status === 'CANCELED',
+            items: order.items?.map((i: any) => ({
+                name: i.product?.name || i.service?.name || 'Item',
+                quantity: i.quantity,
+                subtotal: i.subtotal
+            })) || [],
+            payments: rawPayments,
+            validPayments,
+            rawPayments,
+            validNetPaid: sumDisplayedPayments(validPayments),
+            hasCrossSession: rawPayments.some(payment => !payment.isCurrentSession),
+        };
+    });
 
     return JSON.parse(JSON.stringify({
         openOrdersCount,
@@ -262,14 +309,18 @@ export async function getRegisterSummary(registerId: string) {
         expectedCashInDrawer,
         sumAllPayments,
         totalGrossSold,
+        validTotalGrossSold,
         payments: formattedPayments,
         individualPayments,
         salesHistory,
         productsSold,
+        validProductsSold,
         closingNotes: registerToClose.notes || '',
         totalSessionDiscounts: totalSessionDiscountsRaw._sum.discount || 0,
+        validTotalSessionDiscounts: validTotalSessionDiscountsRaw._sum.discount || 0,
         ordersWithDiscount: discountedOrders.map(o => ({
             id: o.id,
+            status: o.status,
             notes: o.notes || 'S/ID',
             totalBruto: o.total,
             discount: o.discount,
