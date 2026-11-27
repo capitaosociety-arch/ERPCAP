@@ -62,7 +62,18 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       orderBy: { openedAt: 'desc' },
       include: { 
         user: { select: { name: true } },
-        payments: { include: { order: { include: { items: true } } } }
+        payments: {
+          include: {
+            order: {
+              include: {
+                items: true,
+                payments: {
+                  select: { id: true, amount: true, date: true, cashRegisterId: true },
+                },
+              },
+            },
+          },
+        },
       }
     }),
     prisma.financialEntry.findMany({

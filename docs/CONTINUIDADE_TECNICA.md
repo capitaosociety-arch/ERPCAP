@@ -1,10 +1,10 @@
 # Continuidade Técnica — Capitão Society ERP
 
-**Última atualização:** 24/11/2026  
+**Última atualização:** 27/11/2026  
 **Documento de referência permanente:** `AGENTS.md` (não substituído por este arquivo)  
 **Branch:** `dev/inteligencia-p3`  
-**Commit atual:** `61f2a3073cb6ae250dca7e930ee3c659c2ba4684`  
-**Deployment de produção:** `dpl_ATCieStiPSg39pVy6FKYmAtiR9fQ`  
+**Commit de referência:** `3c192b5`  
+**Deployment de referência:** `dpl_7Qu4uYBHhdhinjPMFgX6CKYTxGFz`  
 **URL de produção:** https://capitao-society-5nam1r4mn-capitaosociety-1198s-projects.vercel.app  
 **Alias:** https://capitao-society-erp.vercel.app
 
@@ -543,20 +543,24 @@ A mudança é operacional/compatibilidade de leitura; não altera pagamentos ou 
 
 ---
 
-## 16. Escopo previsto para a Fase 2B
+## 16. Fase 2B — CANCELADA DEFINITIVAMENTE
 
-Não iniciada. Escopo sujeito a autorização específica:
+A Fase 2B **não será implantada** no Capitão Society ERP. Seu planejamento e sua implementação
+pendente foram cancelados definitivamente e isolados em `_cancelado_fase_2b/` (arquivo local,
+fora do Git e fora da publicação).
 
-- Ajustes financeiros de reservas corrigidas quando houver diferença de preço.
-- Cobrança complementar rastreável.
-- Estorno/refund rastreável.
-- Preservação integral do pagamento, comanda, item e fechamento originais.
-- Estrutura aditiva para ajuste financeiro com vínculo à reserva e à operação.
-- Tratamento de período financeiro do ajuste: competência original versus período corrente, conforme decisão de negócio.
-- Rateio/individualização por item de comanda, se aprovado.
-- Vínculo entre pagamento de mensalidade e reservas cobertas.
-- Dupla autorização e trilha de auditoria para valores.
-- Sem reescrever caixa, DRE ou históricos.
+Não implementar:
+- créditos automáticos para clientes;
+- conversão automática de pagamentos excedentes em créditos;
+- compensações automáticas em reservas futuras;
+- estruturas financeiras adicionais da Fase 2B;
+- feature flags específicas da Fase 2B;
+- a migração 0013 originalmente preparada para a Fase 2B.
+
+Diferenças de valores em pagamentos de aluguéis podem decorrer de horários, negociações
+comerciais e preços diferenciados. Não representam necessariamente créditos ou erros financeiros.
+A Fase 2B permanece definitivamente cancelada e não deve ser retomada sem nova autorização
+expressa. A numeração 0013 fica reservada exclusivamente para a exclusão lógica de pagamentos.
 
 ---
 
@@ -597,7 +601,7 @@ O `vercel.json` contém o cron diário autorizado (`0 7 * * *`) e `CRON_SECRET` 
 
 Copiar o texto abaixo como primeira mensagem de uma nova sessão do OpenCode:
 
-> Retome o desenvolvimento do Capitão Society ERP (ERPCAP). Leia obrigatoriamente `AGENTS.md` e `docs/CONTINUIDADE_TECNICA.md` antes de qualquer ação. O estado de produção é o commit `61f2a3073cb6ae250dca7e930ee3c659c2ba4684`, deployment `dpl_ATCieStiPSg39pVy6FKYmAtiR9fQ`, fuso oficial `America/Cuiaba`, T1, Fase 2A, `RentalChangeLog`, `permAgenda` e Auditoria de Reservas publicados. As migrações 0008–0012 estão aplicadas; a 0007 foi substituída e não deve ser aplicada. O cron diário está ativo às 07:00 UTC (03:00 em America/Cuiaba), com `CRON_SECRET` configurado em Production, mas a primeira execução automática ainda não ocorreu. A interface autenticada ainda precisa de validação visual pelo administrador. No snapshot de 24/11/2026 21:51Z existiam 203 reservas (10 `CUIABA`, 193 legadas), 17 futuras e 35 ocorrências abertas. Há 3 possíveis overpayments e 4 reservas de fronteira de data que não devem ser corrigidas automaticamente. Não iniciar T2 nem Fase 2B sem autorização específica. Não executar ERP, banco ou Next.js localmente; validar por análise, typecheck, lint, testes puros e, quando autorizado, build/deploy em produção. Preservar todos os dados financeiros e históricos. Pergunte qual próximo escopo autorizado antes de implementar.
+> Retome o desenvolvimento do Capitão Society ERP (ERPCAP). Leia obrigatoriamente `AGENTS.md` e `docs/CONTINUIDADE_TECNICA.md` antes de qualquer ação. O estado de produção é o commit `61f2a3073cb6ae250dca7e930ee3c659c2ba4684`, deployment `dpl_ATCieStiPSg39pVy6FKYmAtiR9fQ`, fuso oficial `America/Cuiaba`, T1, Fase 2A, `RentalChangeLog`, `permAgenda` e Auditoria de Reservas publicados. As migrações 0008–0012 estão aplicadas; a 0007 foi substituída e não deve ser aplicada. O cron diário está ativo às 07:00 UTC (03:00 em America/Cuiaba), com `CRON_SECRET` configurado em Production, mas a primeira execução automática ainda não ocorreu. A interface autenticada ainda precisa de validação visual pelo administrador. No snapshot de 24/11/2026 21:51Z existiam 203 reservas (10 `CUIABA`, 193 legadas), 17 futuras e 35 ocorrências abertas. Há 3 possíveis overpayments e 4 reservas de fronteira de data que não devem ser corrigidas automaticamente. A Fase 2B está CANCELADA DEFINITIVAMENTE e não deve ser retomada. A T2 permanece suspensa e só pode ser executada com autorização específica. Não executar ERP, banco ou Next.js localmente; validar por análise, typecheck, lint, testes puros e, quando autorizado, build/deploy em produção. Preservar todos os dados financeiros e históricos. Pergunte qual próximo escopo autorizado antes de implementar.
 
 ---
 
@@ -646,4 +650,41 @@ Nenhum ajuste financeiro, estorno, compensação, conversão histórica ou resol
 ### Próxima etapa pendente
 - Registrar e conferir a primeira execução automática às 03:00 de Cuiaba.
 - Validação visual da interface autenticada pelo administrador.
-- Fase 2B e T2 permanecem não iniciadas.
+- **Fase 2B: CANCELADA DEFINITIVAMENTE.**
+- T2: permanece suspensa, sem autorização para execução.
+
+---
+
+## 22. Correção da Auditoria de Vendas (publicação separada)
+
+A coluna **AUDIT. VENDAS** passou a usar uma metodologia única, por venda:
+
+```text
+diferença = pagamentos líquidos válidos − valor líquido devido
+```
+
+- Positivo = **recebimento excedente** (verde, com sinal +).
+- Negativo = **pagamento faltante** (vermelho, com sinal −).
+- Zero = **ÍNTEGRO**.
+- Descontos registrados reduzem o valor devido e não geram divergência.
+- Comandas canceladas e financeiramente neutralizadas não geram divergência; resíduos são sinalizados.
+- Comandas abertas com pagamento parcial aparecem como “em aberto” e não contam como falta.
+- Ordens com pagamentos em mais de uma sessão são atribuídas à sessão do último pagamento, evitando dupla contabilização.
+- Excedentes e faltas são calculados individualmente; um nunca compensa o outro.
+
+Implementação central: `lib/session-sales-audit.ts`. Consumidores: lista e exportação do
+Financeiro, modal de auditoria da sessão e ferramentas do Copiloto. Teste de regressão:
+`scripts/tests/session-sales-audit.test.ts`.
+
+Resultado da reconciliação read-only em 27/11/2026:
+
+| Sessão (abertura Cuiaba) | AUDIT antigo | Excedente novo | Falta nova | Observação |
+|---|---:|---:|---:|---|
+| 25/11/2026 18:38 | +704,00 | +15,00 | 0,00 | 5 canceladas neutralizadas (R$ 719,00), excedente RICARDO ARANTES |
+| 21/11/2026 18:00 | −10,00 | +10,00 | 0,00 | Gabriel Viana pizz (136 devido / 146 pago) |
+| 18/11/2026 19:51 | −15,00 | +15,00 | 0,00 | Ricardo Arantes (250 devido / 265 pago) |
+| 14/11/2026 18:11 | −10,00 | +10,00 | 0,00 | Gabriel Viana (135 devido / 145 pago) |
+| Demais sessões | −5 a −58 | +5 a +58 | 0,00 | Apenas excedentes; nenhuma falta ou cancelada |
+
+A auditoria física permanece inalterada. Nenhum valor histórico foi modificado. A exclusão
+lógica de pagamentos é uma publicação separada e não faz parte desta correção.

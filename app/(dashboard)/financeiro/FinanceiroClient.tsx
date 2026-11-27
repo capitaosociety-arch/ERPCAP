@@ -22,6 +22,12 @@ import { voidPaymentAction, editPaymentAction } from '../../actions/comandas';
 import { currentCuiabaDateKey, formatCuiabaDate, formatCuiabaDateTime, formatCuiabaTime, isCivilDateBeforeTodayCuiaba } from '../../../lib/time-zone';
 import { formatDateDisplay, formatDateOnlyInput } from '../../../lib/subscription-date';
 import { paymentMethodLabel } from '../../../lib/payment-display';
+import {
+    buildAuditOrdersFromSessionPayments,
+    computeSessionSalesAudit,
+    salesAuditStatusLabel,
+    type SessionSalesAuditResult,
+} from '../../../lib/session-sales-audit';
 
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -148,22 +154,9 @@ export default function FinanceiroClient({ payload }: any) {
                         return acc;
                     }, { CASH: 0, PIX: 0, DEBIT: 0, CREDIT: 0 });
 
-                    const uniqueOrdersMap = new Map();
-                    (c.payments || []).forEach((p: any) => {
-                        if (p.order && !uniqueOrdersMap.has(p.order.id)) {
-                            uniqueOrdersMap.set(p.order.id, p.order);
-                        }
-                    });
-                    const uniqueOrders = Array.from(uniqueOrdersMap.values());
-
-                    const totalGrossSold = uniqueOrders.reduce((acc, order) => {
-                        const itemsSum = order.items?.reduce((sum: number, it: any) => sum + it.subtotal, 0) || 0;
-                        return acc + itemsSum;
-                    }, 0);
-                    const totalDiscounts = uniqueOrders.reduce((acc, order) => acc + (order.discount || 0), 0);
-                    const totalPaymentsReceived = (c.payments || []).reduce((acc: number, p: any) => acc + p.amount, 0);
-
-                    const auditVendas = (totalGrossSold - totalDiscounts) - totalPaymentsReceived;
+                    const salesAudit = computeSessionSalesAudit(
+                        buildAuditOrdersFromSessionPayments(c.payments || [], c.id)
+                    );
 
                     const expectedCash = c.openingBal + (byMethod.CASH || 0);
                     const auditFisico = c.closingBal !== null ? c.closingBal - expectedCash : 0;
@@ -180,7 +173,10 @@ export default function FinanceiroClient({ payload }: any) {
                         'Crédito': r2(byMethod.CREDIT),
                         'Fundo de Troco': r2(c.openingBal),
                         'Saldo Final': c.closingBal !== null ? r2(c.closingBal) : null,
-                        'Auditoria de Vendas': r2(auditVendas),
+                        'Audit. Vendas': salesAuditStatusLabel(salesAudit),
+                        'Recebimentos excedentes': r2(salesAudit.excess),
+                        'Pagamentos faltantes': r2(-salesAudit.shortage),
+                        'Em aberto (parcial)': r2(salesAudit.pendingOpen),
                         'Auditoria Física': c.closingBal !== null ? r2(auditFisico) : null
                     };
                 })
@@ -1542,8 +1538,13 @@ export default function FinanceiroClient({ payload }: any) {
                                     <th className="p-4 text-indigo-600 bg-indigo-50/30">Crédito</th>
                                     <th className="p-4 border-l border-gray-100">Fundo Troco</th>
                                     <th className="p-4 border-r border-gray-100">Saldo Final</th>
-                                    <th className="p-4 bg-red-50/20">Audit. Vendas</th>
-                                    <th className="p-4 bg-emerald-50/20">Audit. Física</th>
+                                    <th
+                                        className="p-4 bg-red-50/20"
+                                        title="Diferença = pagamentos líquidos válidos − valor líquido devido, por venda. Excedentes (+ verde) e faltas (− vermelho) não se compensam. Canceladas neutralizadas não geram divergência. Pagamentos parciais em comandas abertas são informados separadamente."
+                                    >
+                                        Audit. Vendas
+                                    </th>
+                                    <th className="p-4 bg-emerald-50/20" title="Auditoria Física: saldo declarado − dinheiro esperado em gaveta (fundo de troco + dinheiro líquido).">Audit. Física</th>
                                     <th className="p-4 text-center">Ações</th>
                                 </tr>
                             </thead>
@@ -1556,25 +1557,11 @@ export default function FinanceiroClient({ payload }: any) {
                                     }, { CASH: 0, PIX: 0, DEBIT: 0, CREDIT: 0 });
 
                                     // --- AUDITORIA DE VENDAS (Audit 1) ---
-                                    // Somatório ÚNICO de itens e descontos das ordens liquidadas nesta sessão
-                                    const uniqueOrdersMap = new Map();
-                                    (cash.payments || []).forEach((p: any) => {
-                                        if (p.order && !uniqueOrdersMap.has(p.order.id)) {
-                                            uniqueOrdersMap.set(p.order.id, p.order);
-                                        }
-                                    });
-                                    const uniqueOrders = Array.from(uniqueOrdersMap.values());
-
-                                    const totalGrossSold = uniqueOrders.reduce((acc, order) => {
-                                        const itemsSum = order.items?.reduce((sum: number, it: any) => sum + it.subtotal, 0) || 0;
-                                        return acc + itemsSum;
-                                    }, 0);
-                                    const totalDiscounts = uniqueOrders.reduce((acc, order) => acc + (order.discount || 0), 0);
-                                    const totalPaymentsReceived = (cash.payments || []).reduce((acc: number, p: any) => acc + p.amount, 0);
-
-                                    // Diferença de Vendas: (O que deveria ter pago) - (O que foi pago)
-                                    // Deve ser zero se tudo que foi vendido foi pago (considerando descontos)
-                                    const auditVendas = (totalGrossSold - totalDiscounts) - totalPaymentsReceived;
+                                    // Metodologia por venda: diferença = pagamentos líquidos − valor líquido devido.
+                                    // Excedentes e faltas são calculados individualmente e nunca se compensam.
+                                    const salesAudit = computeSessionSalesAudit(
+                                        buildAuditOrdersFromSessionPayments(cash.payments || [], cash.id)
+                                    );
 
                                     // --- AUDITORIA FÍSICA (Audit 2) ---
                                     // Diferença de Gaveta: (Declarado) - (Esperado em espécie)
@@ -1615,12 +1602,7 @@ export default function FinanceiroClient({ payload }: any) {
 
                                             <td className="p-4">
                                                 {cash.status === 'CLOSED' ? (
-                                                    <span
-                                                        className={`text-[10px] px-2 py-0.5 rounded font-black border ${Math.abs(auditVendas) < 0.01 ? 'bg-gray-50 text-gray-400 border-gray-100' : 'bg-red-50 text-red-500 border-red-100'}`}
-                                                        title={`Gross: ${Number(totalGrossSold || 0).toFixed(2)} | Disc: ${Number(totalDiscounts || 0).toFixed(2)} | Paid: ${Number(totalPaymentsReceived || 0).toFixed(2)}`}
-                                                    >
-                                                        {Math.abs(auditVendas) < 0.01 ? 'INTEGRO' : `R$ ${Number(auditVendas || 0).toFixed(2)}`}
-                                                    </span>
+                                                    <SalesAuditIndicator audit={salesAudit} />
                                                 ) : (
                                                     <span className="text-gray-300 text-[10px] italic">Em curso</span>
                                                 )}
@@ -2101,6 +2083,73 @@ export default function FinanceiroClient({ payload }: any) {
                                         <p className="text-4xl font-black text-slate-900">R$ {Number(selectedCashRegister.sumAllPayments || 0).toFixed(2).replace('.', ',')}</p>
                                     </div>
 
+                                    <div
+                                        className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm"
+                                        title="Diferença = pagamentos líquidos válidos − valor líquido devido. Excedentes e faltas são calculados por venda e não se compensam. Comandas canceladas e neutralizadas não geram divergência."
+                                    >
+                                        <h3 className="text-lg font-bold text-slate-800 mb-1">Auditoria de Vendas</h3>
+                                        <p className="text-[11px] text-gray-500 mb-4">
+                                            Pagamentos líquidos válidos comparados ao valor líquido devido de cada venda, individualmente.
+                                        </p>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+                                                <p className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Recebimentos excedentes</p>
+                                                <p className="text-2xl font-black text-emerald-700">
+                                                    + R$ {Number(selectedCashRegister.salesAudit?.excess || 0).toFixed(2).replace('.', ',')}
+                                                </p>
+                                            </div>
+                                            <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+                                                <p className="text-[10px] font-black uppercase tracking-wider text-red-700">Pagamentos faltantes</p>
+                                                <p className="text-2xl font-black text-red-600">
+                                                    − R$ {Number(selectedCashRegister.salesAudit?.shortage || 0).toFixed(2).replace('.', ',')}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {Number(selectedCashRegister.salesAudit?.pendingOpen || 0) > 0.005 && (
+                                            <p className="mt-3 text-xs font-bold text-amber-700">
+                                                Em aberto (parcial, não conta como falta): R$ {Number(selectedCashRegister.salesAudit?.pendingOpen || 0).toFixed(2).replace('.', ',')}
+                                            </p>
+                                        )}
+                                        {Number(selectedCashRegister.salesAudit?.crossSessionOrders || 0) > 0 && (
+                                            <p className="mt-2 text-[11px] font-medium text-slate-500">
+                                                {selectedCashRegister.salesAudit.crossSessionOrders} ordem(ns) com pagamento em outra sessão; atribuída à sessão do último pagamento para evitar dupla contabilização.
+                                            </p>
+                                        )}
+                                        {(selectedCashRegister.salesAudit?.orders || []).some((order: any) => Number(order.excess) > 0.005 || Number(order.shortage) > 0.005) && (
+                                            <div className="mt-4 space-y-2">
+                                                <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Vendas responsáveis pela diferença</p>
+                                                {(selectedCashRegister.salesAudit?.orders || [])
+                                                    .filter((order: any) => Number(order.excess) > 0.005 || Number(order.shortage) > 0.005)
+                                                    .map((order: any) => (
+                                                        <div key={order.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-slate-50 px-3 py-2">
+                                                            <div className="min-w-0">
+                                                                <p className="text-xs font-bold text-slate-700 truncate">{order.label || order.id.slice(-6)}</p>
+                                                                <p className="text-[10px] text-gray-500">
+                                                                    Devido: R$ {Number(order.netSales || 0).toFixed(2).replace('.', ',')} • Pago: R$ {Number(order.paymentsNet || 0).toFixed(2).replace('.', ',')} • {order.status}
+                                                                </p>
+                                                            </div>
+                                                            <span className={`shrink-0 text-xs font-black ${Number(order.excess) > 0.005 ? 'text-emerald-700' : 'text-red-600'}`}>
+                                                                {Number(order.excess) > 0.005
+                                                                    ? `+ R$ ${Number(order.excess).toFixed(2).replace('.', ',')}`
+                                                                    : `− R$ ${Number(order.shortage).toFixed(2).replace('.', ',')}`}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                            </div>
+                                        )}
+                                        {!((selectedCashRegister.salesAudit?.orders || []).some((order: any) => Number(order.excess) > 0.005 || Number(order.shortage) > 0.005)) && (
+                                            Number(selectedCashRegister.salesAudit?.pendingOpen || 0) > 0.005 ? (
+                                                <p className="mt-3 text-xs font-bold text-amber-700">
+                                                    Sem faltas em vendas encerradas. Há R$ {Number(selectedCashRegister.salesAudit?.pendingOpen || 0).toFixed(2).replace('.', ',')} em aberto (parcial), que não contam como falta.
+                                                </p>
+                                            ) : (
+                                                <p className="mt-3 text-xs font-bold text-emerald-700">
+                                                    ÍNTEGRO — vendas liquidadas dentro do valor devido.
+                                                </p>
+                                            )
+                                        )}
+                                    </div>
+
                                     {selectedCashRegister.closingNotes && (
                                         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 shadow-sm">
                                             <h4 className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-2 flex items-center gap-2">
@@ -2509,6 +2558,59 @@ export default function FinanceiroClient({ payload }: any) {
                         </form>
                     </div>
                 </div>
+            )}
+        </div>
+    );
+}
+
+function SalesAuditIndicator({ audit }: { audit: SessionSalesAuditResult }) {
+    const hasExcess = audit.excess > 0.005;
+    const hasShortage = audit.shortage > 0.005;
+    const responsible = audit.orders
+        .filter((order) => order.excess > 0.005 || order.shortage > 0.005)
+        .map((order) => {
+            const label = order.label || order.id.slice(-6);
+            if (order.excess > 0.005) return `${label}: +R$ ${order.excess.toFixed(2).replace('.', ',')}`;
+            return `${label}: -R$ ${order.shortage.toFixed(2).replace('.', ',')}`;
+        });
+    const tooltip = [
+        'Diferença = pagamentos líquidos válidos − valor líquido devido.',
+        'Excedentes e faltas são calculados por venda e não se compensam.',
+        responsible.length > 0 ? `Responsáveis: ${responsible.join(' | ')}` : 'Nenhuma venda com excedente ou falta.',
+        audit.pendingOpen > 0.005
+            ? `Em aberto (parcial): R$ ${audit.pendingOpen.toFixed(2).replace('.', ',')} — não conta como falta.`
+            : '',
+        audit.crossSessionOrders > 0
+            ? `${audit.crossSessionOrders} ordem(ns) com pagamento em outra sessão; atribuída à sessão do último pagamento.`
+            : '',
+    ].filter(Boolean).join('\n');
+
+    return (
+        <div className="flex flex-col items-center gap-1" title={tooltip}>
+            {!hasExcess && !hasShortage && audit.pendingOpen <= 0.005 && (
+                <span className="text-[10px] px-2 py-0.5 rounded font-black border bg-emerald-50 text-emerald-700 border-emerald-100">
+                    ÍNTEGRO
+                </span>
+            )}
+            {!hasExcess && !hasShortage && audit.pendingOpen > 0.005 && (
+                <span className="text-[10px] px-2 py-0.5 rounded font-black border bg-amber-50 text-amber-700 border-amber-100">
+                    EM ABERTO
+                </span>
+            )}
+            {hasExcess && (
+                <span className="text-[10px] px-2 py-0.5 rounded font-black border bg-emerald-50 text-emerald-700 border-emerald-100">
+                    + R$ {audit.excess.toFixed(2).replace('.', ',')}
+                </span>
+            )}
+            {hasShortage && (
+                <span className="text-[10px] px-2 py-0.5 rounded font-black border bg-red-50 text-red-600 border-red-100">
+                    − R$ {audit.shortage.toFixed(2).replace('.', ',')}
+                </span>
+            )}
+            {audit.pendingOpen > 0.005 && (
+                <span className="text-[9px] font-bold text-amber-600">
+                    Em aberto: R$ {audit.pendingOpen.toFixed(2).replace('.', ',')}
+                </span>
             )}
         </div>
     );

@@ -14,6 +14,11 @@ import { prisma } from '../prisma';
 import { operationalRentalWindow } from '../time-zone';
 import { buildPeriods, isRentalItem, isFut5, isFut7, round2, fmtMoney } from '../analytics';
 import {
+  buildAuditOrdersFromSessionPayments,
+  computeSessionSalesAudit,
+  salesAuditStatusLabel,
+} from '../session-sales-audit';
+import {
   currentCuiabaMonth,
   formatMonthLabel,
   getFinancialMonth,
@@ -1320,7 +1325,18 @@ const sessoesTool: CopilotTool = {
       orderBy: { openedAt: 'desc' },
       include: {
         user: { select: { name: true } },
-        payments: { include: { order: { include: { items: { where: { status: 'ACTIVE' } } } } } }
+        payments: {
+          include: {
+            order: {
+              include: {
+                items: { where: { status: 'ACTIVE' } },
+                payments: {
+                  select: { id: true, amount: true, date: true, cashRegisterId: true },
+                },
+              },
+            },
+          },
+        },
       }
     });
 
@@ -1330,16 +1346,10 @@ const sessoesTool: CopilotTool = {
         return acc;
       }, { CASH: 0, PIX: 0, DEBIT: 0, CREDIT: 0 });
 
-      const uniqueOrdersMap = new Map();
-      (s.payments || []).forEach((p: any) => {
-        if (p.order && !uniqueOrdersMap.has(p.order.id)) uniqueOrdersMap.set(p.order.id, p.order);
-      });
-      const uniqueOrders = Array.from(uniqueOrdersMap.values());
-      const totalGrossSold = uniqueOrders.reduce((acc: number, o: any) =>
-        acc + (o.items?.reduce((sum: number, it: any) => sum + it.subtotal, 0) || 0), 0);
-      const totalDiscounts = uniqueOrders.reduce((acc: number, o: any) => acc + (o.discount || 0), 0);
-      const totalPaymentsReceived = (s.payments || []).reduce((acc: number, p: any) => acc + p.amount, 0);
-      const auditVendas = (totalGrossSold - totalDiscounts) - totalPaymentsReceived;
+      const salesAudit = computeSessionSalesAudit(
+        buildAuditOrdersFromSessionPayments(s.payments || [], s.id),
+        s.id,
+      );
       const expectedCash = s.openingBal + (byMethod.CASH || 0);
       const auditFisico = s.closingBal !== null ? s.closingBal - expectedCash : 0;
 
@@ -1356,7 +1366,10 @@ const sessoesTool: CopilotTool = {
         },
         fundoTroco: round2(s.openingBal),
         saldoFinal: s.closingBal !== null ? round2(s.closingBal) : null,
-        auditoriaVendas: round2(auditVendas),
+        auditoriaVendas: round2(-salesAudit.shortage),
+        excedentes: round2(salesAudit.excess),
+        emAberto: round2(salesAudit.pendingOpen),
+        auditoriaVendasSituacao: salesAuditStatusLabel(salesAudit),
         auditoriaFisica: s.closingBal !== null ? round2(auditFisico) : null
       };
     });

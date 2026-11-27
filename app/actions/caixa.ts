@@ -15,6 +15,7 @@ import { publicActionErrorMessage } from '../../lib/action-errors';
 import { formatCuiabaDateTime } from '../../lib/time-zone';
 import { buildDisplayedPayments, sumDisplayedPayments } from '../../lib/payment-display';
 import { loadPaymentDisplayData } from '../../lib/payment-display-server';
+import { computeSessionSalesAudit } from '../../lib/session-sales-audit';
 
 export async function openGlobalCashRegister(openingBal: number) {
     const user = await requirePermission(['permFinance', 'permPDV']);
@@ -289,7 +290,8 @@ export async function getRegisterSummary(registerId: string) {
             items: order.items?.map((i: any) => ({
                 name: i.product?.name || i.service?.name || 'Item',
                 quantity: i.quantity,
-                subtotal: i.subtotal
+                subtotal: i.subtotal,
+                status: i.status,
             })) || [],
             payments: rawPayments,
             validPayments,
@@ -299,8 +301,21 @@ export async function getRegisterSummary(registerId: string) {
         };
     });
 
+    const salesAudit = computeSessionSalesAudit(
+        salesHistory.map((sale) => ({
+            id: sale.orderId,
+            label: sale.notes,
+            status: sale.orderStatus,
+            discount: sale.discount,
+            items: sale.items,
+            payments: sale.rawPayments,
+        })),
+        registerId,
+    );
+
     return JSON.parse(JSON.stringify({
         openOrdersCount,
+        salesAudit,
         openedAt: registerToClose.openedAt,
         closedAt: registerToClose.closedAt,
         operatorName: registerToClose.user?.name || 'Operador',
