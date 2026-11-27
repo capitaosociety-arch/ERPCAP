@@ -1,5 +1,6 @@
 import { prisma } from "../../../lib/prisma";
 import { requirePagePermission } from "../../../lib/auth-guard";
+import { loadRentalDeletionCapabilities } from "../../../lib/rental-deletion-server";
 import ClientesClient from "./ClientesClient";
 
 export default async function ClientesRoute() {
@@ -79,5 +80,17 @@ export default async function ClientesRoute() {
     });
   });
 
-  return <ClientesClient initialCustomers={customers} fieldRentalLancamentos={fieldRentalLancamentos} />;
+  const rentalCapabilities = await loadRentalDeletionCapabilities(
+    prisma,
+    customers.flatMap((customer) => customer.rentals.map((rental) => rental.id)),
+  );
+  const customersForClient = customers.map((customer) => ({
+    ...customer,
+    rentals: customer.rentals.map((rental) => ({
+      ...rental,
+      capabilities: rentalCapabilities.get(rental.id) || null,
+    })),
+  }));
+
+  return <ClientesClient initialCustomers={customersForClient} fieldRentalLancamentos={fieldRentalLancamentos} />;
 }

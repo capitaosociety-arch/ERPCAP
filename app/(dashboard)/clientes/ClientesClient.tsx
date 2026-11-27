@@ -99,6 +99,7 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
           status: rent.status,
           source: rent.source || 'LEGACY',
           timeConvention,
+          capabilities: rent.capabilities || null,
       };
   };
 
@@ -394,6 +395,11 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   const [editingRental, setEditingRental] = useState<any>(null);
 
   const openEditRental = (rent: any) => {
+      const capability = rent?.capabilities?.editing;
+      if (capability && !capability.allowed) {
+          alert(capability.message);
+          return;
+      }
       setEditingRental(rent);
       setRentalResource(rent.resource);
       setRentalDate(rent.startDate);
@@ -426,6 +432,11 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
   };
 
   const handleDeleteRental = (rent: any) => {
+      const capability = rent?.capabilities?.deletion;
+      if (capability && !capability.allowed) {
+          alert(capability.message);
+          return;
+      }
       if (!confirm("Remover esta reserva do dossiê? A exclusão será confirmada somente ao salvar.")) return;
       setRentalDrafts(prev => prev.filter(item => item.id !== rent.id));
       setIsDirty(true);
@@ -549,6 +560,11 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
 
   const handleRentalStatus = (rent: any, status: string) => {
     if (!rent) return;
+    const capability = rent?.capabilities?.editing;
+    if (capability && !capability.allowed) {
+        alert(capability.message);
+        return;
+    }
     setRentalDrafts(prev => prev.map(item => item.id === rent.id ? { ...item, status } : item));
     setIsDirty(true);
   };
@@ -1099,22 +1115,43 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                <div>
                                    <h3 className="font-bold text-slate-800 text-sm flex items-center gap-1.5 py-2"><Calendar size={14}/> Histórico de Locações</h3>
                                    <div className="flex flex-col gap-2">
-                                        {sortedRentalDrafts.map((rent: any) => (
+                                        {sortedRentalDrafts.map((rent: any) => {
+                                            const deletionCapability = rent?.capabilities?.deletion;
+                                            const editingCapability = rent?.capabilities?.editing;
+                                            const deletionBlocked = !!deletionCapability && !deletionCapability.allowed;
+                                            const editingBlocked = !!editingCapability && !editingCapability.allowed;
+                                            return (
                                             <div key={rent.id} className="bg-white border text-left border-gray-200 rounded-xl p-3 flex flex-col gap-2 shadow-sm">
-                                                <div className="flex justify-between items-center">
-                                                    <div className="flex flex-col">
+                                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                                    <div className="flex flex-col min-w-0">
                                                         <span className="font-bold text-slate-800 text-xs">{rent.resource}</span>
                                                         <span className="text-[10px] text-gray-500 font-medium">
                                                             {draftPeriodLabel(rent)}
                                                         </span>
                                                     </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-xs font-black text-slate-600">R$ {Number(rent.amount || 0).toFixed(2).replace('.',',')}</span>
-                                                        <button onClick={() => openEditRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-mrts-blue rounded-lg transition" title="Editar locação">
-                                                            <Edit3 size={13} />
+                                                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                                                        <span className="text-xs font-black text-slate-600 shrink-0">R$ {Number(rent.amount || 0).toFixed(2).replace('.',',')}</span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openEditRental(rent)}
+                                                            className={`inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-[10px] font-bold transition ${editingBlocked ? 'border-blue-100 bg-blue-50/60 text-blue-400 cursor-not-allowed' : 'border-blue-100 bg-blue-50 text-blue-600 hover:border-blue-200 hover:bg-blue-100'}`}
+                                                            title={editingBlocked ? editingCapability.message : 'Editar locação'}
+                                                            aria-label={editingBlocked ? editingCapability.message : 'Editar locação'}
+                                                            aria-disabled={editingBlocked}
+                                                        >
+                                                            <Edit3 size={18} />
+                                                            <span className="hidden sm:inline">Editar</span>
                                                         </button>
-                                                        <button onClick={() => handleDeleteRental(rent)} className="w-6 h-6 inline-flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg transition" title="Excluir locação">
-                                                            <Trash2 size={13} />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDeleteRental(rent)}
+                                                            className={`inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-[10px] font-bold transition ${deletionBlocked ? 'border-red-100 bg-red-50/60 text-red-400 cursor-not-allowed' : 'border-red-100 bg-red-50 text-red-600 hover:border-red-200 hover:bg-red-100'}`}
+                                                            title={deletionBlocked ? deletionCapability.message : 'Excluir locação'}
+                                                            aria-label={deletionBlocked ? deletionCapability.message : 'Excluir locação'}
+                                                            aria-disabled={deletionBlocked}
+                                                        >
+                                                            <Trash2 size={18} />
+                                                            <span className="hidden sm:inline">Excluir</span>
                                                         </button>
                                                     </div>
                                                 </div>
@@ -1133,9 +1170,9 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                                     <select
                                                         value={rent.status}
                                                         onChange={(e) => handleRentalStatus(rent, e.target.value)}
-                                                        disabled={isSavingDossier}
+                                                        disabled={isSavingDossier || editingBlocked}
                                                         className="text-[10px] font-bold text-slate-600 bg-gray-50 border border-gray-200 rounded-lg px-1.5 py-1 outline-none focus:border-mrts-blue disabled:opacity-50"
-                                                        title="Alterar status da reserva"
+                                                        title={editingBlocked ? editingCapability.message : 'Alterar status da reserva'}
                                                     >
                                                         <option value="PENDING">Pendente</option>
                                                         <option value="CONFIRMED">Confirmar</option>
@@ -1145,7 +1182,8 @@ export default function ClientesClient({ initialCustomers, fieldRentalLancamento
                                                     </select>
                                                 </div>
                                             </div>
-                                        ))}
+                                        );
+                                        })}
                                        {rentalDrafts.length === 0 && <p className="text-xs text-center text-gray-400 py-4 font-medium">Nenhuma reserva localizada</p>}
                                    </div>
                                </div>

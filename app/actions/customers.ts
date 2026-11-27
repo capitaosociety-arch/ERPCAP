@@ -5,11 +5,13 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "../../lib/auth-guard";
 import { buildRentalWindow, formatRentalPeriod } from "../../lib/rental-time";
 import { findOperationalConflict, operationalInterval } from "../../lib/rental-conflicts";
-import { NEW_RENTAL_TIME_CONVENTION, normalizeRentalTimeConvention, operationalRentalWindow, type RentalTimeConvention } from "../../lib/time-zone";
+import { NEW_RENTAL_TIME_CONVENTION, formatCuiabaDateTime, normalizeRentalTimeConvention, operationalRentalWindow, type RentalTimeConvention } from "../../lib/time-zone";
 import { roundMoney } from "../../lib/rental-renewal";
 import { addMonthClamped, addMonthForDay, nextDueDateForDay, parseDateOnlyInput } from "../../lib/subscription-date";
 import { createAuditLog } from "./audit";
 import { recalcScore } from "./score";
+import { lockRentalRows } from "../../lib/stock-lock";
+import { loadRentalDeletionCapabilities } from "../../lib/rental-deletion-server";
 
 function validateRentalStatus(status?: string) {
     if (status && !['PENDING', 'CONFIRMED', 'PAID', 'CANCELED', 'NO_SHOW'].includes(status)) {
@@ -61,13 +63,19 @@ async function assertRentalAvailable(
     }
 }
 
-async function assertRentalWithoutActiveLink(tx: any, rentalId: string) {
-    const linked = await tx.orderItem.findFirst({
-        where: { rentalId, status: 'ACTIVE' },
-        select: { id: true },
-    });
-    if (linked) {
-        throw new Error("Reserva vinculada a uma operacao ativa nao pode ser alterada ou excluida por este fluxo. Use a Agenda ou o fluxo financeiro apropriado.");
+async function assertRentalEditingAllowed(tx: any, rentalId: string) {
+    const capabilities = await loadRentalDeletionCapabilities(tx, [rentalId]);
+    const capability = capabilities.get(rentalId);
+    if (!capability || !capability.editing.allowed) {
+        throw new Error(capability?.editing.message || "Reserva não encontrada.");
+    }
+}
+
+async function assertRentalDeletionAllowed(tx: any, rentalId: string) {
+    const capabilities = await loadRentalDeletionCapabilities(tx, [rentalId]);
+    const capability = capabilities.get(rentalId);
+    if (!capability || !capability.deletion.allowed) {
+        throw new Error(capability?.deletion.message || "Reserva não encontrada.");
     }
 }
 
@@ -285,16 +293,49 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
             .filter((rental) => rental.id && rental.changed)
             .map((rental) => rental.id!);
         const protectedRentalIds = [...new Set([...deleteIds, ...changedLinkedIds])];
-        if (protectedRentalIds.length > 0) {
-            const linkedToOrder = await tx.orderItem.findFirst({
-                where: { rentalId: { in: protectedRentalIds }, status: 'ACTIVE' },
-                select: { id: true },
-            });
-            if (linkedToOrder) throw new Error("Reserva vinculada a um lancamento ativo nao pode ser alterada ou excluida por aqui.");
+        for (const id of protectedRentalIds) {
+            if (deleteIds.includes(id) && !existingById.has(id)) {
+                throw new Error("Reserva para exclusao nao pertence a este cliente.");
+            }
         }
+        if (protectedRentalIds.length > 0) {
+            // Ordem de bloqueio consistente: recursos (quando houver alteracao de horario)
+            // já foram travados; agora travamos as linhas das reservas antes de reavaliar vínculos.
+            await lockRentalRows(tx, protectedRentalIds);
+            const capabilities = await loadRentalDeletionCapabilities(tx, protectedRentalIds);
+
+            for (const id of deleteIds) {
+                const capability = capabilities.get(id);
+                if (!capability || !capability.deletion.allowed) {
+                    throw new Error(capability?.deletion.message || "Reserva nao encontrada.");
+                }
+            }
+
+            for (const id of changedLinkedIds) {
+                if (deleteIds.includes(id)) continue;
+                const capability = capabilities.get(id);
+                if (!capability || !capability.editing.allowed) {
+                    throw new Error(capability?.editing.message || "Reserva nao encontrada.");
+                }
+            }
+        }
+
         for (const id of deleteIds) {
-            if (!existingById.has(id)) throw new Error("Reserva para exclusao nao pertence a este cliente.");
+            const current = existingById.get(id);
+            if (!current) throw new Error("Reserva para exclusao nao pertence a este cliente.");
             await tx.rental.delete({ where: { id } });
+            const operationalWindow = operationalRentalWindow(
+                current.startTime,
+                current.endTime,
+                current.timeConvention,
+            );
+            await tx.auditLog.create({
+                data: {
+                    userId: actor.id,
+                    action: 'Exclusão de Reserva (Dossiê)',
+                    details: `Reserva ${current.resource} de ${formatCuiabaDateTime(operationalWindow.startTime)} (R$ ${Number(current.totalAmount || 0).toFixed(2)}) excluída do dossiê do cliente. Comanda cancelada e registros financeiros preservados.`,
+                },
+            });
         }
         for (const rental of preparedRentals) {
             if (!rental.id || !rental.changed) continue;
@@ -403,6 +444,9 @@ async function saveCustomerDossierInternal(data: CustomerDossierInput) {
     }
 
     revalidatePath("/clientes");
+    revalidatePath("/agenda");
+    revalidatePath("/dashboard");
+    revalidatePath("/inteligencia");
     if (customerId) await recalcScore(customerId).catch(() => {});
     if (auditActions.length > 0) {
         await createAuditLog("Dossie do Cliente", `Cliente ${name}: ${auditActions.join(', ')}.`).catch(() => {});
@@ -531,6 +575,9 @@ export async function createRental(customerId: string, resource: string, date: s
     });
 
     revalidatePath("/clientes");
+    revalidatePath("/agenda");
+    revalidatePath("/dashboard");
+    revalidatePath("/inteligencia");
     await recalcScore(customerId).catch(() => {});
     return { success: true };
 }
@@ -544,9 +591,10 @@ export async function setRentalStatus(rentalId: string, status: string) {
     if (!allowed.includes(status)) throw new Error("Status inválido.");
 
     const rental = await prisma.$transaction(async (tx) => {
+        await lockRentalRows(tx, [rentalId]);
         const current = await tx.rental.findUnique({ where: { id: rentalId } });
         if (!current) throw new Error("Reserva não encontrada.");
-        await assertRentalWithoutActiveLink(tx, rentalId);
+        await assertRentalEditingAllowed(tx, rentalId);
         await tx.rental.update({
             where: { id: rentalId },
             data: {
@@ -555,9 +603,12 @@ export async function setRentalStatus(rentalId: string, status: string) {
             }
         });
         return current;
-    });
+    }, { maxWait: 10000, timeout: 20000 });
 
     revalidatePath("/clientes");
+    revalidatePath("/agenda");
+    revalidatePath("/dashboard");
+    revalidatePath("/inteligencia");
     if (rental.customerId) await recalcScore(rental.customerId).catch(() => {});
     return { success: true };
 }
@@ -611,38 +662,59 @@ export async function updateRental(rentalId: string, resource: string, date: str
     const validAmount = validateRentalAmount(Number(amount));
 
     await prisma.$transaction(async (tx) => {
-        const current = await tx.rental.findUnique({ where: { id: rentalId }, select: { id: true, timeConvention: true } });
+        const current = await tx.rental.findUnique({ where: { id: rentalId }, select: { id: true, resource: true, timeConvention: true } });
         if (!current) throw new Error("Reserva nao encontrada.");
         const convention = normalizeRentalTimeConvention(current.timeConvention);
         const { startTime, endTime } = buildRentalWindow(date, startHour, endHour, convention);
-        await assertRentalWithoutActiveLink(tx, rentalId);
+        await lockRentalResources(tx, [current.resource, resource.trim()]);
+        await lockRentalRows(tx, [rentalId]);
+        await assertRentalEditingAllowed(tx, rentalId);
         await assertRentalAvailable(tx, resource.trim(), startTime, endTime, [rentalId], convention);
         await tx.rental.update({
             where: { id: rentalId },
             data: { resource: resource.trim(), startTime, endTime, totalAmount: validAmount }
         });
-    });
+    }, { maxWait: 10000, timeout: 20000 });
 
     revalidatePath("/clientes");
+    revalidatePath("/agenda");
+    revalidatePath("/dashboard");
+    revalidatePath("/inteligencia");
     const r = await prisma.rental.findUnique({ where: { id: rentalId }, select: { customerId: true } });
     if (r?.customerId) await recalcScore(r.customerId).catch(() => {});
     return { success: true };
 }
 
 export async function deleteRental(rentalId: string) {
-    await requirePermission("permCustomers");
+    const actor = await requirePermission("permCustomers");
 
     if (!rentalId) throw new Error("ID inválido");
 
     const rental = await prisma.$transaction(async (tx) => {
+        await lockRentalRows(tx, [rentalId]);
         const current = await tx.rental.findUnique({ where: { id: rentalId } });
         if (!current) throw new Error("Reserva não encontrada.");
-        await assertRentalWithoutActiveLink(tx, rentalId);
+        await assertRentalDeletionAllowed(tx, rentalId);
         await tx.rental.delete({ where: { id: rentalId } });
+        const operationalWindow = operationalRentalWindow(
+            current.startTime,
+            current.endTime,
+            current.timeConvention,
+        );
+        await tx.auditLog.create({
+            data: {
+                userId: actor.id,
+                action: 'Exclusão de Reserva',
+                details: `Reserva ${current.resource} de ${formatCuiabaDateTime(operationalWindow.startTime)} (R$ ${Number(current.totalAmount || 0).toFixed(2)}) excluída. Comanda(s) cancelada(s), pagamentos/estornos e demais registros financeiros preservados.`,
+            },
+        });
         return current;
-    });
+    }, { maxWait: 10000, timeout: 20000 });
 
     revalidatePath("/clientes");
+    revalidatePath("/agenda");
+    revalidatePath("/dashboard");
+    revalidatePath("/inteligencia");
     if (rental?.customerId) await recalcScore(rental.customerId).catch(() => {});
     return { success: true };
 }

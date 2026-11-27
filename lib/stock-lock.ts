@@ -36,3 +36,14 @@ export async function lockCashRegisterRow(tx: Prisma.TransactionClient, register
   await tx.$queryRaw`SELECT id FROM "CashRegister" WHERE id = ${registerId} FOR UPDATE`;
   return tx.cashRegister.findUnique({ where: { id: registerId } });
 }
+
+export async function lockRentalRow(tx: Prisma.TransactionClient, rentalId: string) {
+  await tx.$queryRaw`SELECT id FROM "Rental" WHERE id = ${rentalId} FOR UPDATE`;
+}
+
+export async function lockRentalRows(tx: Prisma.TransactionClient, rentalIds: string[]) {
+  const unique = Array.from(new Set(rentalIds.filter(Boolean))).sort();
+  for (const rentalId of unique) {
+    await lockRentalRow(tx, rentalId);
+  }
+}
