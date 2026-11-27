@@ -6,7 +6,28 @@ export type PaymentDisplayRow = {
   amount: number;
   date: string | Date;
   userId?: string | null;
+  deletedAt?: string | Date | null;
+  deletedByUserId?: string | null;
+  deletedByName?: string | null;
+  deletionReason?: string | null;
 };
+
+export type DeletedPaymentAudit = {
+  id: string;
+  orderId: string;
+  cashRegisterId?: string | null;
+  method: string;
+  amount: number;
+  date: string | Date;
+  deletedAt: string | Date;
+  deletedByUserId?: string | null;
+  deletedByName?: string | null;
+  deletionReason?: string | null;
+};
+
+function isActivePaymentRow(payment: PaymentDisplayRow): boolean {
+  return !payment.deletedAt;
+}
 
 export type PaymentVoidMarker = {
   originalPaymentId: string;
@@ -95,7 +116,9 @@ export function buildPaymentReversalLinks(
   payments: PaymentDisplayRow[],
   markers: PaymentVoidMarker[],
 ): PaymentReversalLink[] {
-  const byId = new Map(payments.map((payment) => [payment.id, payment]));
+  // Pagamentos excluídos operacionalmente nunca entram em vínculos de estorno.
+  const activePayments = payments.filter(isActivePaymentRow);
+  const byId = new Map(activePayments.map((payment) => [payment.id, payment]));
   const markersByOriginal = new Map<string, PaymentVoidMarker[]>();
 
   for (const marker of markers) {
@@ -117,7 +140,7 @@ export function buildPaymentReversalLinks(
     let ambiguous = false;
 
     for (const marker of sortedMarkers) {
-      const candidates = payments
+      const candidates = activePayments
         .filter((payment) => {
           if (payment.amount >= 0) return false;
           if (payment.orderId !== original.orderId) return false;
@@ -198,6 +221,7 @@ export function buildDisplayedPayments(
   const displayed: DisplayedPayment[] = [];
 
   for (const payment of payments) {
+    if (!isActivePaymentRow(payment)) continue;
     if (linkedReversalIds.has(payment.id)) continue;
 
     const link = linkByOriginal.get(payment.id);
@@ -259,4 +283,26 @@ export function buildDisplayedPayments(
 
 export function sumDisplayedPayments(payments: DisplayedPayment[]): number {
   return roundMoney(payments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0));
+}
+
+/**
+ * Histórico de auditoria (separado da visualização operacional) com os
+ * lançamentos excluídos logicamente. Nunca é usado para compor totais ativos.
+ */
+export function buildDeletedPaymentAudit(payments: PaymentDisplayRow[]): DeletedPaymentAudit[] {
+  return payments
+    .filter((payment): payment is PaymentDisplayRow & { deletedAt: string | Date } => !!payment.deletedAt)
+    .map((payment) => ({
+      id: payment.id,
+      orderId: payment.orderId,
+      cashRegisterId: payment.cashRegisterId,
+      method: payment.method,
+      amount: roundMoney(Number(payment.amount) || 0),
+      date: payment.date,
+      deletedAt: payment.deletedAt,
+      deletedByUserId: payment.deletedByUserId,
+      deletedByName: payment.deletedByName,
+      deletionReason: payment.deletionReason,
+    }))
+    .sort((a, b) => toMs(b.deletedAt) - toMs(a.deletedAt));
 }

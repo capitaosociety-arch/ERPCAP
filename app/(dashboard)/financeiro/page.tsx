@@ -34,7 +34,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
   // e jogos/locações (Rental) são apenas informativos dentro do próprio Clientes.
   const [payments, drePayments, accrualOrders, cashRegisters, financialEntries, stockMovements, financialPeriods, financialPeriodAudits, auditUsers] = await Promise.all([
     prisma.payment.findMany({
-      where: { date: { gte: startDate, lte: endDate } },
+      where: { date: { gte: startDate, lte: endDate }, deletedAt: null },
       include: { 
         order: {
           include: {
@@ -47,6 +47,7 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       }
     }),
     prisma.payment.findMany({
+      where: { deletedAt: null },
       select: { amount: true, date: true, method: true, orderId: true },
       orderBy: { date: 'asc' }
     }),
@@ -63,11 +64,13 @@ export default async function FinanceiroRoute({ searchParams }: { searchParams: 
       include: { 
         user: { select: { name: true } },
         payments: {
+          where: { deletedAt: null },
           include: {
             order: {
               include: {
                 items: true,
                 payments: {
+                  where: { deletedAt: null },
                   select: { id: true, amount: true, date: true, cashRegisterId: true },
                 },
               },

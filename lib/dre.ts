@@ -172,7 +172,7 @@ export function buildDreAccrualFromData(
 export async function computeDre(from: Date, to: Date): Promise<DreResultado> {
   const [payments, stockMovements, financialEntries] = await Promise.all([
     prisma.payment.findMany({
-      where: { date: { gte: from, lte: to } },
+      where: { date: { gte: from, lte: to }, deletedAt: null },
       select: { amount: true, date: true },
     }),
     prisma.stockMovement.findMany({

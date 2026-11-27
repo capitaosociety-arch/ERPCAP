@@ -37,6 +37,7 @@ model User {
   cashRegisters CashRegister[]
   orders        Order[]       @relation("CreatedOrders")
   payments      Payment[]
+  paymentsDeleted Payment[]  @relation("PaymentDeletedBy")
   requestedTransfers  TransferRequest[] @relation("RequestedTransfers")
   authorizedTransfers TransferRequest[] @relation("AuthorizedTransfers")
   auditResolutions     RentalAuditOccurrence[] @relation("AuditResolvedBy")
@@ -265,13 +266,22 @@ model Payment {
   amount         Float
   date           DateTime @default(now())
 
+  // Exclusão lógica de lançamento incorreto. Nunca representa estorno/refund:
+  // o pagamento permanece para trilha técnica, mas deixa de compor totais ativos.
+  deletedAt       DateTime?
+  deletedByUserId String?
+  deletionReason  String?
+
   order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   cashRegister   CashRegister @relation(fields: [cashRegisterId], references: [id])
   user           User     @relation(fields: [userId], references: [id])
+  deletedBy      User?    @relation("PaymentDeletedBy", fields: [deletedByUserId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
   @@index([cashRegisterId])
   @@index([date])
+  @@index([deletedAt])
+  @@index([deletedByUserId])
 }
 
 model AuditLog {

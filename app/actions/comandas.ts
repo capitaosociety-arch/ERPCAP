@@ -39,6 +39,18 @@ import {
     readOperationResourceId,
 } from "../../lib/operation-idempotency";
 import { publicActionErrorMessage } from "../../lib/action-errors";
+import {
+    PAYMENT_DELETION_ACTION,
+    PAYMENT_DELETION_FALLBACK_MESSAGE,
+    normalizePaymentDeletionReason,
+    evaluatePaymentDeletion,
+} from "../../lib/payment-deletion";
+import {
+    buildPaymentReversalLinks,
+    parsePaymentVoidMarker,
+    type PaymentDisplayRow,
+    type PaymentVoidMarker,
+} from "../../lib/payment-display";
 
 const PAYMENT_ACCESS = ["permPDV", "permComandas", "permFinance"] as const;
 const PAYMENT_IDEMPOTENCY_ACTION = 'PaymentIdempotency';
@@ -185,7 +197,7 @@ export async function closeComanda(
             await lockOrderRow(tx, normalizedOrderId);
             const order = await tx.order.findUnique({
                 where: { id: normalizedOrderId },
-                include: { payments: { select: { amount: true } } },
+                include: { payments: { where: { deletedAt: null }, select: { amount: true } } },
             });
             if (!order) return { success: false as const, error: COMANDA_NOT_FOUND_MESSAGE };
             if (order.status !== "OPEN") {
@@ -415,7 +427,10 @@ export async function processPayment(
             await lockOrderRow(tx, normalizedOrderId);
             const order = await tx.order.findUnique({
                 where: { id: normalizedOrderId },
-                include: { payments: true, items: { select: { rentalId: true } } },
+                include: {
+                    payments: { where: { deletedAt: null } },
+                    items: { select: { rentalId: true } },
+                },
             });
             if (!order) {
                 return { success: false, error: "Comanda não encontrada." };
@@ -549,7 +564,7 @@ export async function updateOrderItemQuantity(
                 return { success: false, error: "Apenas itens de comandas em aberto podem ser alterados." };
             }
 
-            const received = (await tx.payment.findMany({ where: { orderId: item.orderId }, select: { amount: true } }))
+            const received = (await tx.payment.findMany({ where: { orderId: item.orderId, deletedAt: null }, select: { amount: true } }))
                 .reduce((sum, payment) => sum + payment.amount, 0);
             if (received > 0.01) {
                 return { success: false, error: "Comanda possui pagamento parcial. Estorne o valor recebido antes de alterar itens." };
@@ -687,7 +702,7 @@ export async function removeItemFromOrder(
                 return evaluateComandaItemDeletion({ found: false });
             }
 
-            const received = (await tx.payment.findMany({ where: { orderId: item.orderId }, select: { amount: true } }))
+            const received = (await tx.payment.findMany({ where: { orderId: item.orderId, deletedAt: null }, select: { amount: true } }))
                 .reduce((sum, payment) => sum + payment.amount, 0);
             const decision = evaluateComandaItemDeletion({
                 found: true,
@@ -812,7 +827,7 @@ export async function deleteComandaAction(
 
             const order = await tx.order.findUnique({
                 where: { id: normalizedOrderId },
-                include: { items: true, payments: true }
+                include: { items: true, payments: { where: { deletedAt: null } } }
             });
 
             if (!order) return evaluateComandaDeletion({ found: false });
@@ -966,6 +981,7 @@ export async function voidPaymentAction(paymentId: string) {
             });
 
             if (!payment) throw new Error("Pagamento nao encontrado.");
+            if (payment.deletedAt) throw new Error("Este pagamento foi excluido operacionalmente e nao pode ser estornado.");
             if (payment.amount <= 0) throw new Error("Este registro e um estorno e nao pode ser estornado novamente.");
             await assertFinancialPeriodOpen(payment.date);
 
@@ -1049,6 +1065,252 @@ export async function voidPaymentAction(paymentId: string) {
         return { success: false, error: publicActionErrorMessage(error, VOID_PAYMENT_FALLBACK_MESSAGE) };
     }
 }
+/**
+ * Exclusão lógica de um pagamento lançado incorretamente.
+ *
+ * Não é estorno/refund: não devolve estoque, não gera crédito ao cliente e não
+ * movimenta banco. O lançamento permanece no banco com trilha (usuário, data,
+ * valor, forma e motivo), mas deixa de compor totais ativos. Exige sessão de
+ * caixa aberta e período financeiro aberto; sessões encerradas e pagamentos
+ * estornados exigem o fluxo formal de estorno.
+ */
+export async function deletePaymentAction(paymentId: string, reason: string) {
+    try {
+        const actor = await requirePermission(['permFinance', 'permComandas', 'permPDV']);
+        const normalizedPaymentId = String(paymentId || '').trim();
+        const normalizedReason = normalizePaymentDeletionReason(reason);
+        if (!normalizedPaymentId) {
+            return { success: false as const, error: 'Pagamento não encontrado.' };
+        }
+        const idempotencyMarker = `payment-delete:${normalizedPaymentId}`;
+
+        const result = await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${idempotencyMarker}))::text`;
+
+            const payment = await tx.payment.findUnique({
+                where: { id: normalizedPaymentId },
+                include: {
+                    order: { select: { id: true, status: true, total: true, discount: true } },
+                    cashRegister: { select: { id: true, status: true } },
+                },
+            });
+
+            const initialDecision = evaluatePaymentDeletion({
+                found: !!payment,
+                amount: payment?.amount,
+                deletedAt: payment?.deletedAt,
+                orderStatus: payment?.order?.status,
+                sessionStatus: payment?.cashRegister?.status,
+                reason: normalizedReason,
+            });
+
+            if (!initialDecision.allowed) {
+                if (initialDecision.code === 'ALREADY_DELETED') {
+                    return {
+                        success: true as const,
+                        idempotent: true,
+                        orderId: payment?.orderId || null,
+                        orderReopened: false,
+                    };
+                }
+                return { success: false as const, error: initialDecision.message };
+            }
+            if (!payment) {
+                return { success: false as const, error: 'Pagamento não encontrado.' };
+            }
+
+            await assertFinancialPeriodOpen(payment.date);
+            await lockOrderRow(tx, payment.orderId);
+            await lockCashRegisterRow(tx, payment.cashRegisterId);
+
+            // Releitura após os locks para impedir duplicidade e fechamento concorrente.
+            const current = await tx.payment.findUnique({
+                where: { id: payment.id },
+                include: {
+                    order: { select: { id: true, status: true, total: true, discount: true } },
+                    cashRegister: { select: { id: true, status: true } },
+                },
+            });
+            if (!current || current.deletedAt) {
+                return {
+                    success: true as const,
+                    idempotent: true,
+                    orderId: current?.orderId || payment.orderId,
+                    orderReopened: false,
+                };
+            }
+
+            // Reconfirma o período após os locks, reduzindo a janela de corrida
+            // com um fechamento financeiro concorrente.
+            await assertFinancialPeriodOpen(current.date);
+
+            const orderPayments = await tx.payment.findMany({
+                where: { orderId: current.orderId },
+                select: {
+                    id: true,
+                    orderId: true,
+                    cashRegisterId: true,
+                    method: true,
+                    amount: true,
+                    date: true,
+                    userId: true,
+                },
+            });
+            const markerRows = await tx.auditLog.findMany({
+                where: {
+                    action: 'PaymentVoidIdempotency',
+                    details: { in: orderPayments.map((item) => `payment-void:${item.id}`) },
+                },
+                select: { details: true, userId: true, timestamp: true },
+            });
+            const markers: PaymentVoidMarker[] = markerRows
+                .map((row): PaymentVoidMarker | null => {
+                    const originalPaymentId = parsePaymentVoidMarker(row.details);
+                    if (!originalPaymentId) return null;
+                    return { originalPaymentId, actorUserId: row.userId, timestamp: row.timestamp };
+                })
+                .filter((marker): marker is PaymentVoidMarker => marker !== null);
+            const links = buildPaymentReversalLinks(orderPayments as PaymentDisplayRow[], markers);
+            const hasLinkedReversal = links.some(
+                (link) =>
+                    link.originalPaymentId === current.id ||
+                    link.reversalPaymentIds.includes(current.id),
+            );
+            const hasSameMethodReversal = orderPayments.some(
+                (item) =>
+                    item.id !== current.id &&
+                    Number(item.amount) < 0 &&
+                    String(item.method) === String(current.method),
+            );
+
+            const lockedDecision = evaluatePaymentDeletion({
+                found: true,
+                amount: current.amount,
+                deletedAt: current.deletedAt,
+                orderStatus: current.order.status,
+                sessionStatus: current.cashRegister.status,
+                hasReversal: hasLinkedReversal || hasSameMethodReversal,
+                reason: normalizedReason,
+            });
+            if (!lockedDecision.allowed) {
+                return { success: false as const, error: lockedDecision.message };
+            }
+
+            const deletedAt = new Date();
+            const updated = await tx.payment.updateMany({
+                where: { id: current.id, deletedAt: null },
+                data: {
+                    deletedAt,
+                    deletedByUserId: actor.id,
+                    deletionReason: normalizedReason,
+                },
+            });
+            if (updated.count === 0) {
+                return {
+                    success: true as const,
+                    idempotent: true,
+                    orderId: current.orderId,
+                    orderReopened: false,
+                };
+            }
+
+            const activePayments = await tx.payment.findMany({
+                where: { orderId: current.orderId, deletedAt: null },
+                select: { amount: true },
+            });
+            const activePaid = activePayments.reduce(
+                (sum, item) => sum + (Number(item.amount) || 0),
+                0,
+            );
+            const balance =
+                Number(current.order.total || 0) -
+                Number(current.order.discount || 0) -
+                activePaid;
+
+            let orderReopened = false;
+            if (current.order.status === 'CLOSED' && balance > 0.01) {
+                await tx.order.update({
+                    where: { id: current.orderId },
+                    data: { status: 'OPEN', closedAt: null },
+                });
+                const linkedItems = await tx.orderItem.findMany({
+                    where: { orderId: current.orderId, rentalId: { not: null } },
+                    select: { rentalId: true },
+                });
+                const rentalIds = Array.from(
+                    new Set(linkedItems.map((item) => item.rentalId).filter((id): id is string => !!id)),
+                );
+                if (rentalIds.length > 0) {
+                    await tx.rental.updateMany({
+                        where: { id: { in: rentalIds }, status: 'PAID' },
+                        data: { status: 'PENDING' },
+                    });
+                }
+                orderReopened = true;
+            }
+
+            await tx.auditLog.create({
+                data: {
+                    userId: actor.id,
+                    action: PAYMENT_DELETION_ACTION,
+                    details: JSON.stringify({
+                        paymentId: current.id,
+                        orderId: current.orderId,
+                        cashRegisterId: current.cashRegisterId,
+                        amount: current.amount,
+                        method: current.method,
+                        reason: normalizedReason,
+                        deletedAt: deletedAt.toISOString(),
+                        deletedByUserId: actor.id,
+                        previousOrderStatus: current.order.status,
+                        orderReopened,
+                    }),
+                },
+            });
+            await tx.auditLog.create({
+                data: {
+                    userId: actor.id,
+                    action: 'PaymentDeletionIdempotency',
+                    details: idempotencyMarker,
+                },
+            });
+
+            return {
+                success: true as const,
+                idempotent: false,
+                orderId: current.orderId,
+                orderReopened,
+            };
+        }, { maxWait: 10000, timeout: 20000 });
+
+        if (!result.success) {
+            return result;
+        }
+
+        try {
+            revalidatePath('/mesas');
+            revalidatePath('/financeiro');
+            revalidatePath('/dashboard');
+            revalidatePath('/pdv');
+        } catch (error) {
+            console.error('ERRO_REVALIDATE_EXCLUSAO_PAGAMENTO:', error);
+        }
+
+        return {
+            success: true as const,
+            idempotent: result.idempotent === true,
+            orderId: result.orderId,
+            orderReopened: result.orderReopened === true,
+        };
+    } catch (error: any) {
+        console.error('ERRO_EXCLUSAO_PAGAMENTO:', error);
+        return {
+            success: false as const,
+            error: publicActionErrorMessage(error, PAYMENT_DELETION_FALLBACK_MESSAGE),
+        };
+    }
+}
+
 export async function editPaymentAction(paymentId: string, newMethod: string, newAmount: number) {
     try {
         const session = await getServerSession(authOptions) as any;
@@ -1061,15 +1323,17 @@ export async function editPaymentAction(paymentId: string, newMethod: string, ne
         });
 
         if (!payment) throw new Error("Pagamento não encontrado.");
+        if (payment.deletedAt) throw new Error("Pagamento excluído operacionalmente não pode ser editado.");
         await assertFinancialPeriodOpen(payment.date);
 
-        await prisma.payment.update({
-            where: { id: paymentId },
+        const updated = await prisma.payment.updateMany({
+            where: { id: paymentId, deletedAt: null },
             data: { 
                 method: newMethod,
                 amount: newAmount
             }
         });
+        if (updated.count === 0) throw new Error("Pagamento não encontrado ou já excluído.");
 
         await createAuditLog(
             "Edição de Pagamento", 

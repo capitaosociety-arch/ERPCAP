@@ -1,11 +1,12 @@
 import { prisma } from "../../../lib/prisma";
 import { requirePagePermission } from "../../../lib/auth-guard";
-import { buildDisplayedPayments } from "../../../lib/payment-display";
+import { buildDeletedPaymentAudit, buildDisplayedPayments } from "../../../lib/payment-display";
 import { loadPaymentDisplayData } from "../../../lib/payment-display-server";
 import ComandaBoard from "./ComandaBoard";
 
 export default async function MesasRoute() {
-  await requirePagePermission("permComandas");
+  const currentUser = await requirePagePermission("permComandas");
+  const isAdmin = currentUser.role === 'ADMIN';
 
   const [openOrders, products, openRegister, customers] = await Promise.all([
     prisma.order.findMany({
@@ -16,6 +17,7 @@ export default async function MesasRoute() {
           include: { product: true }
         },
         payments: {
+            where: { deletedAt: null },
             orderBy: { date: 'desc' }
         },
         customer: {
@@ -44,12 +46,19 @@ export default async function MesasRoute() {
     return {
       ...order,
       displayPayments: buildDisplayedPayments(orderPayments, orderLinks),
+      deletedPayments: isAdmin ? buildDeletedPaymentAudit(orderPayments) : [],
     };
   });
 
   return (
     <div className="animate-in fade-in duration-500">
-      <ComandaBoard openOrders={openOrdersForClient} products={products} openRegister={openRegister} customers={customers} />
+      <ComandaBoard
+        openOrders={openOrdersForClient}
+        products={products}
+        openRegister={openRegister}
+        customers={customers}
+        isAdmin={isAdmin}
+      />
     </div>
   );
 }

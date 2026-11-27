@@ -26,7 +26,7 @@ export async function getRevenueData(filter: 'day' | 'week' | 'month' | 'year') 
   // Buscar pagamentos de comandas e mensalidades (Igual ao Financeiro)
   const [payments, subscriptionPayments] = await Promise.all([
     prisma.payment.findMany({
-      where: { date: { gte: startDate } },
+      where: { date: { gte: startDate }, deletedAt: null },
       select: { amount: true, date: true }
     }),
     prisma.subscriptionPayment.findMany({
@@ -147,7 +147,7 @@ export async function getDashboardKpis() {
         where: { startTime: { lt: rawRentalRange.to }, endTime: { gt: rawRentalRange.from } }
       }),
       prisma.payment.findMany({
-        where: { date: { gte: startOfDay, lte: endOfDay } },
+        where: { date: { gte: startOfDay, lte: endOfDay }, deletedAt: null },
         include: { 
           order: { 
             include: { 

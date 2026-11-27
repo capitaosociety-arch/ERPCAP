@@ -119,7 +119,7 @@ function deny(reason = 'Você não tem permissão para acessar estes dados.'): T
 
 async function loadPayments(from: Date, to: Date) {
   return prisma.payment.findMany({
-    where: { date: { gte: from, lte: to } },
+    where: { date: { gte: from, lte: to }, deletedAt: null },
     include: {
       order: {
         include: {
@@ -1181,7 +1181,7 @@ const previsaoTool: CopilotTool = {
     const fimMes = new Date(ano, mes + 1, 0);
 
     const [payments, subPayments, financial] = await Promise.all([
-      prisma.payment.findMany({ where: { date: { gte: from, lte: to } }, select: { amount: true, date: true } }),
+      prisma.payment.findMany({ where: { date: { gte: from, lte: to }, deletedAt: null }, select: { amount: true, date: true } }),
       prisma.subscriptionPayment.findMany({ where: { paymentDate: { gte: from, lte: to } }, select: { amount: true, paymentDate: true } }),
       prisma.financialEntry.findMany({ where: { status: 'PENDING' }, select: { type: true, amount: true, dueDate: true } })
     ]);
@@ -1326,11 +1326,13 @@ const sessoesTool: CopilotTool = {
       include: {
         user: { select: { name: true } },
         payments: {
+          where: { deletedAt: null },
           include: {
             order: {
               include: {
                 items: { where: { status: 'ACTIVE' } },
                 payments: {
+                  where: { deletedAt: null },
                   select: { id: true, amount: true, date: true, cashRegisterId: true },
                 },
               },

@@ -21,7 +21,7 @@ export default async function DashboardPage() {
     prisma.product.count({ where: { isActive: true, isService: false, stockControlled: true } }),
     prisma.order.count({ where: { status: 'OPEN' } }),
     lastRegister ? prisma.payment.findMany({
-      where: { cashRegisterId: lastRegister.id },
+      where: { cashRegisterId: lastRegister.id, deletedAt: null },
       include: { 
         order: { 
             include: { 

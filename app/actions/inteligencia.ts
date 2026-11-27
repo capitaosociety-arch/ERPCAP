@@ -150,7 +150,7 @@ export async function getIntelligenceReport(
       previousOccupancy
     ] = await Promise.all([
       prisma.payment.findMany({
-        where: { date: { gte: prevFrom, lte: to } },
+        where: { date: { gte: prevFrom, lte: to }, deletedAt: null },
         include: {
           order: {
             include: {

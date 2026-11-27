@@ -18,7 +18,7 @@ import { createFinancialEntry, updateFinancialStatus, deleteFinancialEntry, upda
 import { closeFinancialPeriod, reopenFinancialPeriod } from '../../actions/financial-periods';
 import { dbPeriodToKey, formatPeriodKey, keyToDbPeriod, monthsForYear as getMonthsForYear, listYears, periodStatus, shiftMonth } from '../../../lib/dre-navigation';
 import { getRegisterSummary, deleteCashSessionAction, getSessionsForDepositAction, recordCashDepositAction, recordGlobalCashDepositAction } from '../../actions/caixa';
-import { voidPaymentAction, editPaymentAction } from '../../actions/comandas';
+import { voidPaymentAction, editPaymentAction, deletePaymentAction } from '../../actions/comandas';
 import { currentCuiabaDateKey, formatCuiabaDate, formatCuiabaDateTime, formatCuiabaTime, isCivilDateBeforeTodayCuiaba } from '../../../lib/time-zone';
 import { formatDateDisplay, formatDateOnlyInput } from '../../../lib/subscription-date';
 import { paymentMethodLabel } from '../../../lib/payment-display';
@@ -57,6 +57,7 @@ export default function FinanceiroClient({ payload }: any) {
     const [dreVersion, setDreVersion] = useState<number | null>(null);
     const [isPending, startTransition] = useTransition();
     const [voidingPaymentId, setVoidingPaymentId] = useState<string | null>(null);
+    const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null);
     const [showAddModal, setShowAddModal] = useState(false);
     const [filterType, setFilterType] = useState('ALL'); // ALL, PAYABLE, RECEIVABLE
     const [searchTerm, setSearchTerm] = useState('');
@@ -404,6 +405,43 @@ export default function FinanceiroClient({ payload }: any) {
                 alert("Falha tecnica no estorno: " + (err?.message || "tente novamente."));
             } finally {
                 setVoidingPaymentId(null);
+            }
+        });
+    };
+
+    const handleDeletePayment = async (paymentId: string) => {
+        if (deletingPaymentId) return;
+        if (!confirm("Excluir este lançamento de pagamento? Ele será removido dos totais ativos. Esta ação NÃO é estorno: não devolve estoque, não gera crédito ao cliente e não movimenta banco.")) return;
+        const reason = window.prompt("Motivo da exclusão (mínimo de 5 caracteres):", "");
+        if (reason === null) return;
+        if (reason.trim().length < 5) {
+            alert("Informe um motivo com pelo menos 5 caracteres.");
+            return;
+        }
+
+        setDeletingPaymentId(paymentId);
+        startTransition(async () => {
+            try {
+                const res = await deletePaymentAction(paymentId, reason);
+                if (!res?.success) {
+                    alert("Não foi possível excluir o pagamento: " + (res?.error || "tente novamente."));
+                    return;
+                }
+                try {
+                    if (selectedCashRegister) {
+                        const data = await getRegisterSummary(selectedCashRegister.id);
+                        setSelectedCashRegister({ ...selectedCashRegister, ...data });
+                    }
+                    router.refresh();
+                    alert(res.idempotent ? "Este pagamento já estava excluído." : "Pagamento excluído dos totais ativos. Registre o pagamento correto.");
+                } catch (refreshError) {
+                    console.error("ERRO_REFRESH_EXCLUSAO_PAGAMENTO:", refreshError);
+                    alert("Pagamento excluído. Não foi possível atualizar a tela automaticamente; atualize a página.");
+                }
+            } catch (err: any) {
+                alert("Falha técnica ao excluir pagamento: " + (err?.message || "tente novamente."));
+            } finally {
+                setDeletingPaymentId(null);
             }
         });
     };
@@ -2226,9 +2264,11 @@ export default function FinanceiroClient({ payload }: any) {
                                                                     ) : salePayments.map((p: any) => {
                                                                         const isNegative = Number(p.amount) < 0 || p.status === 'OVER_REVERSED' || p.status === 'UNLINKED_REVERSAL';
                                                                         const isPartial = p.status === 'PARTIALLY_REVERSED';
+                                                                        const sessionIsOpen = selectedCashRegister?.status === 'OPEN';
                                                                         const canManagePayment = !showCanceledAndVoids && !sale.isCanceled && p.canVoid !== false && !isNegative && !isPartial;
                                                                         const canEditPayment = canManagePayment && userRole === 'ADMIN';
                                                                         const canVoidPayment = canManagePayment;
+                                                                        const canDeletePayment = canManagePayment && sessionIsOpen;
                                                                         return (
                                                                         <div key={p.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-2 px-3 rounded-lg hover:bg-slate-50 transition">
                                                                             {editingPayment?.id === p.id && canEditPayment ? (
@@ -2281,20 +2321,43 @@ export default function FinanceiroClient({ payload }: any) {
                                                                                         {canEditPayment && (
                                                                                             <button
                                                                                                 onClick={() => setEditingPayment({id: p.id, method: p.method, amount: p.amount})}
-                                                                                                className="inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-2 text-[10px] font-bold text-blue-600 transition hover:border-blue-200 hover:bg-blue-100"
-                                                                                                title="Editar Pagamento (Admin)"
+                                                                                                className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] font-bold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+                                                                                                title="Editar pagamento (somente administrador). Altera forma e valor do lançamento."
                                                                                                 aria-label="Editar Pagamento"
                                                                                             >
                                                                                                 <Edit2 size={18} />
                                                                                                 <span className="hidden sm:inline">Editar</span>
                                                                                             </button>
                                                                                         )}
+                                                                                        {canDeletePayment && (
+                                                                                            <button
+                                                                                                disabled={isPending || deletingPaymentId === p.id}
+                                                                                                onClick={() => handleDeletePayment(p.id)}
+                                                                                                className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-bold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                                                                title="Excluir lançamento incorreto. Não é estorno: não devolve estoque, não gera crédito e não movimenta banco."
+                                                                                                aria-label="Excluir pagamento"
+                                                                                            >
+                                                                                                <Trash2 size={18} />
+                                                                                                <span className="hidden sm:inline">Excluir pagamento</span>
+                                                                                            </button>
+                                                                                        )}
+                                                                                        {canManagePayment && !sessionIsOpen && (
+                                                                                            <button
+                                                                                                disabled
+                                                                                                className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-red-100 bg-red-50/60 px-3 py-2 text-[11px] font-bold text-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                                                title="Sessão encerrada: pagamentos consolidados exigem o fluxo formal de estorno."
+                                                                                                aria-label="Exclusão bloqueada: sessão encerrada"
+                                                                                            >
+                                                                                                <Trash2 size={18} />
+                                                                                                <span className="hidden sm:inline">Excluir pagamento</span>
+                                                                                            </button>
+                                                                                        )}
                                                                                         {canVoidPayment && (
                                                                                             <button
                                                                                                 disabled={isPending || voidingPaymentId === p.id}
                                                                                                 onClick={() => handleVoidPayment(p.id)}
-                                                                                                className="inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-lg border border-red-100 bg-red-50 px-2.5 py-2 text-[10px] font-bold text-red-600 transition hover:border-red-200 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                                                                                title="Estornar Pagamento"
+                                                                                                className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-bold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                                                                title="Estornar pagamento efetivamente recebido. Devolve o valor e reabre a comanda se necessário."
                                                                                                 aria-label="Estornar Pagamento"
                                                                                             >
                                                                                                 <RotateCcw size={18} />
@@ -2318,6 +2381,36 @@ export default function FinanceiroClient({ payload }: any) {
                                                     )}
                                                 </div>
                                             </div>
+                                            {userRole === 'ADMIN' && (selectedCashRegister.deletedPayments?.length || 0) > 0 && (
+                                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                                                    <h4 className="text-sm uppercase tracking-wider font-bold text-slate-500 mb-4 flex items-center gap-2">
+                                                        <Lock size={18} /> Histórico de auditoria — pagamentos excluídos
+                                                    </h4>
+                                                    <p className="text-[11px] text-slate-400 mb-3">
+                                                        Registros mantidos para rastreabilidade técnica. Não compõem os totais ativos e não substituem o estorno formal.
+                                                    </p>
+                                                    <div className="space-y-2">
+                                                        {(selectedCashRegister.deletedPayments || []).map((d: any) => (
+                                                            <div key={d.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                    <span className="text-xs font-black text-slate-700 uppercase">
+                                                                        {paymentMethodLabel(d.method)} — R$ {Number(d.amount || 0).toFixed(2).replace('.', ',')}
+                                                                    </span>
+                                                                    <span className="text-[10px] font-bold text-slate-500">
+                                                                        Excluído em {formatCuiabaDateTime(d.deletedAt)}
+                                                                    </span>
+                                                                </div>
+                                                                <p className="text-[11px] text-slate-500 mt-1">
+                                                                    Comanda: {d.orderName || d.orderId?.slice(-6) || '—'} • Por: {d.deletedByName || '—'}
+                                                                </p>
+                                                                <p className="text-[11px] text-slate-600 mt-0.5">
+                                                                    Motivo: {d.deletionReason || '—'}
+                                                                </p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
                                             <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 <div className="bg-slate-800 text-white rounded-xl p-4 border border-slate-700 shadow-inner">
                                                     <p className="text-[10px] font-bold text-slate-300 mb-1 uppercase tracking-wider">Dinheiro em Gaveta Esperado (Sistema)</p>

@@ -95,6 +95,7 @@ export async function loadAgendaData(params: AgendaDataParams = {}): Promise<Age
                 closedAt: true,
                 customerId: true,
                 payments: {
+                  where: { deletedAt: null },
                   select: {
                     id: true,
                     amount: true,

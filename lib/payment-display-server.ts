@@ -14,8 +14,11 @@ export type PaymentDisplayData = {
 
 /**
  * Carrega todos os pagamentos dos pedidos informados (inclusive de outras
- * sessões de caixa) e os marcadores reais de estorno. A leitura é somente
- * diagnóstica; nenhuma regra financeira é alterada.
+ * sessões de caixa, excluídos logicamente e marcadores reais de estorno).
+ * A leitura é somente diagnóstica; nenhuma regra financeira é alterada.
+ * Consumidores operacionais devem usar `buildDisplayedPayments`, que ignora
+ * os excluídos. A trilha de exclusão fica disponível em `payments` para a
+ * auditoria administrativa.
  */
 export async function loadPaymentDisplayData(orderIds: string[]): Promise<PaymentDisplayData> {
   const uniqueOrderIds = Array.from(new Set(orderIds.filter(Boolean)));
@@ -33,6 +36,10 @@ export async function loadPaymentDisplayData(orderIds: string[]): Promise<Paymen
       amount: true,
       date: true,
       userId: true,
+      deletedAt: true,
+      deletedByUserId: true,
+      deletionReason: true,
+      deletedBy: { select: { name: true } },
     },
     orderBy: { date: 'asc' },
   });
@@ -62,8 +69,22 @@ export async function loadPaymentDisplayData(orderIds: string[]): Promise<Paymen
     })
     .filter((marker): marker is PaymentVoidMarker => marker !== null);
 
+  const paymentRows: PaymentDisplayRow[] = payments.map((payment) => ({
+    id: payment.id,
+    orderId: payment.orderId,
+    cashRegisterId: payment.cashRegisterId,
+    method: payment.method,
+    amount: payment.amount,
+    date: payment.date,
+    userId: payment.userId,
+    deletedAt: payment.deletedAt,
+    deletedByUserId: payment.deletedByUserId,
+    deletedByName: payment.deletedBy?.name || null,
+    deletionReason: payment.deletionReason,
+  }));
+
   return {
-    payments,
-    links: buildPaymentReversalLinks(payments, markers),
+    payments: paymentRows,
+    links: buildPaymentReversalLinks(paymentRows, markers),
   };
 }

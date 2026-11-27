@@ -298,6 +298,7 @@ export async function getFinancialSeries(
                  COALESCE(SUM("amount"), 0)::double precision AS total
           FROM "Payment"
           WHERE "date" >= ${minFrom} AND "date" <= ${maxTo}
+            AND "deletedAt" IS NULL
           GROUP BY 1
         `
       : Promise.resolve([] as MonthlyTotal[]),

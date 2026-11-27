@@ -287,7 +287,7 @@ export async function getOrderWithPayments(orderId: string) {
     return await prisma.order.findUnique({
         where: { id: orderId },
         include: {
-            payments: { orderBy: { date: 'desc' } },
+            payments: { where: { deletedAt: null }, orderBy: { date: 'desc' } },
             items: {
                 include: {
                     product: true,
@@ -310,7 +310,7 @@ export async function cancelOrderAction(orderId: string): Promise<CancelOrderRes
       await lockOrderRow(tx, normalizedOrderId);
       const order = await tx.order.findUnique({
         where: { id: normalizedOrderId },
-        include: { items: true, payments: true }
+        include: { items: true, payments: { where: { deletedAt: null } } }
       });
 
       if (!order) return { success: false, error: 'Pedido não encontrado.' };

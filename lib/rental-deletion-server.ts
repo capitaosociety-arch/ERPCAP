@@ -152,7 +152,7 @@ export async function loadRentalDeletionCapabilities(
 
   const payments = orderIds.length > 0
     ? await db.payment.findMany({
-        where: { orderId: { in: orderIds } },
+        where: { orderId: { in: orderIds }, deletedAt: null },
         select: {
           id: true,
           orderId: true,

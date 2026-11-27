@@ -19,6 +19,7 @@ export default async function ClientesRoute() {
       orderBy: { name: 'asc' }
     }),
     prisma.payment.findMany({
+      where: { deletedAt: null },
       select: {
         orderId: true,
         date: true,

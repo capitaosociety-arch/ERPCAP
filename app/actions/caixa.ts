@@ -108,7 +108,8 @@ export async function closeGlobalCashRegister(registerId: string, closingBal: nu
 }
 
 export async function getRegisterSummary(registerId: string) {
-    await requirePermission(['permFinance', 'permPDV']);
+    const viewer = await requirePermission(['permFinance', 'permPDV']);
+    const isAdmin = viewer.role === 'ADMIN';
 
     const registerToClose = await prisma.cashRegister.findUnique({
         where: { id: registerId },
@@ -123,7 +124,7 @@ export async function getRegisterSummary(registerId: string) {
 
     const groupedPayments = await prisma.payment.groupBy({
         by: ['method'],
-        where: { cashRegisterId: registerId },
+        where: { cashRegisterId: registerId, deletedAt: null },
         _sum: { amount: true }
     });
 
@@ -244,14 +245,16 @@ export async function getRegisterSummary(registerId: string) {
         .filter(item => item.order.status !== 'CANCELED')
         .reduce((acc, item) => acc + item.subtotal, 0);
 
-    const individualPayments = individualPaymentsRaw.map(p => ({
-        id: p.id,
-        method: p.method,
-        amount: p.amount,
-        date: p.date,
-        orderId: p.orderId,
-        orderName: p.order?.notes || 'Venda PDV'
-    }));
+    const individualPayments = individualPaymentsRaw
+        .filter(p => !p.deletedAt)
+        .map(p => ({
+            id: p.id,
+            method: p.method,
+            amount: p.amount,
+            date: p.date,
+            orderId: p.orderId,
+            orderName: p.order?.notes || 'Venda PDV'
+        }));
 
     const orderById = new Map<string, any>();
     individualPaymentsRaw.forEach(p => {
@@ -269,16 +272,18 @@ export async function getRegisterSummary(registerId: string) {
         const orderPayments = allDisplayPayments.filter(payment => payment.orderId === orderId);
         const orderLinks = displayLinks.filter(link => link.orderId === orderId);
         const validPayments = buildDisplayedPayments(orderPayments, orderLinks);
-        const rawPayments = orderPayments.map(payment => ({
-            id: payment.id,
-            method: payment.method,
-            amount: payment.amount,
-            date: payment.date,
-            userId: payment.userId,
-            cashRegisterId: payment.cashRegisterId,
-            sessionRef: payment.cashRegisterId ? payment.cashRegisterId.slice(-6) : null,
-            isCurrentSession: payment.cashRegisterId === registerId,
-        }));
+        const rawPayments = orderPayments
+            .filter(payment => !payment.deletedAt)
+            .map(payment => ({
+                id: payment.id,
+                method: payment.method,
+                amount: payment.amount,
+                date: payment.date,
+                userId: payment.userId,
+                cashRegisterId: payment.cashRegisterId,
+                sessionRef: payment.cashRegisterId ? payment.cashRegisterId.slice(-6) : null,
+                isCurrentSession: payment.cashRegisterId === registerId,
+            }));
 
         return {
             orderId,
@@ -313,9 +318,31 @@ export async function getRegisterSummary(registerId: string) {
         registerId,
     );
 
+    // Histórico completo de exclusões da sessão: separado da visão operacional
+    // e restrito ao administrador.
+    const deletedPayments = isAdmin
+        ? allDisplayPayments
+            .filter(payment => !!payment.deletedAt && payment.cashRegisterId === registerId)
+            .map(payment => ({
+                id: payment.id,
+                method: payment.method,
+                amount: payment.amount,
+                date: payment.date,
+                deletedAt: payment.deletedAt,
+                deletedByName: payment.deletedByName || null,
+                deletionReason: payment.deletionReason || null,
+                orderId: payment.orderId,
+                orderName: orderById.get(payment.orderId)?.notes || 'Venda PDV',
+            }))
+            .sort((a, b) => new Date(b.deletedAt as any).getTime() - new Date(a.deletedAt as any).getTime())
+        : [];
+
     return JSON.parse(JSON.stringify({
         openOrdersCount,
         salesAudit,
+        status: registerToClose.status,
+        isAdmin,
+        deletedPayments,
         openedAt: registerToClose.openedAt,
         closedAt: registerToClose.closedAt,
         operatorName: registerToClose.user?.name || 'Operador',
@@ -432,7 +459,7 @@ export async function getSessionsForDepositAction() {
             user: { select: { name: true } },
             deposits: true,
             payments: {
-                where: { method: 'CASH' }
+                where: { method: 'CASH', deletedAt: null }
             }
         },
         orderBy: { closedAt: 'desc' },

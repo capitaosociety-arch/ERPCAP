@@ -28,7 +28,8 @@
     "test:subscription-date": "tsx scripts/tests/subscription-date.test.ts",
     "seed": "tsx prisma/seed.ts",
     "test:time-zone": "tsx scripts/tests/time-zone.test.ts",
-    "test:session-audit": "tsx scripts/tests/session-sales-audit.test.ts"
+    "test:session-audit": "tsx scripts/tests/session-sales-audit.test.ts",
+    "test:payment-deletion": "tsx scripts/tests/payment-deletion.test.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

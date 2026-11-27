@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { Plus, Search, Coffee, X, ShoppingBag, Eye, Banknote, QrCode, CreditCard, Receipt, Trash2, RotateCcw, Minus, User as UserIcon } from 'lucide-react';
-import { createComanda, closeComanda, addItemToOrder, processPayment, removeItemFromOrder, deleteComandaAction, voidPaymentAction, updateOrderItemQuantity } from '../../actions/comandas';
+import { createComanda, closeComanda, addItemToOrder, processPayment, removeItemFromOrder, deleteComandaAction, voidPaymentAction, deletePaymentAction, updateOrderItemQuantity } from '../../actions/comandas';
 import { createCustomerQuick } from '../../actions/customers';
 import { sortProducts } from '../../../lib/product-sort';
 import EditableQuantity from '../../../components/EditableQuantity';
@@ -17,8 +17,9 @@ import {
     type ComandaQuantityState,
 } from '../../../lib/comanda-input';
 import { paymentMethodLabel, sumDisplayedPayments } from '../../../lib/payment-display';
+import { formatCuiabaDateTime } from '../../../lib/time-zone';
 
-export default function ComandaBoard({ openOrders, products, openRegister, customers }: { openOrders: any[], products: any[], openRegister?: any, customers?: { id: string; name: string; phone: string | null }[] }) {
+export default function ComandaBoard({ openOrders, products, openRegister, customers, isAdmin = false }: { openOrders: any[], products: any[], openRegister?: any, customers?: { id: string; name: string; phone: string | null }[], isAdmin?: boolean }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [comandaName, setComandaName] = useState("");
     const [loading, setLoading] = useState(false);
@@ -205,7 +206,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
         setIsViewModalOpen(false);
         
         // Calcula a dívida restante
-        const totalPaid = order.payments?.reduce((acc: any, p: any) => acc + p.amount, 0) || 0;
+        const totalPaid = sumDisplayedPayments(order.displayPayments || []);
         const balance = order.total - order.discount - totalPaid;
         
         setPaymentAmount(Math.max(0, balance).toFixed(2));
@@ -303,7 +304,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
     };
 
     const handleVoidPayment = async (paymentId: string) => {
-        if (!confirm("Deseja realmente ESTORNAR este pagamento parcial?")) return;
+        if (!confirm("Deseja realmente ESTORNAR este pagamento? O estorno devolve o valor e reabre a comanda se necessário.")) return;
         setLoading(true);
         try {
             const res = await voidPaymentAction(paymentId);
@@ -314,6 +315,29 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
             }
         } catch (e: any) {
             alert("Erro técnico: " + e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeletePayment = async (paymentId: string) => {
+        if (!confirm("Excluir este lançamento de pagamento? Ele será removido dos totais ativos. Esta ação NÃO é estorno: não devolve estoque, não gera crédito ao cliente e não movimenta banco.")) return;
+        const reason = window.prompt("Informe o motivo da exclusão (mínimo de 5 caracteres):", "");
+        if (reason === null) return;
+        if (reason.trim().length < 5) {
+            alert("Informe um motivo com pelo menos 5 caracteres.");
+            return;
+        }
+        setLoading(true);
+        try {
+            const res = await deletePaymentAction(paymentId, reason);
+            if (res && !res.success) {
+                alert("Não foi possível excluir o pagamento: " + res.error);
+            } else {
+                alert(res?.idempotent ? "Este pagamento já estava excluído." : "Pagamento excluído do lançamento. Você já pode registrar o pagamento correto.");
+            }
+        } catch (e: any) {
+            alert("Erro técnico ao excluir pagamento: " + (e?.message || "tente novamente."));
         } finally {
             setLoading(false);
         }
@@ -377,7 +401,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                         Nenhuma comanda localizada com este nome.
                     </div>
                 ) : filtered.map(order => {
-                    const orderPaid = order.payments?.reduce((acc: any, p: any) => acc + p.amount, 0) || 0;
+                    const orderPaid = sumDisplayedPayments(order.displayPayments || []);
                     const isPartial = orderPaid > 0;
 
                     return (
@@ -529,40 +553,74 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                 </div>
                             )}
 
-                            {activeViewPayments.length > 0 && (
+                            {(activeViewPayments.length > 0 || (isAdmin && (activeViewOrder?.deletedPayments?.length || 0) > 0)) && (
                                 <div className="mt-8 border-t-2 border-dashed border-gray-200 pt-6">
-                                    <h3 className="font-bold text-sm text-gray-400 mb-4 px-2 uppercase tracking-wider">Histórico de Pagamentos Válidos</h3>
-                                    <div className="flex flex-col gap-2">
-                                        {activeViewPayments.map((p: any) => {
-                                            const isNegative = Number(p.amount) < 0 || p.status === 'OVER_REVERSED' || p.status === 'UNLINKED_REVERSAL';
-                                            const isPartial = p.status === 'PARTIALLY_REVERSED';
-                                            return (
-                                                <div key={p.id} className={`flex justify-between items-center px-4 py-3 rounded-xl border group ${isNegative ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
-                                                    <div className="flex items-center gap-3">
-                                                        <div>
-                                                            <p className="font-bold text-sm">{paymentMethodLabel(p.method)}</p>
-                                                            {(isPartial || isNegative) && (
-                                                                <p className={`text-[10px] font-bold ${isNegative ? 'text-red-500' : 'text-amber-600'}`}>
-                                                                    {isPartial ? 'Parcialmente estornado' : 'Estornado'}
-                                                                </p>
-                                                            )}
+                                    {activeViewPayments.length > 0 && (
+                                        <>
+                                            <h3 className="font-bold text-sm text-gray-400 mb-4 px-2 uppercase tracking-wider">Histórico de Pagamentos Válidos</h3>
+                                            <div className="flex flex-col gap-2">
+                                                {activeViewPayments.map((p: any) => {
+                                                    const isNegative = Number(p.amount) < 0 || p.status === 'OVER_REVERSED' || p.status === 'UNLINKED_REVERSAL';
+                                                    const isPartial = p.status === 'PARTIALLY_REVERSED';
+                                                    return (
+                                                        <div key={p.id} className={`flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-4 py-3 rounded-xl border ${isNegative ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'}`}>
+                                                            <div className="flex items-center gap-3 min-w-0">
+                                                                <div>
+                                                                    <p className="font-bold text-sm">{paymentMethodLabel(p.method)}</p>
+                                                                    {(isPartial || isNegative) && (
+                                                                        <p className={`text-[10px] font-bold ${isNegative ? 'text-red-500' : 'text-amber-600'}`}>
+                                                                            {isPartial ? 'Parcialmente estornado' : 'Estornado'}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                                {p.canVoid && (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <button
+                                                                            disabled={loading || !openRegister}
+                                                                            onClick={() => handleDeletePayment(p.id)}
+                                                                            className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-bold text-red-700 transition hover:border-red-300 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                                            title={openRegister ? "Excluir lançamento incorreto. Não é estorno: não devolve estoque e não gera crédito ao cliente." : "Caixa fechado: abra uma sessão para corrigir lançamentos."}
+                                                                            aria-label="Excluir pagamento"
+                                                                        >
+                                                                            <Trash2 size={16} />
+                                                                            <span className="hidden sm:inline">Excluir pagamento</span>
+                                                                        </button>
+                                                                        <button
+                                                                            disabled={loading || !openRegister}
+                                                                            onClick={() => handleVoidPayment(p.id)}
+                                                                            className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-700 transition hover:border-amber-300 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                                            title={openRegister ? "Estornar pagamento efetivamente recebido. Devolve o valor e reabre a comanda se necessário." : "Caixa fechado: abra uma sessão para estornar."}
+                                                                            aria-label="Estornar pagamento"
+                                                                        >
+                                                                            <RotateCcw size={16} />
+                                                                            <span className="hidden sm:inline">Estornar</span>
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <p className="font-bold">R$ {Number(p.amount || 0).toFixed(2).replace('.',',')}</p>
                                                         </div>
-                                                        {p.canVoid && (
-                                                            <button 
-                                                                disabled={loading}
-                                                                onClick={() => handleVoidPayment(p.id)}
-                                                                className="p-1 text-green-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                                                title="Estornar Pagamento"
-                                                            >
-                                                                <RotateCcw size={14} />
-                                                            </button>
-                                                        )}
+                                                    );
+                                                })}
+                                            </div>
+                                        </>
+                                    )}
+                                    {isAdmin && (activeViewOrder?.deletedPayments?.length || 0) > 0 && (
+                                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-2">Histórico de auditoria — pagamentos excluídos</p>
+                                            <div className="space-y-2">
+                                                {(activeViewOrder.deletedPayments || []).map((d: any) => (
+                                                    <div key={d.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px]">
+                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                            <span className="font-bold text-slate-700">{paymentMethodLabel(d.method)} — R$ {Number(d.amount || 0).toFixed(2).replace('.', ',')}</span>
+                                                            <span className="text-slate-500">{formatCuiabaDateTime(d.deletedAt)}</span>
+                                                        </div>
+                                                        <p className="text-slate-500 mt-1">Motivo: {d.deletionReason || '—'} • Por: {d.deletedByName || '—'}</p>
                                                     </div>
-                                                    <p className="font-bold">R$ {Number(p.amount || 0).toFixed(2).replace('.',',')}</p>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -693,7 +751,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
 
             {/* MODAL FINANCEIRO E OPÇÕES GERAIS DE CAIXA */}
             {isPaymentModalOpen && activePaymentOrder && (() => {
-                const totalPaid = activePaymentOrder.payments?.reduce((acc: any, p: any) => acc + p.amount, 0) || 0;
+                const totalPaid = sumDisplayedPayments(activePaymentOrder.displayPayments || []);
                 const balance = Math.max(0, activePaymentOrder.total - activePaymentOrder.discount - totalPaid);
 
                 return (
@@ -784,7 +842,7 @@ export default function ComandaBoard({ openOrders, products, openRegister, custo
                                             const val = e.target.value;
                                             setDiscountValue(val);
                                             const disc = Number(val) || 0;
-                                            const totalPaid = activePaymentOrder.payments?.reduce((acc: any, p: any) => acc + p.amount, 0) || 0;
+                                            const totalPaid = sumDisplayedPayments(activePaymentOrder.displayPayments || []);
                                             const newBalance = Math.max(0, activePaymentOrder.total - activePaymentOrder.discount - totalPaid - disc);
                                             setPaymentAmount(newBalance.toFixed(2));
                                         }}
