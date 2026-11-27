@@ -2177,10 +2177,12 @@ export default function FinanceiroClient({ payload }: any) {
                                                                     ) : salePayments.map((p: any) => {
                                                                         const isNegative = Number(p.amount) < 0 || p.status === 'OVER_REVERSED' || p.status === 'UNLINKED_REVERSAL';
                                                                         const isPartial = p.status === 'PARTIALLY_REVERSED';
-                                                                        const canEdit = !showCanceledAndVoids && !sale.isCanceled && p.canVoid !== false && !isNegative && !isPartial;
+                                                                        const canManagePayment = !showCanceledAndVoids && !sale.isCanceled && p.canVoid !== false && !isNegative && !isPartial;
+                                                                        const canEditPayment = canManagePayment && userRole === 'ADMIN';
+                                                                        const canVoidPayment = canManagePayment;
                                                                         return (
-                                                                        <div key={p.id} className="flex justify-between items-center py-1.5 px-3 rounded-lg hover:bg-slate-50 transition group">
-                                                                            {editingPayment?.id === p.id && canEdit ? (
+                                                                        <div key={p.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 py-2 px-3 rounded-lg hover:bg-slate-50 transition">
+                                                                            {editingPayment?.id === p.id && canEditPayment ? (
                                                                                 <div className="flex-1 flex flex-wrap items-center gap-2 py-1">
                                                                                     <select 
                                                                                         value={editingPayment!.method} 
@@ -2208,7 +2210,7 @@ export default function FinanceiroClient({ payload }: any) {
                                                                                 </div>
                                                                             ) : (
                                                                                 <>
-                                                                                    <div className="flex-1">
+                                                                                    <div className="flex-1 min-w-0">
                                                                                         <div className="flex items-center gap-2 flex-wrap">
                                                                                             <span className="font-bold text-slate-700 text-[11px] uppercase">{paymentMethodLabel(p.method)}</span>
                                                                                             {isNegative && (
@@ -2223,27 +2225,31 @@ export default function FinanceiroClient({ payload }: any) {
                                                                                         </div>
                                                                                         <p className="text-[9px] text-gray-400 font-medium">{formatCuiabaTime(p.date)}</p>
                                                                                     </div>
-                                                                                    <div className="flex items-center gap-2">
-                                                                                        <span className={`font-black text-xs ${isNegative ? 'text-red-600' : isPartial ? 'text-amber-600' : 'text-green-600'}`}>
+                                                                                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                                                                                        <span className={`font-black text-xs shrink-0 ${isNegative ? 'text-red-600' : isPartial ? 'text-amber-600' : 'text-green-600'}`}>
                                                                                             {isNegative ? 'Estornado' : 'Pago'}: R$ {Number(p.amount || 0).toFixed(2).replace('.', ',')}
                                                                                         </span>
-                                                                                        {canEdit && (
+                                                                                        {canEditPayment && (
                                                                                             <button
                                                                                                 onClick={() => setEditingPayment({id: p.id, method: p.method, amount: p.amount})}
-                                                                                                className="p-1.5 text-gray-300 hover:text-blue-500 hover:bg-blue-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
+                                                                                                className="inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-2 text-[10px] font-bold text-blue-600 transition hover:border-blue-200 hover:bg-blue-100"
                                                                                                 title="Editar Pagamento (Admin)"
+                                                                                                aria-label="Editar Pagamento"
                                                                                             >
-                                                                                                <Edit2 size={12} />
+                                                                                                <Edit2 size={18} />
+                                                                                                <span className="hidden sm:inline">Editar</span>
                                                                                             </button>
                                                                                         )}
-                                                                                        {canEdit && (
+                                                                                        {canVoidPayment && (
                                                                                             <button
                                                                                                 disabled={isPending || voidingPaymentId === p.id}
                                                                                                 onClick={() => handleVoidPayment(p.id)}
-                                                                                                className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                                                                className="inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-lg border border-red-100 bg-red-50 px-2.5 py-2 text-[10px] font-bold text-red-600 transition hover:border-red-200 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
                                                                                                 title="Estornar Pagamento"
+                                                                                                aria-label="Estornar Pagamento"
                                                                                             >
-                                                                                                <RotateCcw size={12} />
+                                                                                                <RotateCcw size={18} />
+                                                                                                <span className="hidden sm:inline">Estornar</span>
                                                                                             </button>
                                                                                         )}
                                                                                     </div>
